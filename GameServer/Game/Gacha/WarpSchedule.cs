@@ -14,7 +14,8 @@ namespace March7thHoney.GameServer.Game.Gacha;
 ///     One version phase of the history pool. <see cref="Started" /> holds the banners that opened in the phase;
 ///     <see cref="Overlapping" /> adds every earlier banner whose historical window still covers
 ///     <see cref="StartTime" /> (a banner that ran through both phases of a version, like 4.7's Aha, and the
-///     long-running collab pools). ServerOption.Warps.PhaseLineup picks between them; see <see cref="Lineup" />.
+///     long-running pools). ServerOption.Warps.PhaseLineup picks between them. Collab banners are never part of a
+///     phase: they are their own category (<see cref="WarpPool.Collab" />, ServerOption.Warps.CollabBanners).
 /// </summary>
 public sealed record WarpPhase(
     string Key,
@@ -24,11 +25,9 @@ public sealed record WarpPhase(
     IReadOnlyList<BannerConfig> Started,
     IReadOnlyList<BannerConfig> Overlapping)
 {
-    public IReadOnlyList<BannerConfig> Lineup(WarpPhaseLineupEnum lineup, bool collabOwnPhaseOnly)
+    public IReadOnlyList<BannerConfig> Lineup(WarpPhaseLineupEnum lineup)
     {
-        if (lineup == WarpPhaseLineupEnum.Started) return Started;
-        if (!collabOwnPhaseOnly) return Overlapping;
-        return Overlapping.Where(b => !WarpSchedule.IsCollab(b.GachaType) || Started.Contains(b)).ToList();
+        return lineup == WarpPhaseLineupEnum.Started ? Started : Overlapping;
     }
 }
 
@@ -47,12 +46,6 @@ public sealed record WarpStoryProgress(string? ReachedVersion, string? NextVersi
     public bool Unlocks(string version)
     {
         return NextVersion == null || WarpSchedule.CompareVersions(version, NextVersion) < 0;
-    }
-
-    /// <summary>The player's story is in this version now: reached, and the next story version not yet.</summary>
-    public bool IsCurrent(string version)
-    {
-        return ReachedVersion != null && WarpSchedule.CompareVersions(version, ReachedVersion) >= 0 && Unlocks(version);
     }
 }
 
@@ -82,20 +75,21 @@ public sealed class WarpPool
             else ineligible.Add(banner.GachaId);
 
         Banners = eligible.OrderBy(b => b.BeginTime).ThenBy(b => b.GachaId).ToList();
+        Collab = eligible.Where(b => WarpSchedule.IsCollab(b.GachaType)).OrderBy(b => b.GachaId).ToList();
         IneligibleIds = ineligible;
         _byId = eligible.ToDictionary(b => b.GachaId);
 
         // Phase start = earliest begin among the banners tagged with it (eligible or not, so a missing banner
         // cannot move the phase boundary).
+        var phased = Banners.Where(b => !WarpSchedule.IsCollab(b.GachaType)).ToList();
         var phases = new List<WarpPhase>();
         foreach (var group in source.Banners.Where(b => !string.IsNullOrWhiteSpace(b.Version) && b.Phase > 0)
                      .GroupBy(b => PhaseKey(b.Version, b.Phase)))
         {
             var start = group.Min(b => b.BeginTime);
             var tagged = group.Select(b => b.GachaId).ToHashSet();
-            // Tagged banners count even when they opened hours after the phase start (the collab pools did).
-            var started = Banners.Where(b => tagged.Contains(b.GachaId)).OrderBy(b => b.GachaId).ToList();
-            var overlapping = Banners.Where(b => tagged.Contains(b.GachaId) || (b.BeginTime <= start && b.EndTime > start))
+            var started = phased.Where(b => tagged.Contains(b.GachaId)).OrderBy(b => b.GachaId).ToList();
+            var overlapping = phased.Where(b => tagged.Contains(b.GachaId) || (b.BeginTime <= start && b.EndTime > start))
                 .OrderBy(b => b.GachaId).ToList();
             if (overlapping.Count == 0) continue;
             var first = group.First();
@@ -114,6 +108,9 @@ public sealed class WarpPool
 
     public IReadOnlyList<BannerConfig> Banners { get; }
     public IReadOnlyList<WarpPhase> Phases { get; }
+
+    /// <summary>Eligible collab banners, outside every phase; served as a group when CollabBanners is on.</summary>
+    public IReadOnlyList<BannerConfig> Collab { get; }
 
     /// <summary>History rows left out because an item they feature is missing from the game data.</summary>
     public IReadOnlyList<int> IneligibleIds { get; }
@@ -203,10 +200,10 @@ public static class WarpSchedule
         return Enum.TryParse(value.Trim(), true, out lineup) && Enum.IsDefined(lineup);
     }
 
-    /// <summary>The banners <paramref name="phase" /> serves under the current PhaseLineup settings.</summary>
+    /// <summary>The banners <paramref name="phase" /> serves under the current PhaseLineup setting.</summary>
     public static IReadOnlyList<BannerConfig> LineupOf(WarpPhase phase)
     {
-        return phase.Lineup(PhaseLineup, Option.CollabOwnPhaseOnly);
+        return phase.Lineup(PhaseLineup);
     }
 
     /// <summary>"1.0" &lt; "1.10" &lt; "2.0"; text that is not a version sorts after every version.</summary>
@@ -288,7 +285,8 @@ public static class WarpSchedule
 
     /// <param name="story">
     ///     Null: no Story filter. <see cref="WarpStoryProgress.Unreadable" />: Banners.json as written, whatever the
-    ///     mode. Otherwise only banners of unlocked versions (Static and Rotation; Manual ignores it).
+    ///     mode. Otherwise only banners of unlocked versions (Static and Rotation; Manual ignores it). Collab banners
+    ///     are a separate group in every case (<see cref="GetCollabBanners" />).
     /// </param>
     public static List<BannerConfig> GetActiveBanners(long realNow, long playerNow, WarpStoryProgress? story = null)
     {
@@ -304,15 +302,14 @@ public static class WarpSchedule
         var result = new List<BannerConfig>();
         foreach (var banner in GameData.BannersConfig.Banners)
         {
-            if (fromHistory && IsLimited(banner.GachaType)) continue;
+            if (IsCollab(banner.GachaType) || (fromHistory && IsLimited(banner.GachaType))) continue;
             if (banner.IsActiveAt(realNow)) result.Add(banner);
         }
 
-        if (!fromHistory) return result;
-
         var shift = playerNow - realNow;
         var seen = result.Select(b => b.GachaId).ToHashSet();
-        foreach (var banner in GetScheduledBanners(realNow, mode, story))
+        var served = fromHistory ? GetScheduledBanners(realNow, mode, story) : [];
+        foreach (var banner in served.Concat(GetCollabBanners(realNow)))
         {
             if (!banner.IsActiveAt(realNow) || !seen.Add(banner.GachaId)) continue;
             result.Add(shift == 0
@@ -324,9 +321,21 @@ public static class WarpSchedule
     }
 
     /// <summary>
+    ///     The collab banners of the history pool with the current rotation period as their window, served in every
+    ///     mode and to every player while ServerOption.Warps.CollabBanners is on; empty when it is off.
+    /// </summary>
+    public static List<BannerConfig> GetCollabBanners(long now)
+    {
+        if (!Option.CollabBanners) return [];
+        var (begin, end) = GetPeriod(now);
+        return Pool.Collab.Select(b => b.WithWindow(begin, end)).ToList();
+    }
+
+    /// <summary>
     ///     Limited banners of the current mode with their served windows (real clock), including Manual entries
     ///     whose explicit window has not opened yet or has closed — the admin panel lists those too. This is the
     ///     server-wide view: the Story filter narrows it per player (<see cref="GetActiveBanners(PlayerInstance)" />).
+    ///     Collab banners are not part of it (<see cref="GetCollabBanners" />).
     /// </summary>
     public static List<BannerConfig> GetScheduledBanners(long now)
     {
@@ -354,7 +363,7 @@ public static class WarpSchedule
                 foreach (var entry in Option.Manual ?? [])
                 {
                     var banner = pool.Find(entry.GachaId);
-                    if (banner == null) continue;
+                    if (banner == null || IsCollab(banner.GachaType)) continue;
                     result.Add(banner.WithWindow(entry.BeginTime > 0 ? entry.BeginTime : begin,
                         entry.EndTime > 0 ? entry.EndTime : end, entry.RateUpItems5, entry.RateUpItems4));
                 }
@@ -363,14 +372,13 @@ public static class WarpSchedule
             }
             default:
             {
-                if (story == null) return GameData.BannersConfig.Banners.Where(b => IsLimited(b.GachaType)).ToList();
+                if (story == null)
+                    return GameData.BannersConfig.Banners
+                        .Where(b => IsLimited(b.GachaType) && !IsCollab(b.GachaType)).ToList();
 
-                // Static + Story: every unlocked history banner at once, rolling with the rotation period. With
-                // CollabOwnPhaseOnly a collab banner stays only while the player's story is in its version.
+                // Static + Story: every unlocked history banner at once, rolling with the rotation period.
                 var (begin, end) = GetPeriod(now);
-                var collabOwnPhaseOnly = Option.CollabOwnPhaseOnly;
-                return Pool.Banners.Where(b => story.Unlocks(b.Version) &&
-                                               (!collabOwnPhaseOnly || !IsCollab(b.GachaType) || story.IsCurrent(b.Version)))
+                return Pool.Banners.Where(b => !IsCollab(b.GachaType) && story.Unlocks(b.Version))
                     .OrderBy(b => b.GachaId)
                     .Select(b => b.WithWindow(begin, end))
                     .ToList();
@@ -451,7 +459,7 @@ public static class WarpSchedule
     public static List<WarpManualEntry> BuildManualEntries(IEnumerable<BannerConfig> lineup)
     {
         var pool = Pool;
-        var banners = lineup.Where(b => pool.Find(b.GachaId) != null).ToList();
+        var banners = lineup.Where(b => pool.Find(b.GachaId) != null && !IsCollab(b.GachaType)).ToList();
         var ids = banners.Select(b => b.GachaId).ToHashSet();
         return banners.Select(b => new WarpManualEntry
         {
@@ -469,6 +477,8 @@ public static class WarpSchedule
         {
             var banner = pool.Find(entry.GachaId);
             if (banner == null) return $"Banner {entry.GachaId} is not in the eligible history pool";
+            if (IsCollab(banner.GachaType))
+                return $"Banner {entry.GachaId} is a collab banner; those follow the collab banners switch";
             if (!seen.Add(entry.GachaId)) return $"Banner {entry.GachaId} is listed twice";
             if (entry.BeginTime < 0 || entry.EndTime < 0) return $"Banner {entry.GachaId}: negative time";
             if (entry.BeginTime > 0 && entry.EndTime > 0 && entry.BeginTime >= entry.EndTime)

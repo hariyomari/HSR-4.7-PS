@@ -203,27 +203,27 @@ internal static class WarpChecks
                {
                    values = new Dictionary<string, string>
                    {
-                       ["Warps.Story"] = "true", ["Warps.PhaseLineup"] = "overlap", ["Warps.CollabOwnPhaseOnly"] = "false"
+                       ["Warps.Story"] = "true", ["Warps.PhaseLineup"] = "overlap", ["Warps.CollabBanners"] = "false"
                    }
                }))
         {
             var data = settings.RootElement.GetProperty("data");
             var fields = SettingValues(data);
-            check("settings round-trip Warps.Story, Warps.PhaseLineup and Warps.CollabOwnPhaseOnly",
+            check("settings round-trip Warps.Story, Warps.PhaseLineup and Warps.CollabBanners",
                 data.GetProperty("applied").GetInt32() == 3 && data.GetProperty("errors").GetArrayLength() == 0 &&
-                option.Story && option.PhaseLineup == "Overlap" && !option.CollabOwnPhaseOnly &&
+                option.Story && option.PhaseLineup == "Overlap" && !option.CollabBanners &&
                 fields.GetValueOrDefault("Warps.Story") == "true" &&
                 fields.GetValueOrDefault("Warps.PhaseLineup") == "Overlap" &&
-                fields.GetValueOrDefault("Warps.CollabOwnPhaseOnly") == "false");
+                fields.GetValueOrDefault("Warps.CollabBanners") == "false");
         }
 
         using (var warps = await GetData(client, "/admin/api/warps"))
         {
             var data = warps.RootElement.GetProperty("data");
-            check("warps reports the story filter and phase lineup settings",
+            check("warps reports the story filter, phase lineup and collab banner settings",
                 data.GetProperty("story").GetBoolean() && data.GetProperty("story_active").GetBoolean() &&
                 data.GetProperty("phase_lineup").GetString() == "Overlap" &&
-                !data.GetProperty("collab_own_phase_only").GetBoolean());
+                !data.GetProperty("collab_banners").GetBoolean());
         }
 
         using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings",
@@ -239,12 +239,12 @@ internal static class WarpChecks
                {
                    values = new Dictionary<string, string>
                    {
-                       ["Warps.Story"] = "false", ["Warps.PhaseLineup"] = "Started", ["Warps.CollabOwnPhaseOnly"] = "true"
+                       ["Warps.Story"] = "false", ["Warps.PhaseLineup"] = "Started", ["Warps.CollabBanners"] = "true"
                    }
                }))
-            check("settings restore the story filter and phase lineup defaults",
+            check("settings restore the story filter, phase lineup and collab banner defaults",
                 settings.RootElement.GetProperty("data").GetProperty("applied").GetInt32() == 3 &&
-                !option.Story && option.PhaseLineup == "Started" && option.CollabOwnPhaseOnly);
+                !option.Story && option.PhaseLineup == "Started" && option.CollabBanners);
 
         // --- Manual ---
         // Seeded from the Overlap lineup of 9.0-2, which carries 2903 without its light cone banner (pair 0).
@@ -363,13 +363,17 @@ internal static class WarpChecks
         var overlapping = pool.FindPhase("4.7-2")?.Overlapping.Select(b => b.GachaId).ToHashSet() ?? [];
         check("repo phase 4.7-2 Overlap lineup includes its own and the carried-over banners",
             new[] { 2142, 3142, 2146, 2147, 2148, 3146, 3147, 3148 }.All(overlapping.Contains));
+        int[] collabIds = [5001, 5002, 5003, 5004, 6001, 6002, 6003, 6004];
+        check("repo collab banners form their own group outside every phase",
+            pool.Collab.Select(b => b.GachaId).SequenceEqual(collabIds) &&
+            pool.Phases.All(p => !p.Started.Concat(p.Overlapping).Any(b => collabIds.Contains(b.GachaId))));
 
         var names = ResourceManager.LoadCustomFile<WarpItemNamesConfig>("Warp item names", "WarpItemNames");
         GameData.WarpItemNamesConfig = names ?? new WarpItemNamesConfig();
 
-        // Pool API phases follow the PhaseLineup settings; option values are put back afterwards.
+        // Pool API phases follow the PhaseLineup setting; option values are put back afterwards.
         var option = ConfigManager.Config.ServerOption.Warps;
-        var (lineupSetting, collabSetting) = (option.PhaseLineup, option.CollabOwnPhaseOnly);
+        var (lineupSetting, collabSetting, manualSetting) = (option.PhaseLineup, option.CollabBanners, option.Manual);
         try
         {
             option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
@@ -388,26 +392,47 @@ internal static class WarpChecks
             }
 
             option.PhaseLineup = nameof(WarpPhaseLineupEnum.Overlap);
-            option.CollabOwnPhaseOnly = false;
             using (var response = await GetData(client, "/admin/api/warps/pool"))
             {
                 var ids = PhaseBannerIds(response.RootElement.GetProperty("data"), "4.7-2");
-                check("warp pool endpoint phase 4.7-2 with Overlap includes carried-over 2142 and collab 5001",
-                    ids.Contains(2142) && ids.Contains(5001));
+                check("warp pool endpoint phase 4.7-2 with Overlap includes carried-over 2142 and no collab banner",
+                    ids.Contains(2142) && !ids.Intersect(collabIds).Any());
             }
 
-            option.CollabOwnPhaseOnly = true;
-            using (var response = await GetData(client, "/admin/api/warps/pool"))
+            // Collab banners: served in every mode while the switch is on, listed as history rows when it is off.
+            using (var warps = await GetData(client, "/admin/api/warps"))
             {
-                var ids = PhaseBannerIds(response.RootElement.GetProperty("data"), "4.7-2");
-                check("warp pool endpoint phase 4.7-2 with Overlap + CollabOwnPhaseOnly keeps 2142 and drops collab 5001",
-                    ids.Contains(2142) && !ids.Contains(5001));
+                var data = warps.RootElement.GetProperty("data");
+                check("warps lists the 8 collab banners as running while CollabBanners is on",
+                    data.GetProperty("collab_banners").GetBoolean() && Ids(data, "collab").SequenceEqual(collabIds) &&
+                    data.GetProperty("collab").EnumerateArray().All(b => b.GetProperty("running").GetBoolean()) &&
+                    !Ids(data, "scheduled").Intersect(collabIds).Any());
             }
+
+            using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings",
+                       new { values = new Dictionary<string, string> { ["Warps.CollabBanners"] = "false" } }))
+                check("settings switch CollabBanners off",
+                    settings.RootElement.GetProperty("data").GetProperty("applied").GetInt32() == 1 && !option.CollabBanners);
+            using (var warps = await GetData(client, "/admin/api/warps"))
+            {
+                var data = warps.RootElement.GetProperty("data");
+                check("warps still lists the 8 collab banners, not running, while CollabBanners is off",
+                    !data.GetProperty("collab_banners").GetBoolean() && Ids(data, "collab").SequenceEqual(collabIds) &&
+                    data.GetProperty("collab").EnumerateArray().All(b => !b.GetProperty("running").GetBoolean()));
+            }
+            option.CollabBanners = true;
+
+            var before = option.Manual;
+            using (var response = await client.PutAsJsonAsync("/admin/api/warps/manual",
+                       new { entries = new object[] { new { gacha_id = 2146 }, new { gacha_id = 5001 } } }))
+                check("manual warps reject a collab banner without changing the config",
+                    response.StatusCode == HttpStatusCode.BadRequest && ReferenceEquals(option.Manual, before));
         }
         finally
         {
             option.PhaseLineup = lineupSetting;
-            option.CollabOwnPhaseOnly = collabSetting;
+            option.CollabBanners = collabSetting;
+            option.Manual = manualSetting;
         }
     }
 

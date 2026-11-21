@@ -274,8 +274,7 @@ public static class AdminSettingsRegistry
                 warps.PhaseLineup = lineup.ToString();
                 return null;
             }, false, () => Enum.GetNames<WarpPhaseLineupEnum>().ToList(), null);
-        yield return Bool("Warps.CollabOwnPhaseOnly", "warps", () => warps.CollabOwnPhaseOnly,
-            v => warps.CollabOwnPhaseOnly = v);
+        yield return Bool("Warps.CollabBanners", "warps", () => warps.CollabBanners, v => warps.CollabBanners = v);
 
         // --- progression rewards ---
         yield return Bool("ProgressionRewards.Enabled", "rewards", () => rewards.Enabled, v => rewards.Enabled = v);

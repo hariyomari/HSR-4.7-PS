@@ -14,13 +14,17 @@ The permanent pools (`Newbie`, `Normal`) always come from `Banners.json`, in eve
 
 Switching to `Manual` while the list is empty seeds it with the banners that are running at that moment, so the switch itself changes nothing players see. Switching to `Rotation` without a start date starts the rotation today.
 
+## Collab banners
+
+The collaboration banners of the history pool (the four collab character banners and their four light cone banners, ids 5001–5004 and 6001–6004) are a group of their own, like the permanent pools. With `CollabBanners` on (the default) all of them are served in every mode, to every player, with the current rotation period as their window: they are not part of any phase lineup, the Story filter does not hide them, and a Manual list cannot hold them. With it off none are served. Collab rows in `Banners.json` are never served; the group comes from the history pool.
+
 ## Story filter
 
 With `Story` on, each player is offered only the limited banners of versions whose story they have reached. It works on top of `Static` and `Rotation`; `Manual` ignores it, because the admin picked the list on purpose.
 
 | Mode | With `Story` on |
 | --- | --- |
-| `Static` | Every unlocked history banner at once, with the current rotation period as its window. The limited banners of `Banners.json` are not served. With `CollabOwnPhaseOnly` a collaboration banner shows only while the player's story is in its version (the 3.4 pools from the start of 3.4's story until 3.5's starts). Late in the story this is a long list: the client has not been tested with that many banners. |
+| `Static` | Every unlocked history banner at once, with the current rotation period as its window. The limited banners of `Banners.json` are not served. Late in the story this is a long list: the client has not been tested with that many banners. |
 | `Rotation` | Only the unlocked phases rotate, in historical order. The rotation starts at `RotationStartPhase` when that phase is unlocked, otherwise at the oldest phase. |
 | `Manual` | No change. |
 
@@ -46,7 +50,7 @@ With `Story` on, each player is offered only the limited banners of versions who
 | `RotationStart` | `""` | `yyyy-MM-dd`; period 0 starts at server-local midnight of that day. Empty = 1970-01-01 UTC. |
 | `RotationStartPhase` | `""` | Phase key (for example `"4.7-1"`) served in period 0. Empty or unknown = the oldest phase. |
 | `PhaseLineup` | `"Started"` | Which banners make up a phase in `Rotation` and Load phase: `Started` = only the banners that opened in it; `Overlap` = also every earlier banner still running when it opened (the live lineup). An unknown value behaves as `Started`. |
-| `CollabOwnPhaseOnly` | `true` | Collaboration banners only in their own phase. With `Overlap` they stay out of the later phases their long window overlapped; with the Story filter in `Static` they show only while the player's story is in their version. No effect otherwise. |
+| `CollabBanners` | `true` | Serve the collab banners as their own group in every mode (see above); `false` = never. |
 | `Story` | `false` | Story filter, see above. |
 | `Manual` | `[]` | Manual-mode entries, see below. |
 
@@ -66,7 +70,7 @@ The admin endpoints validate the whole list and replace it in one assignment; an
 `Config/Custom/Banners.history.json` holds past limited banners (the shipped file has 300, versions 1.0 to 4.7). Each row is a `Banners.json` banner plus `version` and `phase`, the version phase the banner started in.
 
 - **Eligibility.** A row is used only when it is a limited type (`AvatarUp`, `WeaponUp`, `CollaborationAvatarUp`, `CollaborationWeaponUp`), has at least one featured 5★, and every id in `rateUpItems5`, `rateUpItems4` and `prizeItems` exists in the loaded item table (`ItemConfigData`). A banner featuring content the client data lacks would pay out the fallback item instead, so such rows are left out and listed as `ineligible` by the admin API.
-- **Phases.** Rows are grouped by `version` + `phase`. A phase starts at the earliest `beginTime` of its rows (eligible or not). With `PhaseLineup` `Started` its lineup is the eligible banners tagged with that phase. With `Overlap` it also includes every eligible banner whose historical window covers the phase start, so a banner that ran through both phases of a version, and the long-running collaboration pools, appear in every later phase they overlapped, as they did on the live servers (`CollabOwnPhaseOnly` keeps the collaboration pools out of the later phases). Phases are ordered by start time; with the shipped file and full item data there are 65.
+- **Phases.** Rows are grouped by `version` + `phase`. A phase starts at the earliest `beginTime` of its rows (eligible or not). With `PhaseLineup` `Started` its lineup is the eligible banners tagged with that phase. With `Overlap` it also includes every eligible banner whose historical window covers the phase start, so a banner that ran through both phases of a version appears in every later phase it overlapped, as on the live servers. Collab banners are never part of a phase lineup. Phases are ordered by start time; with the shipped file and full item data there are 65.
 - **Fresh windows.** History windows are never served as-is. Rotation gives every banner of the current phase the current period (`[periodBegin, periodEnd]`, inclusive). Manual entries use their explicit times or the current period.
 - **Fake server time.** Windows are computed on the real clock and then shifted by the difference between the player's server clock and the real clock, so an account on a fake date (global `ServerTime` or per-account) still sees the banners as running.
 - **Pity** is kept per pool family (character event, light cone event, the two collaboration families, standard, newbie), not per banner. It carries across all banners of the same type, including when the lineup changes.
@@ -77,7 +81,7 @@ All routes require an admin session (`Authorization: Bearer <token>` or `X-Admin
 
 | Method and path | Body | Result |
 | --- | --- | --- |
-| `GET /admin/api/warps` | — | Mode, `now`, rotation state (`days`, `start`, `start_phase`, `period_begin`, `period_end`, `current_phase`, `next_phase`), `permanent` (`Banners.json` Newbie/Normal), `scheduled` (limited banners of the current mode with served windows, including manual entries not yet open or already closed; server-wide, without the Story filter), raw `manual` list, `pool_size`, `phase_count`, `ineligible` ids, and the filter settings `story`, `story_active` (on and not `Manual`), `phase_lineup`, `collab_own_phase_only`. |
+| `GET /admin/api/warps` | — | Mode, `now`, rotation state (`days`, `start`, `start_phase`, `period_begin`, `period_end`, `current_phase`, `next_phase`), `permanent` (`Banners.json` Newbie/Normal), `scheduled` (limited banners of the current mode with served windows, including manual entries not yet open or already closed; server-wide, without the Story filter and the collab group), raw `manual` list, `pool_size`, `phase_count`, `ineligible` ids, the filter settings `story`, `story_active` (on and not `Manual`), `phase_lineup`, and `collab_banners` with the `collab` group (served windows when on; history rows, not running, when off). |
 | `GET /admin/api/warps/pool` | — | `phases` (`key`, `version`, `phase`, `start_time`, `banner_ids` under the current `PhaseLineup` settings), the eligible `banners` with their historical windows, and `names` (`WarpItemNames.json`: `{ "en": { "1306": "Sparkle", ... }, "zh-CN": { ... } }`). |
 | `PUT /admin/api/warps/manual` | `{ "entries": [{ "gacha_id", "begin_time"?, "end_time"?, "rate_up5"?, "rate_up4"?, "paired_gacha_id"? }] }` | Validates, replaces the manual list, switches to `Manual`, saves `Config.json`. An empty list is allowed (no limited banners). |
 | `POST /admin/api/warps/mode` | `{ "mode": "Static" \| "Rotation" \| "Manual" }` | Switches mode (seeding as described above) and saves. |
@@ -85,7 +89,7 @@ All routes require an admin session (`Authorization: Bearer <token>` or `X-Admin
 
 Banner objects carry `id`, `gacha_type`, `version`, `phase`, `rate_up5`, `rate_up4`, `begin_time`, `end_time`, `running` (window contains `now`) and `default_pair_id` (the light cone banner `id + 1000` that ran beside a character banner, or 0).
 
-The Settings page exposes `Warps.Mode`, `Warps.RotationDays`, `Warps.RotationStart`, `Warps.RotationStartPhase`, `Warps.Story`, `Warps.PhaseLineup` and `Warps.CollabOwnPhaseOnly`; it rejects an unknown mode or lineup, a malformed date and a phase key that is not in the pool. The Warps page also has a Story checkbox.
+The Settings page exposes `Warps.Mode`, `Warps.RotationDays`, `Warps.RotationStart`, `Warps.RotationStartPhase`, `Warps.Story`, `Warps.PhaseLineup` and `Warps.CollabBanners`; it rejects an unknown mode or lineup, a malformed date and a phase key that is not in the pool. The Warps page also has the Story and Collab banners switches. A manual list with a collab banner is rejected (HTTP 400).
 
 ## Reloading and client behaviour
 

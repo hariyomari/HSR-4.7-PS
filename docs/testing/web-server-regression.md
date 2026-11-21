@@ -39,12 +39,13 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- -
 - 卡池库按阶段分组：默认 `PhaseLineup` 为 `Started`，跨阶段卡池只出现在它开放的阶段；改为 `Overlap` 后出现在两个阶段的 `banner_ids` 中。缺少物品的卡池列入 `ineligible` 且不出现在卡池库内；行数据携带历史时间、版本阶段和默认光锥池配对。
 - 切换 `Rotation` 后从今天开始、由最早阶段起轮换，`scheduled` 为当前阶段阵容，起止时间等于 `rotation.period_begin/period_end` 且均在进行中；`Banners.json` 的限定池 2139 不再下发。`POST /admin/api/warps/rotation` 可切换当前阶段，未知阶段与未知模式返回 400。
 - 设置页拒绝未知的 `Warps.RotationStartPhase`、格式错误的 `Warps.RotationStart`、未知 `Warps.Mode` 及越界 `Warps.RotationDays`，配置保持不变；已知阶段可以保存并立即生效。`warps` 分组共 7 项。
-- `Warps.Story`、`Warps.PhaseLineup`（大小写不敏感，按枚举名保存）与 `Warps.CollabOwnPhaseOnly` 可通过设置接口保存并在 `fields` 中读回；`/admin/api/warps` 随之返回 `story`、`story_active`、`phase_lineup`、`collab_own_phase_only`。未知 `Warps.PhaseLineup` 被拒绝且配置不变；随后恢复默认值。
+- `Warps.Story`、`Warps.PhaseLineup`（大小写不敏感，按枚举名保存）与 `Warps.CollabBanners` 可通过设置接口保存并在 `fields` 中读回；`/admin/api/warps` 随之返回 `story`、`story_active`、`phase_lineup`、`collab_banners`。未知 `Warps.PhaseLineup` 被拒绝且配置不变；随后恢复默认值。
 - 切换 `Manual` 时以当前阵容初始化手动列表（滚动时间窗、默认光锥配对）。未知卡池、不合格卡池、重复卡池、未知物品、空 5★ 覆盖、开始时间不早于结束时间、错误配对及缺少 `entries` 均返回 400，原列表对象不变。
 - 合法提交后 5★ 覆盖与显式时间窗反映在 `scheduled` 中，未设时间的条目跟随轮换周期，尚未开始的条目列出但不在进行中；空列表可以保存。
 - `WarpSchedule.GetActiveBanners(realNow, playerNow)` 在玩家时间早 200 天时，把限定池时间窗平移到玩家时钟（窗口包含玩家时间、不包含真实时间），仍包含常驻池 1001，不含 2139。
-- 读取仓库中的 `Config/Custom/Banners.history.json`：300 个卡池；补齐所有引用物品后全部合格，共 65 个阶段，`4.7-2` 的 `Overlap` 阵容（`WarpPhase.Overlapping`）包含 2142、3142、2146、2147、2148、3146、3147、3148；卡池库接口返回相同数量。
-- 同时载入仓库中的 `Config/Custom/WarpItemNames.json`：卡池库接口的 `names` 中 `en` 的 1306 为 Sparkle、1501 为 Sparxie，且有 `zh-CN` 表。接口中 `4.7-2` 的 `banner_ids` 在 `Started` 下恰为 2146、2147、2148、3146、3147、3148；`Overlap` 且 `CollabOwnPhaseOnly` 关闭时包含 2142 与联动池 5001，开启时保留 2142、不含 5001。检查后恢复原设置。
+- 读取仓库中的 `Config/Custom/Banners.history.json`：300 个卡池；补齐所有引用物品后全部合格，共 65 个阶段，`4.7-2` 的 `Overlap` 阵容（`WarpPhase.Overlapping`）包含 2142、3142、2146、2147、2148、3146、3147、3148；联动卡池 5001–5004 / 6001–6004 单独成组（`WarpPool.Collab`），不属于任何阶段；卡池库接口返回相同数量。
+- 同时载入仓库中的 `Config/Custom/WarpItemNames.json`：卡池库接口的 `names` 中 `en` 的 1306 为 Sparkle、1501 为 Sparxie，且有 `zh-CN` 表。接口中 `4.7-2` 的 `banner_ids` 在 `Started` 下恰为 2146、2147、2148、3146、3147、3148；`Overlap` 下包含 2142 且不含任何联动卡池。
+- 联动卡池：`CollabBanners` 开启时 `/admin/api/warps` 的 `collab_banners` 为 true，`collab` 恰为 5001–5004、6001–6004 且均在进行中，`scheduled` 不含它们；通过设置接口关闭后 `collab_banners` 为 false，`collab` 仍列出这 8 个卡池但都不在进行中。手动列表包含联动卡池 5001 时返回 400，原列表对象不变。检查后恢复原设置。
 
 结束时恢复 `ServerOption.Warps` 默认值、原卡池配置并移除临时物品；`Config.json` 只写入临时目录。
 

@@ -74,7 +74,12 @@ public static partial class AdminPageScripts
       }
 
       function warpLineupKey(data) {
-        return `${data?.phase_lineup}/${data?.collab_own_phase_only}`;
+        return String(data?.phase_lineup);
+      }
+
+      // Collab banners are their own group (ServerOption.Warps.CollabBanners), never part of a Manual list.
+      function warpIsCollab(id) {
+        return Boolean(warpType(warpsState.poolById.get(id)?.gacha_type).collab);
       }
 
       function setWarpsPool(pool, data) {
@@ -136,11 +141,11 @@ public static partial class AdminPageScripts
         const entries = [];
         let dropped = 0;
         for (const entry of source) {
-          if (!warpsState.poolById.has(entry.gacha_id) || entries.some(item => item.gacha_id === entry.gacha_id)) {
+          if (!warpsState.poolById.has(entry.gacha_id) || warpIsCollab(entry.gacha_id) || entries.some(item => item.gacha_id === entry.gacha_id)) {
             dropped++;
             continue;
           }
-          if (entry.paired_gacha_id && !warpsState.poolById.has(entry.paired_gacha_id)) entry.paired_gacha_id = 0;
+          if (entry.paired_gacha_id && (!warpsState.poolById.has(entry.paired_gacha_id) || warpIsCollab(entry.paired_gacha_id))) entry.paired_gacha_id = 0;
           entries.push(entry);
         }
         return { entries: manual ? entries : warpWithDefaultPairs(entries), dropped };
@@ -270,11 +275,9 @@ public static partial class AdminPageScripts
         const listed = new Set(lineup.map(view => view.id));
         const ineligible = data.ineligible || [];
         const permanent = data.permanent || [];
+        const collab = data.collab || [];
+        const collabOn = Boolean(data.collab_banners);
         const phaseLineup = data.phase_lineup === "Overlap" ? "Overlap" : "Started";
-        // The collab setting matters with Overlap and with the Story filter in Static mode.
-        const collabLabel = t(data.collab_own_phase_only ? "warps.collab_own_phase" : "warps.collab_all_phases");
-        const lineupLabel = [t(`warps.lineup.${phaseLineup}`), phaseLineup === "Overlap" || data.story_active ? collabLabel : ""]
-          .filter(Boolean).join(" · ");
 
         setModuleActions(dirty ? chip(t("warps.unsaved"), "warn") : "");
         root.innerHTML = String(html`
@@ -305,7 +308,7 @@ public static partial class AdminPageScripts
               ${kv(t("warps.next_phase"), rotation.next_phase || t("common.none"))}
               ${kv(t("warps.period"), `${warpDate(rotation.period_begin)} – ${warpDate(rotation.period_end)}`)}
               ${kv(t("warps.period_ends"), rotation.period_end ? fmt.relative(Number(rotation.period_end) + 1) : t("common.none"))}
-              ${kv(t("warps.phase_lineup"), lineupLabel)}
+              ${kv(t("warps.phase_lineup"), t(`warps.lineup.${phaseLineup}`))}
             </div>
             <div class="panel-body row space-between">
               <div class="row">
@@ -373,10 +376,27 @@ public static partial class AdminPageScripts
                 ? html`<div class="warp-grid compact">${permanent.map(banner => warpPermanentCard(banner))}</div>`
                 : html`<p class="muted small">${t("warps.permanent_empty")}</p>`}
             </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>${t("warps.collab")}</h3>
+                <div class="muted small">${t("warps.collab_hint")}</div>
+              </div>
+              ${toggleSwitch("warps-collab", collabOn, t("warps.collab_switch"))}
+            </div>
+            <div class="panel-body stack">
+              ${collabOn ? "" : html`<div class="notice">${t("warps.collab_off_note")}</div>`}
+              ${collab.length
+                ? html`<div class="warp-grid compact">${collab.map(banner => warpPermanentCard(banner, !collabOn))}</div>`
+                : html`<p class="muted small">${t("warps.collab_empty")}</p>`}
+            </div>
           </section>`);
 
         on(root, "[data-warp-mode]", "click", event => switchWarpMode(event.currentTarget, event.currentTarget.dataset.warpMode));
-        $("#warps-story").addEventListener("change", event => setWarpStory(event.currentTarget));
+        $("#warps-story").addEventListener("change", event => setWarpSwitch(event.currentTarget, "Warps.Story", "warps.story_on", "warps.story_off"));
+        $("#warps-collab").addEventListener("change", event => setWarpSwitch(event.currentTarget, "Warps.CollabBanners", "warps.collab_on", "warps.collab_off"));
         $("#warps-back")?.addEventListener("click", event => switchWarpMode(event.currentTarget, "Rotation"));
         $("#warps-restart-phase").addEventListener("change", event => warpsState.restartPhase = event.currentTarget.value);
         $("#warps-restart").addEventListener("click", event => restartWarpRotation(event.currentTarget));
@@ -428,13 +448,14 @@ public static partial class AdminPageScripts
           </article>`;
       }
 
-      function warpPermanentCard(banner) {
+      // Permanent and collab cards; `off`: the group is switched off, so the banner is not served at all.
+      function warpPermanentCard(banner, off = false) {
         return html`
           <article class="warp-card ${banner.running ? "" : "idle"}">
             <span class="chip-list">
               ${warpTypeChips(banner.gacha_type)}
               <span class="mono muted small">#${banner.id}</span>
-              ${banner.running ? "" : chip(t("warps.not_running"), "bad")}
+              ${off ? chip(t("warps.not_served"), "bad") : banner.running ? "" : chip(t("warps.not_running"), "bad")}
             </span>
             <span class="small" title="${(banner.rate_up5 || []).join(", ")}"><span class="warp-star">5★</span> ${warpNames(banner.rate_up5)}</span>
           </article>`;
@@ -459,15 +480,15 @@ public static partial class AdminPageScripts
         }, t("warps.mode_changed", { mode: label }));
       }
 
-      // Warps.Story goes through the Settings API like any other key. It leaves the server-wide schedule as it
-      // is, so an unsaved draft is kept.
-      async function setWarpStory(input) {
+      // Warps.Story and Warps.CollabBanners go through the Settings API like any other key. Neither changes the
+      // server-wide limited lineup, so an unsaved draft is kept.
+      async function setWarpSwitch(input, key, onMessage, offMessage) {
         const enabled = input.checked;
         const data = await run(input, async () => {
-          const saved = await api("/admin/api/settings", { method: "PUT", body: { values: { "Warps.Story": enabled ? "true" : "false" } } });
+          const saved = await api("/admin/api/settings", { method: "PUT", body: { values: { [key]: enabled ? "true" : "false" } } });
           if (saved.errors?.length) throw new Error(saved.errors.join("\n"));
           return api("/admin/api/warps");
-        }, t(enabled ? "warps.story_on" : "warps.story_off"));
+        }, t(enabled ? onMessage : offMessage));
         if (!data) {
           input.checked = !enabled;
           return;
@@ -624,8 +645,8 @@ public static partial class AdminPageScripts
           .filter(banner => {
             const info = warpType(banner.gacha_type);
             if (version && banner.version !== version) return false;
-            if (type === "collab" && !info.collab) return false;
-            if (type && type !== "collab" && (info.collab || info.key !== type)) return false;
+            if (info.collab) return false;
+            if (type && info.key !== type) return false;
             if (!needle) return true;
             if (String(banner.id).startsWith(needle) || `${banner.version}-${banner.phase}`.startsWith(needle)) return true;
             return [...(banner.rate_up5 || []), ...(banner.rate_up4 || [])]
@@ -637,7 +658,7 @@ public static partial class AdminPageScripts
       function openWarpPicker() {
         const picker = warpsState.picker;
         const versions = [...new Set(warpsState.pool.phases.map(phase => phase.version))].reverse();
-        const types = [["", t("warps.all_types")], ["character", t("warps.type.character")], ["lightcone", t("warps.type.lightcone")], ["collab", t("warps.type.collab")]];
+        const types = [["", t("warps.all_types")], ["character", t("warps.type.character")], ["lightcone", t("warps.type.lightcone")]];
         const dialog = warpsDialog(html`
           <h3>${t("warps.picker_title")}</h3>
           <div class="warp-pick-tools">
@@ -708,7 +729,7 @@ public static partial class AdminPageScripts
         const history4 = banner.rate_up4 || [];
         const endValue = entry.end_time > 0 ? unixToDateTimeLocal(entry.end_time) : "";
         const lightCones = type.character
-          ? warpsState.pool.banners.filter(item => warpType(item.gacha_type).lightcone).sort((a, b) => b.begin_time - a.begin_time || a.id - b.id)
+          ? warpsState.pool.banners.filter(item => { const info = warpType(item.gacha_type); return info.lightcone && !info.collab; }).sort((a, b) => b.begin_time - a.begin_time || a.id - b.id)
           : [];
         const dialog = warpsDialog(html`
           <h3>${t("warps.edit_title", { id })}</h3>

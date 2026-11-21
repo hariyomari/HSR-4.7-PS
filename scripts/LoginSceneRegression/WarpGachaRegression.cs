@@ -19,7 +19,7 @@ internal static class WarpGachaRegression
 
         var option = ConfigManager.Config.ServerOption.Warps;
         var saved = (option.Mode, option.RotationDays, option.RotationStart, option.RotationStartPhase, option.Manual,
-            option.PhaseLineup, option.CollabOwnPhaseOnly, option.Story);
+            option.PhaseLineup, option.CollabBanners, option.Story);
         try
         {
             await Scenarios(check);
@@ -28,7 +28,7 @@ internal static class WarpGachaRegression
         finally
         {
             (option.Mode, option.RotationDays, option.RotationStart, option.RotationStartPhase, option.Manual,
-                option.PhaseLineup, option.CollabOwnPhaseOnly, option.Story) = saved;
+                option.PhaseLineup, option.CollabBanners, option.Story) = saved;
         }
     }
 
@@ -46,24 +46,21 @@ internal static class WarpGachaRegression
         await player.InventoryManager!.AddItem(102, 50, false, sync: false);
         var now = ServerTimeProvider.GetServerUnixSec(player.Data);
 
-        // Rotation from 4.7 phase 2 with the live lineup (Overlap): Aha continues, three reruns, plus the
-        // long-running collab pools.
+        // Rotation from 4.7 phase 2 with the live lineup (Overlap): Aha continues, plus three reruns.
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Overlap);
-        option.CollabOwnPhaseOnly = false;
         check("rotation restarts from a known history phase", WarpSchedule.RestartRotation("4.7-2", WarpSchedule.Now()) == null);
         var expected = WarpSchedule.GetScheduledBanners(WarpSchedule.Now()).Select(b => b.GachaId).ToHashSet();
         var info = player.GachaManager!.ToProto();
         var limited = LimitedIds(info);
-        check("rotation sends exactly the scheduled limited banners, collab pools included with Overlap",
-            limited.SetEquals(expected) && limited.IsSupersetOf([2142, 2146, 2147, 2148, 3142, 3146, 3147, 3148, 5001]));
+        check("rotation sends exactly the scheduled limited banners with Overlap",
+            limited.SetEquals(expected) && limited.IsSupersetOf([2142, 2146, 2147, 2148, 3142, 3146, 3147, 3148]));
         check("rotation still sends the permanent standard banner", info.GachaInfoList.Any(g => g.GachaId == 1001));
         check("rotation windows contain the player's time",
             info.GachaInfoList.Where(g => limited.Contains((int)g.GachaId)).All(g => g.BeginTime <= now && now <= g.EndTime));
         check("Banners.json limited pools are not served in rotation", !limited.Contains(2139));
-
-        option.CollabOwnPhaseOnly = true;
-        check("Overlap with collab-own-phase drops the collab pools from later phases",
-            !LimitedIds(player.GachaManager.ToProto()).Overlaps([5001, 5002, 6001, 6002]));
+        check("rotation sends all eight collab banners, outside the phase lineup",
+            CollabIds(info).SetEquals(Collab) && !expected.Overlaps(Collab) &&
+            info.GachaInfoList.Where(g => Collab.Contains((int)g.GachaId)).All(g => g.BeginTime <= now && now <= g.EndTime));
 
         // Default lineup (Started): only the banners that opened in 4.7 phase 2.
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
@@ -83,17 +80,29 @@ internal static class WarpGachaRegression
         info = player.GachaManager.ToProto();
         check("manual mode sends only the picked limited banner",
             LimitedIds(info).SetEquals([2003]) && info.GachaInfoList.Any(g => g.GachaId == 1001));
+        check("manual mode still sends the collab banners", CollabIds(info).SetEquals(Collab));
         check("manual mode refuses the banner rotation served a moment ago",
             (await player.GachaManager.DoGacha(2146, 1))?.Retcode == (uint)Retcode.RetGachaIdNotExist);
         check("manual mode pulls on the picked 1.0 banner",
             (await player.GachaManager.DoGacha(2003, 1))?.Retcode == 0);
+        check("a manual list cannot hold a collab banner",
+            WarpSchedule.ValidateManual([new() { GachaId = 5001 }]) != null);
 
-        // Static: Banners.json as written again.
+        // Static: Banners.json as written again, collab banners from the switch.
         option.Mode = nameof(WarpScheduleModeEnum.Static);
-        check("static mode serves Banners.json again",
-            LimitedIds(player.GachaManager.ToProto()).SetEquals(GameData.BannersConfig.Banners
-                .Where(b => WarpSchedule.IsLimited(b.GachaType) && b.IsActiveAt(WarpSchedule.Now()))
-                .Select(b => b.GachaId)));
+        info = player.GachaManager.ToProto();
+        check("static mode serves Banners.json again", LimitedIds(info).SetEquals(StaticLimited()));
+        check("static mode sends the collab banners", CollabIds(info).SetEquals(Collab));
+        check("a collab banner pays out while the switch is on",
+            (await player.GachaManager.DoGacha(5001, 1))?.Retcode == 0);
+
+        option.CollabBanners = false;
+        info = player.GachaManager.ToProto();
+        check("the collab switch off removes every collab banner",
+            CollabIds(info).Count == 0 && LimitedIds(info).SetEquals(StaticLimited()));
+        check("a collab banner is refused while the switch is off",
+            (await player.GachaManager.DoGacha(5001, 1))?.Retcode == (uint)Retcode.RetGachaIdNotExist);
+        option.CollabBanners = true;
     }
 
     // Story filter: banners unlock with the story chapter of their version (Config/Custom/WarpStoryGates.json).
@@ -113,10 +122,12 @@ internal static class WarpGachaRegression
         var progress = WarpSchedule.GetStoryProgress(player);
         check("a new player has reached 1.0 and unlocks up to 1.2",
             progress is { ReachedVersion: "1.0", NextVersion: "1.2" });
-        var start = LimitedIds(player.GachaManager!.ToProto());
+        var start = player.GachaManager!.ToProto();
         check("static + story sends every 1.0 and 1.1 banner at once and nothing newer",
-            start.SetEquals(history.Where(b => b.Version is "1.0" or "1.1").Select(b => b.GachaId)) && start.Count == 8);
-        check("static + story drops the Banners.json limited pools", !start.Contains(2139));
+            LimitedIds(start).SetEquals(history.Where(b => b.Version is "1.0" or "1.1").Select(b => b.GachaId)) &&
+            LimitedIds(start).Count == 8);
+        check("static + story still sends every collab banner before their story", CollabIds(start).SetEquals(Collab));
+        check("static + story drops the Banners.json limited pools", !LimitedIds(start).Contains(2139));
         check("static + story pulls on an unlocked 1.0 banner", (await player.GachaManager.DoGacha(2003, 1))?.Retcode == 0);
         check("static + story refuses a banner of a version the story has not reached",
             (await player.GachaManager.DoGacha(2007, 1))?.Retcode == (uint)Retcode.RetGachaIdNotExist);
@@ -133,21 +144,6 @@ internal static class WarpGachaRegression
         check("a 3.8 mission unlocks through 3.8 although its ids sort before 3.6",
             WarpSchedule.GetStoryProgress(player) is { ReachedVersion: "3.8", NextVersion: "4.0" });
 
-        // Collab banners with CollabOwnPhaseOnly (default): only while the story is in their version (Fate, 3.4).
-        var collab = new PlayerInstance(60044) { PendingMissionEnabledOverride = true };
-        await collab.InitializeAsync();
-        collab.MissionManager!.Data.SetMainMissionStatus(1040501, MissionPhaseEnum.Accept);
-        check("static + story shows the 3.4 collab banners while the story is in 3.4",
-            LimitedIds(collab.GachaManager!.ToProto()).IsSupersetOf([5001, 5002, 6001, 6002]));
-        collab.MissionManager.Data.SetMainMissionStatus(1040601, MissionPhaseEnum.Accept);
-        var after = LimitedIds(collab.GachaManager.ToProto());
-        check("static + story drops the 3.4 collab banners once the 3.5 story starts",
-            !after.Overlaps([5001, 5002, 6001, 6002]) && after.Contains(2003));
-        option.CollabOwnPhaseOnly = false;
-        check("without collab-own-phase the 3.4 collab banners stay",
-            LimitedIds(collab.GachaManager.ToProto()).IsSupersetOf([5001, 5002, 6001, 6002]));
-        option.CollabOwnPhaseOnly = true;
-
         // Rotation + Story: only unlocked phases rotate; a locked start phase falls back to the oldest.
         player.MissionManager.Data.SetMainMissionStatus(1033800, MissionPhaseEnum.None);
         WarpSchedule.RestartRotation("4.7-2", WarpSchedule.Now());
@@ -162,9 +158,7 @@ internal static class WarpGachaRegression
         await noMissions.InitializeAsync();
         noMissions.MissionManager!.Data.EnableMissionOverride = false;
         check("a player with missions off gets the Banners.json limited pools",
-            LimitedIds(noMissions.GachaManager!.ToProto()).SetEquals(GameData.BannersConfig.Banners
-                .Where(b => WarpSchedule.IsLimited(b.GachaType) && b.IsActiveAt(WarpSchedule.Now()))
-                .Select(b => b.GachaId)));
+            LimitedIds(noMissions.GachaManager!.ToProto()).SetEquals(StaticLimited()));
 
         // Manual ignores the filter: the admin's pick is served even though 2146 is 4.7.
         option.Manual = [new() { GachaId = 2146 }];
@@ -172,11 +166,28 @@ internal static class WarpGachaRegression
         check("manual mode ignores the story filter", LimitedIds(player.GachaManager.ToProto()).SetEquals([2146]));
     }
 
+    private static readonly HashSet<int> Collab = [5001, 5002, 5003, 5004, 6001, 6002, 6003, 6004];
+
+    // Limited banner ids in the response, collab banners left out (they are their own group).
     private static HashSet<int> LimitedIds(GetGachaInfoScRsp info)
     {
         return info.GachaInfoList.Select(g => (int)g.GachaId)
             .Where(id => GameData.BannersConfig.Banners.Concat(GameData.BannerHistoryConfig.Banners)
-                .Any(b => b.GachaId == id && WarpSchedule.IsLimited(b.GachaType)))
+                .Any(b => b.GachaId == id && WarpSchedule.IsLimited(b.GachaType) && !WarpSchedule.IsCollab(b.GachaType)))
             .ToHashSet();
+    }
+
+    private static HashSet<int> CollabIds(GetGachaInfoScRsp info)
+    {
+        return info.GachaInfoList.Select(g => (int)g.GachaId).Where(Collab.Contains).ToHashSet();
+    }
+
+    // Banners.json limited pools a Static player gets: those in their window, collab rows excluded.
+    private static IEnumerable<int> StaticLimited()
+    {
+        return GameData.BannersConfig.Banners
+            .Where(b => WarpSchedule.IsLimited(b.GachaType) && !WarpSchedule.IsCollab(b.GachaType) &&
+                        b.IsActiveAt(WarpSchedule.Now()))
+            .Select(b => b.GachaId);
     }
 }

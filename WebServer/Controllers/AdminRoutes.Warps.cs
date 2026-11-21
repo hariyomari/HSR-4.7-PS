@@ -113,6 +113,9 @@ public static partial class AdminRoutes
         var scheduled = WarpSchedule.GetScheduledBanners(now)
             .Select(banner => ToWarpBannerView(banner, pool, now))
             .ToList();
+        var collab = option.CollabBanners
+            ? WarpSchedule.GetCollabBanners(now).Select(banner => ToWarpBannerView(banner, pool, now)).ToList()
+            : pool.Collab.Select(banner => ToWarpBannerView(banner, pool, null)).ToList();
         var manual = (option.Manual ?? [])
             .Select(entry => new WarpManualEntryView(entry.GachaId, entry.BeginTime, entry.EndTime,
                 entry.RateUpItems5?.ToList(), entry.RateUpItems4?.ToList(), entry.PairedGachaId))
@@ -132,7 +135,8 @@ public static partial class AdminRoutes
             option.Story,
             WarpSchedule.StoryActive,
             WarpSchedule.PhaseLineup.ToString(),
-            option.CollabOwnPhaseOnly);
+            option.CollabBanners,
+            collab);
     }
 
     // now == null: a history row shown as data, never "running".

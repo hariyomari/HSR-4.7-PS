@@ -343,9 +343,9 @@ public class WarpScheduleOption
     // running when it opened. See WarpPhaseLineupEnum.
     public string PhaseLineup { get; set; } = "Started";
 
-    // Collab banners only in their own phase: with PhaseLineup Overlap they stay out of the later phases their long
-    // historical window overlapped; with Story + Static they show only while the player's story is in their version.
-    public bool CollabOwnPhaseOnly { get; set; } = true;
+    // Collab banners (the four collab character banners and their light cone banners in the history pool) as a group
+    // of their own: on = served in every mode and to every player, whatever the phase or story; off = never served.
+    public bool CollabBanners { get; set; } = true;
 
     // Story filter on top of Static / Rotation: each player is offered only banners of versions whose story they have
     // reached (Config/Custom/WarpStoryGates.json). Static serves every unlocked banner at once, Rotation rotates
