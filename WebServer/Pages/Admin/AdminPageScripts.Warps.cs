@@ -20,7 +20,8 @@ public static partial class AdminPageScripts
       const WARP_EDIT_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5l3 3L7 16H4v-3zm-2 2l3 3"/></svg>';
       const warpsState = {
         data: null,
-        pool: { phases: [], banners: [] },
+        pool: { phases: [], banners: [], names: {} },
+        poolLineup: "",
         poolById: new Map(),
         draft: [],
         seed: "[]",
@@ -37,11 +38,15 @@ public static partial class AdminPageScripts
         id: "warps",
         icon: ICONS.warps,
         async load({ force }) {
-          const [data, pool] = await Promise.all([
+          const [data, cached] = await Promise.all([
             api("/admin/api/warps"),
             warpsState.data && !force ? warpsState.pool : api("/admin/api/warps/pool")
           ]);
-          setWarpsPool(pool);
+          // Phase lineups follow the PhaseLineup settings, which the Settings page can change in between.
+          const pool = cached === warpsState.pool && warpLineupKey(data) !== warpsState.poolLineup
+            ? await api("/admin/api/warps/pool")
+            : cached;
+          setWarpsPool(pool, data);
           setWarpsData(data, force);
           if (!warpsBookReady()) {
             handbook.ensureDefault().then(book => {
@@ -68,9 +73,14 @@ public static partial class AdminPageScripts
         if (state.activeModule === "warps") renderWarps(els.moduleRoot);
       }
 
-      function setWarpsPool(pool) {
-        warpsState.pool = { phases: pool?.phases || [], banners: pool?.banners || [] };
+      function warpLineupKey(data) {
+        return `${data?.phase_lineup}/${data?.collab_own_phase_only}`;
+      }
+
+      function setWarpsPool(pool, data) {
+        warpsState.pool = { phases: pool?.phases || [], banners: pool?.banners || [], names: pool?.names || {} };
         warpsState.poolById = new Map(warpsState.pool.banners.map(banner => [banner.id, banner]));
+        warpsState.poolLineup = warpLineupKey(data);
       }
 
       // New server data. The draft is re-seeded from it unless it holds edits the caller wants to keep; the
@@ -150,11 +160,22 @@ public static partial class AdminPageScripts
         return html`${chip(type.key ? t(`warps.type.${type.key}`) : gachaType || "?", type.character ? "accent" : "")}${type.collab ? chip(t("warps.type.collab"), "warn") : ""}`;
       }
 
-      // Handbook name of a featured item: characters live in the Avatar section, light cones in Item.
+      // Name of a featured item: Config/Custom/WarpItemNames.json in the panel language, then in the other one,
+      // then the handbook (characters live in the Avatar section, light cones in Item).
       function warpItemName(id) {
         const numeric = Number(id);
+        const names = warpsState.pool.names || {};
+        const [first, second] = String(state.lang || "").startsWith("zh") ? ["zh-CN", "en"] : ["en", "zh-CN"];
+        const listed = names[first]?.[numeric] || names[second]?.[numeric];
+        if (listed) return listed;
         const name = (numeric < 10000 ? handbook.name("Avatar", numeric) : "") || handbook.name("Item", numeric);
         return name && !/^\[-?\d+\]$/.test(name) ? name : "";
+      }
+
+      // Every name the picker search matches on, lower-cased: both languages, whatever the panel shows.
+      function warpItemSearchText(id) {
+        const names = warpsState.pool.names || {};
+        return [warpItemName(id), names.en?.[id], names["zh-CN"]?.[id]].filter(Boolean).join("\n").toLowerCase();
       }
 
       function warpItemLabel(id) {
@@ -249,6 +270,11 @@ public static partial class AdminPageScripts
         const listed = new Set(lineup.map(view => view.id));
         const ineligible = data.ineligible || [];
         const permanent = data.permanent || [];
+        const phaseLineup = data.phase_lineup === "Overlap" ? "Overlap" : "Started";
+        // The collab setting matters with Overlap and with the Story filter in Static mode.
+        const collabLabel = t(data.collab_own_phase_only ? "warps.collab_own_phase" : "warps.collab_all_phases");
+        const lineupLabel = [t(`warps.lineup.${phaseLineup}`), phaseLineup === "Overlap" || data.story_active ? collabLabel : ""]
+          .filter(Boolean).join(" · ");
 
         setModuleActions(dirty ? chip(t("warps.unsaved"), "warn") : "");
         root.innerHTML = String(html`
@@ -263,6 +289,14 @@ public static partial class AdminPageScripts
                 ${WARP_MODES.map(item => html`<button type="button" class="${item === mode ? "active" : ""}" data-warp-mode="${item}">${t(`warps.mode.${item}`)}</button>`)}
               </div>
             </div>
+            <div class="panel-body stack">
+              <div>
+                ${toggleSwitch("warps-story", Boolean(data.story), t("warps.story"))}
+                <div class="muted small">${t("warps.story_hint")}</div>
+              </div>
+              ${data.story && mode === "Manual" ? html`<div class="notice">${t("warps.story_manual")}</div>` : ""}
+              ${data.story_active ? html`<div class="notice">${t("warps.story_active")}</div>` : ""}
+            </div>
             <div class="panel-body kv-grid">
               ${kv(t("warps.period_length"), t("warps.days", { count: rotation.days ?? "?" }))}
               ${kv(t("warps.start_date"), rotation.start || t("warps.start_unset"))}
@@ -271,6 +305,7 @@ public static partial class AdminPageScripts
               ${kv(t("warps.next_phase"), rotation.next_phase || t("common.none"))}
               ${kv(t("warps.period"), `${warpDate(rotation.period_begin)} – ${warpDate(rotation.period_end)}`)}
               ${kv(t("warps.period_ends"), rotation.period_end ? fmt.relative(Number(rotation.period_end) + 1) : t("common.none"))}
+              ${kv(t("warps.phase_lineup"), lineupLabel)}
             </div>
             <div class="panel-body row space-between">
               <div class="row">
@@ -341,6 +376,7 @@ public static partial class AdminPageScripts
           </section>`);
 
         on(root, "[data-warp-mode]", "click", event => switchWarpMode(event.currentTarget, event.currentTarget.dataset.warpMode));
+        $("#warps-story").addEventListener("change", event => setWarpStory(event.currentTarget));
         $("#warps-back")?.addEventListener("click", event => switchWarpMode(event.currentTarget, "Rotation"));
         $("#warps-restart-phase").addEventListener("change", event => warpsState.restartPhase = event.currentTarget.value);
         $("#warps-restart").addEventListener("click", event => restartWarpRotation(event.currentTarget));
@@ -421,6 +457,24 @@ public static partial class AdminPageScripts
         await run(button, async () => {
           onWarpsSaved(await api("/admin/api/warps/mode", { method: "POST", body: { mode } }));
         }, t("warps.mode_changed", { mode: label }));
+      }
+
+      // Warps.Story goes through the Settings API like any other key. It leaves the server-wide schedule as it
+      // is, so an unsaved draft is kept.
+      async function setWarpStory(input) {
+        const enabled = input.checked;
+        const data = await run(input, async () => {
+          const saved = await api("/admin/api/settings", { method: "PUT", body: { values: { "Warps.Story": enabled ? "true" : "false" } } });
+          if (saved.errors?.length) throw new Error(saved.errors.join("\n"));
+          return api("/admin/api/warps");
+        }, t(enabled ? "warps.story_on" : "warps.story_off"));
+        if (!data) {
+          input.checked = !enabled;
+          return;
+        }
+        setWarpsData(data, false);
+        if (!Object.keys(settingsState.edits).length) settingsState.fields = [];
+        refreshWarps();
       }
 
       async function restartWarpRotation(button) {
@@ -575,7 +629,7 @@ public static partial class AdminPageScripts
             if (!needle) return true;
             if (String(banner.id).startsWith(needle) || `${banner.version}-${banner.phase}`.startsWith(needle)) return true;
             return [...(banner.rate_up5 || []), ...(banner.rate_up4 || [])]
-              .some(id => String(id) === needle || warpItemName(id).toLowerCase().includes(needle));
+              .some(id => String(id) === needle || warpItemSearchText(id).includes(needle));
           })
           .sort((a, b) => b.begin_time - a.begin_time || a.id - b.id);
       }

@@ -264,6 +264,18 @@ public static class AdminSettingsRegistry
                 warps.RotationStartPhase = phase.Key;
                 return null;
             }, false, null, null);
+        yield return Bool("Warps.Story", "warps", () => warps.Story, v => warps.Story = v);
+        yield return new SettingDef("Warps.PhaseLineup", "warps", "choice",
+            () => WarpSchedule.PhaseLineup.ToString(),
+            value =>
+            {
+                if (!WarpSchedule.TryParseLineup(value, out var lineup))
+                    return "not one of the allowed values";
+                warps.PhaseLineup = lineup.ToString();
+                return null;
+            }, false, () => Enum.GetNames<WarpPhaseLineupEnum>().ToList(), null);
+        yield return Bool("Warps.CollabOwnPhaseOnly", "warps", () => warps.CollabOwnPhaseOnly,
+            v => warps.CollabOwnPhaseOnly = v);
 
         // --- progression rewards ---
         yield return Bool("ProgressionRewards.Enabled", "rewards", () => rewards.Enabled, v => rewards.Enabled = v);

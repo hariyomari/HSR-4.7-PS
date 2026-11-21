@@ -41,10 +41,10 @@ public static partial class AdminRoutes
         var pool = WarpSchedule.Pool;
         var phases = pool.Phases
             .Select(phase => new WarpPhaseView(phase.Key, phase.Version, phase.Phase, phase.StartTime,
-                phase.Banners.Select(banner => banner.GachaId).ToList()))
+                WarpSchedule.LineupOf(phase).Select(banner => banner.GachaId).ToList()))
             .ToList();
         var banners = pool.Banners.Select(banner => ToWarpBannerView(banner, pool, null)).ToList();
-        return Success(new WarpPoolData(phases, banners));
+        return Success(new WarpPoolData(phases, banners, GameData.WarpItemNamesConfig.Names));
     }
 
     private static IResult UpdateWarpManual(HttpContext ctx, AdminWarpManualRequest? request)
@@ -128,7 +128,11 @@ public static partial class AdminRoutes
             manual,
             pool.Banners.Count,
             pool.Phases.Count,
-            pool.IneligibleIds.ToList());
+            pool.IneligibleIds.ToList(),
+            option.Story,
+            WarpSchedule.StoryActive,
+            WarpSchedule.PhaseLineup.ToString(),
+            option.CollabOwnPhaseOnly);
     }
 
     // now == null: a history row shown as data, never "running".

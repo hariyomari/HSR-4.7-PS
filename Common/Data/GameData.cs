@@ -25,6 +25,12 @@ public static partial class GameData
     // Config/Custom/Banners.history.json: past limited banners for the Rotation / Manual warp modes.
     public static BannersConfig BannerHistoryConfig { get; set; } = new();
 
+    // Config/Custom/WarpStoryGates.json: story chapters per version, for the warp Story filter.
+    public static WarpStoryGatesConfig WarpStoryGatesConfig { get; set; } = new();
+
+    // Config/Custom/WarpItemNames.json: character and light cone names for the admin Warps page.
+    public static WarpItemNamesConfig WarpItemNamesConfig { get; set; } = new();
+
     #endregion
 
     #region VideoKeys

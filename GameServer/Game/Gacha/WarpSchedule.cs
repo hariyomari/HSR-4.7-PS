@@ -4,18 +4,57 @@ using March7thHoney.Data;
 using March7thHoney.Data.Custom;
 using March7thHoney.Data.Excel;
 using March7thHoney.Enums;
+using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Gacha;
 
 /// <summary>
-///     One version phase of the history pool. <see cref="Banners" /> is the lineup that was live during the phase:
-///     the banners tagged with it plus every earlier banner whose historical window still covers
-///     <see cref="StartTime" />, so a banner that ran through both phases of a version (4.7's Aha) and the
-///     long-running collab pools appear in each phase they overlapped, not only in the phase they started in.
+///     One version phase of the history pool. <see cref="Started" /> holds the banners that opened in the phase;
+///     <see cref="Overlapping" /> adds every earlier banner whose historical window still covers
+///     <see cref="StartTime" /> (a banner that ran through both phases of a version, like 4.7's Aha, and the
+///     long-running collab pools). ServerOption.Warps.PhaseLineup picks between them; see <see cref="Lineup" />.
 /// </summary>
-public sealed record WarpPhase(string Key, string Version, int Phase, long StartTime, IReadOnlyList<BannerConfig> Banners);
+public sealed record WarpPhase(
+    string Key,
+    string Version,
+    int Phase,
+    long StartTime,
+    IReadOnlyList<BannerConfig> Started,
+    IReadOnlyList<BannerConfig> Overlapping)
+{
+    public IReadOnlyList<BannerConfig> Lineup(WarpPhaseLineupEnum lineup, bool collabOwnPhaseOnly)
+    {
+        if (lineup == WarpPhaseLineupEnum.Started) return Started;
+        if (!collabOwnPhaseOnly) return Overlapping;
+        return Overlapping.Where(b => !WarpSchedule.IsCollab(b.GachaType) || Started.Contains(b)).ToList();
+    }
+}
+
+/// <summary>
+///     How far a player's story has got, for the Story filter: versions before <see cref="NextVersion" /> are
+///     unlocked (all of them when it is null). A version without story of its own (1.1, 1.4-1.6, 2.4-2.6) unlocks
+///     with the story version before it. <see cref="Unreadable" />: the filter is on but the player's story
+///     cannot be read (mission system off, no gate data), so they get Banners.json as written.
+/// </summary>
+public sealed record WarpStoryProgress(string? ReachedVersion, string? NextVersion)
+{
+    public static readonly WarpStoryProgress Unreadable = new(null, null);
+
+    public bool IsReadable => ReachedVersion != null;
+
+    public bool Unlocks(string version)
+    {
+        return NextVersion == null || WarpSchedule.CompareVersions(version, NextVersion) < 0;
+    }
+
+    /// <summary>The player's story is in this version now: reached, and the next story version not yet.</summary>
+    public bool IsCurrent(string version)
+    {
+        return ReachedVersion != null && WarpSchedule.CompareVersions(version, ReachedVersion) >= 0 && Unlocks(version);
+    }
+}
 
 /// <summary>Rotation position at a given time. Period bounds are inclusive Unix seconds.</summary>
 public sealed record WarpRotationState(WarpPhase? Phase, long PeriodBegin, long PeriodEnd, WarpPhase? NextPhase);
@@ -55,11 +94,12 @@ public sealed class WarpPool
             var start = group.Min(b => b.BeginTime);
             var tagged = group.Select(b => b.GachaId).ToHashSet();
             // Tagged banners count even when they opened hours after the phase start (the collab pools did).
-            var lineup = Banners.Where(b => tagged.Contains(b.GachaId) || (b.BeginTime <= start && b.EndTime > start))
+            var started = Banners.Where(b => tagged.Contains(b.GachaId)).OrderBy(b => b.GachaId).ToList();
+            var overlapping = Banners.Where(b => tagged.Contains(b.GachaId) || (b.BeginTime <= start && b.EndTime > start))
                 .OrderBy(b => b.GachaId).ToList();
-            if (lineup.Count == 0) continue;
+            if (overlapping.Count == 0) continue;
             var first = group.First();
-            phases.Add(new WarpPhase(group.Key, first.Version.Trim(), first.Phase, start, lineup));
+            phases.Add(new WarpPhase(group.Key, first.Version.Trim(), first.Phase, start, started, overlapping));
         }
 
         Phases = phases.OrderBy(p => p.StartTime).ThenBy(p => p.Key, StringComparer.Ordinal).ToList();
@@ -86,15 +126,6 @@ public sealed class WarpPool
     public WarpPhase? FindPhase(string? key)
     {
         return key == null ? null : _phasesByKey.GetValueOrDefault(key.Trim());
-    }
-
-    public int IndexOfPhase(string? key)
-    {
-        var phase = FindPhase(key);
-        if (phase == null) return -1;
-        for (var i = 0; i < Phases.Count; i++)
-            if (ReferenceEquals(Phases[i], phase)) return i;
-        return -1;
     }
 
     /// <summary>
@@ -134,6 +165,12 @@ public static class WarpSchedule
 
     public static WarpScheduleModeEnum Mode => TryParseMode(Option.Mode, out var mode) ? mode : WarpScheduleModeEnum.Static;
 
+    public static WarpPhaseLineupEnum PhaseLineup =>
+        TryParseLineup(Option.PhaseLineup, out var lineup) ? lineup : WarpPhaseLineupEnum.Started;
+
+    /// <summary>Story filter in effect: switched on and the mode is not Manual (admin picks are explicit).</summary>
+    public static bool StoryActive => Option.Story && Mode != WarpScheduleModeEnum.Manual;
+
     /// <summary>Eligible history pool; rebuilt lazily after a banner reload or a resource reload.</summary>
     public static WarpPool Pool
     {
@@ -159,6 +196,29 @@ public static class WarpSchedule
         return Enum.TryParse(value.Trim(), true, out mode) && Enum.IsDefined(mode);
     }
 
+    public static bool TryParseLineup(string? value, out WarpPhaseLineupEnum lineup)
+    {
+        lineup = WarpPhaseLineupEnum.Started;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        return Enum.TryParse(value.Trim(), true, out lineup) && Enum.IsDefined(lineup);
+    }
+
+    /// <summary>The banners <paramref name="phase" /> serves under the current PhaseLineup settings.</summary>
+    public static IReadOnlyList<BannerConfig> LineupOf(WarpPhase phase)
+    {
+        return phase.Lineup(PhaseLineup, Option.CollabOwnPhaseOnly);
+    }
+
+    /// <summary>"1.0" &lt; "1.10" &lt; "2.0"; text that is not a version sorts after every version.</summary>
+    public static int CompareVersions(string a, string b)
+    {
+        var hasA = Version.TryParse(a.Trim(), out var va);
+        var hasB = Version.TryParse(b.Trim(), out var vb);
+        if (hasA && hasB) return va!.CompareTo(vb);
+        if (hasA != hasB) return hasA ? -1 : 1;
+        return string.CompareOrdinal(a, b);
+    }
+
     public static bool IsLimited(GachaTypeEnum type)
     {
         return IsCharacterBanner(type) || IsLightConeBanner(type);
@@ -174,38 +234,85 @@ public static class WarpSchedule
         return type is GachaTypeEnum.WeaponUp or GachaTypeEnum.CollaborationWeaponUp;
     }
 
+    public static bool IsCollab(GachaTypeEnum type)
+    {
+        return type is GachaTypeEnum.CollaborationAvatarUp or GachaTypeEnum.CollaborationWeaponUp;
+    }
+
     public static long Now()
     {
         return DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     }
 
     /// <summary>
+    ///     Story progress of <paramref name="player" /> for the Story filter, or null when the filter is not in
+    ///     effect. The newest gate version with any main mission accepted or finished is the one reached; the first
+    ///     gate (1.0) counts as reached from the start.
+    /// </summary>
+    public static WarpStoryProgress? GetStoryProgress(PlayerInstance player)
+    {
+        if (!StoryActive) return null;
+        var missions = player.MissionManager;
+        if (missions == null || !player.MissionEnabled) return WarpStoryProgress.Unreadable;
+
+        var gates = GameData.WarpStoryGatesConfig.Gates
+            .Where(gate => !string.IsNullOrWhiteSpace(gate.Version))
+            .OrderBy(gate => gate.Version, Comparer<string>.Create(CompareVersions))
+            .ToList();
+        if (gates.Count == 0) return WarpStoryProgress.Unreadable;
+
+        var reached = 0;
+        for (var i = gates.Count - 1; i > 0; i--)
+        {
+            if (!gates[i].MainMissions.Any(id =>
+                    missions.GetMainMissionStatus(id) is MissionPhaseEnum.Accept or MissionPhaseEnum.Finish)) continue;
+            reached = i;
+            break;
+        }
+
+        return new WarpStoryProgress(gates[reached].Version.Trim(),
+            reached + 1 < gates.Count ? gates[reached + 1].Version.Trim() : null);
+    }
+
+    /// <summary>
     ///     Banners offered to <paramref name="player" />. Rotation and Manual windows are computed on the real
     ///     clock and then moved onto the player's server clock, so an account on a fake server date still sees
-    ///     them as running. Story mode will narrow this per player.
+    ///     them as running. The Story filter narrows the limited banners per player.
     /// </summary>
     public static List<BannerConfig> GetActiveBanners(PlayerInstance? player)
     {
         var realNow = Now();
         var playerNow = player == null ? realNow : ServerTimeProvider.GetServerUnixSec(player.Data);
-        return GetActiveBanners(realNow, playerNow);
+        return GetActiveBanners(realNow, playerNow, player == null ? null : GetStoryProgress(player));
     }
 
-    public static List<BannerConfig> GetActiveBanners(long realNow, long playerNow)
+    /// <param name="story">
+    ///     Null: no Story filter. <see cref="WarpStoryProgress.Unreadable" />: Banners.json as written, whatever the
+    ///     mode. Otherwise only banners of unlocked versions (Static and Rotation; Manual ignores it).
+    /// </param>
+    public static List<BannerConfig> GetActiveBanners(long realNow, long playerNow, WarpStoryProgress? story = null)
     {
-        var result = new List<BannerConfig>();
         var mode = Mode;
+        if (mode == WarpScheduleModeEnum.Manual) story = null;
+        if (story is { IsReadable: false })
+        {
+            mode = WarpScheduleModeEnum.Static;
+            story = null;
+        }
+
+        var fromHistory = mode != WarpScheduleModeEnum.Static || story != null;
+        var result = new List<BannerConfig>();
         foreach (var banner in GameData.BannersConfig.Banners)
         {
-            if (mode != WarpScheduleModeEnum.Static && IsLimited(banner.GachaType)) continue;
+            if (fromHistory && IsLimited(banner.GachaType)) continue;
             if (banner.IsActiveAt(realNow)) result.Add(banner);
         }
 
-        if (mode == WarpScheduleModeEnum.Static) return result;
+        if (!fromHistory) return result;
 
         var shift = playerNow - realNow;
         var seen = result.Select(b => b.GachaId).ToHashSet();
-        foreach (var banner in GetScheduledBanners(realNow))
+        foreach (var banner in GetScheduledBanners(realNow, mode, story))
         {
             if (!banner.IsActiveAt(realNow) || !seen.Add(banner.GachaId)) continue;
             result.Add(shift == 0
@@ -218,17 +325,26 @@ public static class WarpSchedule
 
     /// <summary>
     ///     Limited banners of the current mode with their served windows (real clock), including Manual entries
-    ///     whose explicit window has not opened yet or has closed — the admin panel lists those too.
+    ///     whose explicit window has not opened yet or has closed — the admin panel lists those too. This is the
+    ///     server-wide view: the Story filter narrows it per player (<see cref="GetActiveBanners(PlayerInstance)" />).
     /// </summary>
     public static List<BannerConfig> GetScheduledBanners(long now)
     {
-        switch (Mode)
+        return GetScheduledBanners(now, Mode, null);
+    }
+
+    private static List<BannerConfig> GetScheduledBanners(long now, WarpScheduleModeEnum mode, WarpStoryProgress? story)
+    {
+        switch (mode)
         {
             case WarpScheduleModeEnum.Rotation:
             {
-                var rotation = GetRotation(now);
-                return rotation.Phase?.Banners.Select(b => b.WithWindow(rotation.PeriodBegin, rotation.PeriodEnd))
-                    .ToList() ?? [];
+                var rotation = GetRotation(now, story);
+                if (rotation.Phase == null) return [];
+                return LineupOf(rotation.Phase)
+                    .Where(b => story == null || story.Unlocks(b.Version))
+                    .Select(b => b.WithWindow(rotation.PeriodBegin, rotation.PeriodEnd))
+                    .ToList();
             }
             case WarpScheduleModeEnum.Manual:
             {
@@ -246,7 +362,19 @@ public static class WarpSchedule
                 return result;
             }
             default:
-                return GameData.BannersConfig.Banners.Where(b => IsLimited(b.GachaType)).ToList();
+            {
+                if (story == null) return GameData.BannersConfig.Banners.Where(b => IsLimited(b.GachaType)).ToList();
+
+                // Static + Story: every unlocked history banner at once, rolling with the rotation period. With
+                // CollabOwnPhaseOnly a collab banner stays only while the player's story is in its version.
+                var (begin, end) = GetPeriod(now);
+                var collabOwnPhaseOnly = Option.CollabOwnPhaseOnly;
+                return Pool.Banners.Where(b => story.Unlocks(b.Version) &&
+                                               (!collabOwnPhaseOnly || !IsCollab(b.GachaType) || story.IsCurrent(b.Version)))
+                    .OrderBy(b => b.GachaId)
+                    .Select(b => b.WithWindow(begin, end))
+                    .ToList();
+            }
         }
     }
 
@@ -261,15 +389,23 @@ public static class WarpSchedule
         return (begin, begin + period - 1);
     }
 
-    public static WarpRotationState GetRotation(long now)
+    /// <summary>
+    ///     Rotation position. With <paramref name="story" /> only the unlocked phases take part, in order, starting at
+    ///     RotationStartPhase when it is unlocked and at the oldest phase otherwise.
+    /// </summary>
+    public static WarpRotationState GetRotation(long now, WarpStoryProgress? story = null)
     {
         var (begin, end) = GetPeriod(now);
-        var phases = Pool.Phases;
+        var phases = story == null ? Pool.Phases : Pool.Phases.Where(p => story.Unlocks(p.Version)).ToList();
         if (phases.Count == 0) return new WarpRotationState(null, begin, end, null);
 
         var period = Math.Max(1, Option.RotationDays) * DaySeconds;
         var periodIndex = (begin - GetRotationAnchor()) / period;
-        var startIndex = Math.Max(0, Pool.IndexOfPhase(Option.RotationStartPhase));
+        var startKey = Option.RotationStartPhase?.Trim() ?? "";
+        var startIndex = 0;
+        for (var i = 0; i < phases.Count; i++)
+            if (string.Equals(phases[i].Key, startKey, StringComparison.OrdinalIgnoreCase))
+                startIndex = i;
         var current = Mod(startIndex + periodIndex, phases.Count);
         return new WarpRotationState(phases[current], begin, end, phases[Mod(current + 1, phases.Count)]);
     }

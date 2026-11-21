@@ -13,8 +13,9 @@ internal static class WarpChecks
 {
     private const long Day = 86400;
 
-    // Synthetic history: three phases. 2903 runs through 9.0-1 and 9.0-2; 2905 features an item the game data
-    // lacks and must stay out of the pool. All windows lie in the past, like the real history file.
+    // Synthetic history: three phases. 2903 runs through 9.0-1 and 9.0-2, so it is in 9.0-2's Overlap lineup but
+    // not its Started one; 2905 features an item the game data lacks and must stay out of the pool. All windows lie
+    // in the past, like the real history file.
     private const long Phase1 = 1_700_000_000;
     private const long Phase2 = Phase1 + 21 * Day;
     private const long Phase3 = Phase2 + 21 * Day;
@@ -29,6 +30,7 @@ internal static class WarpChecks
         var config = ConfigManager.Config;
         var originalBanners = GameData.BannersConfig;
         var originalHistory = GameData.BannerHistoryConfig;
+        var originalNames = GameData.WarpItemNamesConfig;
         var addedItems = new HashSet<int>();
         try
         {
@@ -69,6 +71,7 @@ internal static class WarpChecks
             ConfigManager.SaveConfig();
             GameData.BannersConfig = originalBanners;
             GameData.BannerHistoryConfig = originalHistory;
+            GameData.WarpItemNamesConfig = originalNames;
             foreach (var id in addedItems) GameData.ItemConfigData.Remove(id);
         }
     }
@@ -109,8 +112,8 @@ internal static class WarpChecks
                 .ToDictionary(p => p.GetProperty("key").GetString()!, p => IntList(p.GetProperty("banner_ids")));
             check("warp pool groups phases in order",
                 phases.Keys.SequenceEqual(["9.0-1", "9.0-2", "9.1-1"]));
-            check("warp pool lists a spanning banner in every phase it overlapped",
-                phases["9.0-1"].SequenceEqual([2901, 2903, 3901]) && phases["9.0-2"].SequenceEqual([2902, 2903, 3902]));
+            check("warp pool phases with PhaseLineup Started hold only the banners opened in them",
+                phases["9.0-1"].SequenceEqual([2901, 2903, 3901]) && phases["9.0-2"].SequenceEqual([2902, 3902]));
             check("warp pool leaves out a banner whose item is missing",
                 phases["9.1-1"].SequenceEqual([2904]) && !Ids(data, "banners").Contains(2905));
             var first = data.GetProperty("banners").EnumerateArray().Single(b => b.GetProperty("id").GetInt32() == 2901);
@@ -119,6 +122,16 @@ internal static class WarpChecks
                 first.GetProperty("default_pair_id").GetInt32() == 3901 &&
                 first.GetProperty("version").GetString() == "9.0" && first.GetProperty("phase").GetInt32() == 1);
         }
+
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Overlap);
+        using (var pool = await GetData(client, "/admin/api/warps/pool"))
+        {
+            var phases = pool.RootElement.GetProperty("data").GetProperty("phases").EnumerateArray()
+                .ToDictionary(p => p.GetProperty("key").GetString()!, p => IntList(p.GetProperty("banner_ids")));
+            check("warp pool phases with PhaseLineup Overlap list a spanning banner in every phase it overlapped",
+                phases["9.0-1"].SequenceEqual([2901, 2903, 3901]) && phases["9.0-2"].SequenceEqual([2902, 2903, 3902]));
+        }
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
         // --- Rotation ---
         using (var response = await client.PostAsJsonAsync("/admin/api/warps/mode", new { mode = "Bogus" }))
@@ -154,7 +167,7 @@ internal static class WarpChecks
             check("rotation restart switches the current phase",
                 state.GetProperty("current_phase").GetString() == "9.0-2" &&
                 state.GetProperty("start_phase").GetString() == "9.0-2" &&
-                Ids(data, "scheduled").SequenceEqual([2902, 2903, 3902]) &&
+                Ids(data, "scheduled").SequenceEqual([2902, 3902]) &&
                 InPeriod(data, data.GetProperty("scheduled")));
         }
 
@@ -173,7 +186,7 @@ internal static class WarpChecks
                 data.GetProperty("applied").GetInt32() == 0 && data.GetProperty("errors").GetArrayLength() == 4 &&
                 option.RotationStartPhase == "9.0-2" && option.Mode == "Rotation" && option.RotationDays == 7);
             check("settings list the warps group",
-                data.GetProperty("fields").EnumerateArray().Count(f => f.GetProperty("group").GetString() == "warps") == 4);
+                data.GetProperty("fields").EnumerateArray().Count(f => f.GetProperty("group").GetString() == "warps") == 7);
         }
 
         using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings",
@@ -185,7 +198,57 @@ internal static class WarpChecks
         (await SendData(client, HttpMethod.Put, "/admin/api/settings",
             new { values = new Dictionary<string, string> { ["Warps.RotationStartPhase"] = "9.0-2" } })).Dispose();
 
+        // Story filter and phase lineup keys: round-trip, then back to the defaults.
+        using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings", new
+               {
+                   values = new Dictionary<string, string>
+                   {
+                       ["Warps.Story"] = "true", ["Warps.PhaseLineup"] = "overlap", ["Warps.CollabOwnPhaseOnly"] = "false"
+                   }
+               }))
+        {
+            var data = settings.RootElement.GetProperty("data");
+            var fields = SettingValues(data);
+            check("settings round-trip Warps.Story, Warps.PhaseLineup and Warps.CollabOwnPhaseOnly",
+                data.GetProperty("applied").GetInt32() == 3 && data.GetProperty("errors").GetArrayLength() == 0 &&
+                option.Story && option.PhaseLineup == "Overlap" && !option.CollabOwnPhaseOnly &&
+                fields.GetValueOrDefault("Warps.Story") == "true" &&
+                fields.GetValueOrDefault("Warps.PhaseLineup") == "Overlap" &&
+                fields.GetValueOrDefault("Warps.CollabOwnPhaseOnly") == "false");
+        }
+
+        using (var warps = await GetData(client, "/admin/api/warps"))
+        {
+            var data = warps.RootElement.GetProperty("data");
+            check("warps reports the story filter and phase lineup settings",
+                data.GetProperty("story").GetBoolean() && data.GetProperty("story_active").GetBoolean() &&
+                data.GetProperty("phase_lineup").GetString() == "Overlap" &&
+                !data.GetProperty("collab_own_phase_only").GetBoolean());
+        }
+
+        using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings",
+                   new { values = new Dictionary<string, string> { ["Warps.PhaseLineup"] = "Sideways" } }))
+        {
+            var data = settings.RootElement.GetProperty("data");
+            check("settings reject an unknown Warps.PhaseLineup",
+                data.GetProperty("applied").GetInt32() == 0 && data.GetProperty("errors").GetArrayLength() == 1 &&
+                option.PhaseLineup == "Overlap");
+        }
+
+        using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings", new
+               {
+                   values = new Dictionary<string, string>
+                   {
+                       ["Warps.Story"] = "false", ["Warps.PhaseLineup"] = "Started", ["Warps.CollabOwnPhaseOnly"] = "true"
+                   }
+               }))
+            check("settings restore the story filter and phase lineup defaults",
+                settings.RootElement.GetProperty("data").GetProperty("applied").GetInt32() == 3 &&
+                !option.Story && option.PhaseLineup == "Started" && option.CollabOwnPhaseOnly);
+
         // --- Manual ---
+        // Seeded from the Overlap lineup of 9.0-2, which carries 2903 without its light cone banner (pair 0).
+        option.PhaseLineup = "Overlap";
         long periodBegin, periodEnd;
         using (var manual = await SendData(client, HttpMethod.Post, "/admin/api/warps/mode", new { mode = "Manual" }))
         {
@@ -204,6 +267,8 @@ internal static class WarpChecks
             check("seeded manual banners keep running in the rolling period",
                 Ids(data, "scheduled").SequenceEqual([2902, 2903, 3902]) && InPeriod(data, data.GetProperty("scheduled")));
         }
+
+        option.PhaseLineup = "Started";
 
         var invalidBodies = new (string Name, object Body)[]
         {
@@ -295,14 +360,75 @@ internal static class WarpChecks
         var pool = WarpSchedule.Pool;
         check("repo banner history forms 65 phases with every banner eligible",
             pool.Phases.Count == 65 && pool.Banners.Count == 300 && pool.IneligibleIds.Count == 0);
-        var lineup = pool.FindPhase("4.7-2")?.Banners.Select(b => b.GachaId).ToHashSet() ?? [];
-        check("repo phase 4.7-2 lineup includes its own and the carried-over banners",
-            new[] { 2142, 3142, 2146, 2147, 2148, 3146, 3147, 3148 }.All(lineup.Contains));
+        var overlapping = pool.FindPhase("4.7-2")?.Overlapping.Select(b => b.GachaId).ToHashSet() ?? [];
+        check("repo phase 4.7-2 Overlap lineup includes its own and the carried-over banners",
+            new[] { 2142, 3142, 2146, 2147, 2148, 3146, 3147, 3148 }.All(overlapping.Contains));
 
-        using var response = await GetData(client, "/admin/api/warps/pool");
-        var data = response.RootElement.GetProperty("data");
-        check("warp pool endpoint serves the repo history",
-            data.GetProperty("phases").GetArrayLength() == 65 && data.GetProperty("banners").GetArrayLength() == 300);
+        var names = ResourceManager.LoadCustomFile<WarpItemNamesConfig>("Warp item names", "WarpItemNames");
+        GameData.WarpItemNamesConfig = names ?? new WarpItemNamesConfig();
+
+        // Pool API phases follow the PhaseLineup settings; option values are put back afterwards.
+        var option = ConfigManager.Config.ServerOption.Warps;
+        var (lineupSetting, collabSetting) = (option.PhaseLineup, option.CollabOwnPhaseOnly);
+        try
+        {
+            option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
+            using (var response = await GetData(client, "/admin/api/warps/pool"))
+            {
+                var data = response.RootElement.GetProperty("data");
+                check("warp pool endpoint serves the repo history",
+                    data.GetProperty("phases").GetArrayLength() == 65 &&
+                    data.GetProperty("banners").GetArrayLength() == 300);
+                check("warp pool endpoint phase 4.7-2 with PhaseLineup Started is exactly the banners opened in it",
+                    PhaseBannerIds(data, "4.7-2").Order().SequenceEqual([2146, 2147, 2148, 3146, 3147, 3148]));
+                var poolNames = data.GetProperty("names");
+                check("warp pool endpoint serves the repo item names (en 1306 Sparkle, 1501 Sparxie)",
+                    ItemName(poolNames, "en", 1306) == "Sparkle" && ItemName(poolNames, "en", 1501) == "Sparxie" &&
+                    !string.IsNullOrEmpty(ItemName(poolNames, "zh-CN", 1306)));
+            }
+
+            option.PhaseLineup = nameof(WarpPhaseLineupEnum.Overlap);
+            option.CollabOwnPhaseOnly = false;
+            using (var response = await GetData(client, "/admin/api/warps/pool"))
+            {
+                var ids = PhaseBannerIds(response.RootElement.GetProperty("data"), "4.7-2");
+                check("warp pool endpoint phase 4.7-2 with Overlap includes carried-over 2142 and collab 5001",
+                    ids.Contains(2142) && ids.Contains(5001));
+            }
+
+            option.CollabOwnPhaseOnly = true;
+            using (var response = await GetData(client, "/admin/api/warps/pool"))
+            {
+                var ids = PhaseBannerIds(response.RootElement.GetProperty("data"), "4.7-2");
+                check("warp pool endpoint phase 4.7-2 with Overlap + CollabOwnPhaseOnly keeps 2142 and drops collab 5001",
+                    ids.Contains(2142) && !ids.Contains(5001));
+            }
+        }
+        finally
+        {
+            option.PhaseLineup = lineupSetting;
+            option.CollabOwnPhaseOnly = collabSetting;
+        }
+    }
+
+    private static List<int> PhaseBannerIds(JsonElement poolData, string key)
+    {
+        var phase = poolData.GetProperty("phases").EnumerateArray()
+            .FirstOrDefault(p => p.GetProperty("key").GetString() == key);
+        return phase.ValueKind == JsonValueKind.Object ? IntList(phase.GetProperty("banner_ids")) : [];
+    }
+
+    private static string? ItemName(JsonElement names, string lang, int id)
+    {
+        return names.TryGetProperty(lang, out var table) && table.TryGetProperty(id.ToString(), out var name)
+            ? name.GetString()
+            : null;
+    }
+
+    private static Dictionary<string, string?> SettingValues(JsonElement settingsData)
+    {
+        return settingsData.GetProperty("fields").EnumerateArray().ToDictionary(
+            f => f.GetProperty("key").GetString() ?? "", f => f.GetProperty("value").GetString());
     }
 
     private static BannerConfig Banner(int id, GachaTypeEnum type, long begin, long end, int rate5, List<int> rate4)

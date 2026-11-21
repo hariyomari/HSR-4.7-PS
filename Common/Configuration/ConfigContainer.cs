@@ -339,6 +339,19 @@ public class WarpScheduleOption
     // Phase key ("4.7-1") that runs in period 0; empty = the oldest phase in the pool.
     public string RotationStartPhase { get; set; } = "";
 
+    // Started | Overlap: whether a phase served whole (Rotation, Load phase) also includes earlier banners still
+    // running when it opened. See WarpPhaseLineupEnum.
+    public string PhaseLineup { get; set; } = "Started";
+
+    // Collab banners only in their own phase: with PhaseLineup Overlap they stay out of the later phases their long
+    // historical window overlapped; with Story + Static they show only while the player's story is in their version.
+    public bool CollabOwnPhaseOnly { get; set; } = true;
+
+    // Story filter on top of Static / Rotation: each player is offered only banners of versions whose story they have
+    // reached (Config/Custom/WarpStoryGates.json). Static serves every unlocked banner at once, Rotation rotates
+    // through the unlocked phases in order. Manual ignores it. Players with the mission system off get Banners.json.
+    public bool Story { get; set; }
+
     // Active limited banners in Manual mode. Replaced as a whole on every change (never mutated in place),
     // because game threads read it while the admin panel writes it.
     public List<WarpManualEntry> Manual { get; set; } = [];
