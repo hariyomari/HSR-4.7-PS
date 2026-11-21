@@ -42146,7 +42146,7 @@ message UnlockTeleportNotify {
 // Obf: DOOOBFLCMKC
 // CmdID: 1605
 message UnlockTutorialCsReq {
-	uint32 HPIMDINCCNN = 3;
+	uint32 tutorial_id = 3;
 }
 
 // Obf: DJJKDINFDEH
