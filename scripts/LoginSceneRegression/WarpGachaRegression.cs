@@ -84,6 +84,13 @@ internal static class WarpGachaRegression
             version47.IsSupersetOf([2142, 3142, 2146, 3146]) && !version47.Overlaps(Collab));
         check("the Version lineup rotates by whole versions (4.7 wraps to 1.0)",
             byVersion.Phase?.Version == "4.7" && byVersion.NextPhase?.Key == "1.0-1");
+        // Mid-pool: phase stepping would go 4.6-1 -> 4.6-2; version stepping goes 4.6 -> 4.7.
+        WarpSchedule.RestartRotation("4.6-1", WarpSchedule.Now());
+        var mid = WarpSchedule.GetRotation(WarpSchedule.Now());
+        check("the Version lineup steps from 4.6 to 4.7, not to 4.6-2",
+            mid.Phase?.Version == "4.6" && mid.NextPhase?.Version == "4.7" &&
+            LimitedIds(player.GachaManager.ToProto()).SetEquals(pool.Phases.Where(p => p.Version == "4.6")
+                .SelectMany(p => p.Started).Select(b => b.GachaId)));
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
         // Manual: one old character banner with a featured override; everything else is gone.
