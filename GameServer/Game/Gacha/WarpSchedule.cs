@@ -14,8 +14,9 @@ namespace March7thHoney.GameServer.Game.Gacha;
 ///     One version phase of the history pool. <see cref="Started" /> holds the banners that opened in the phase;
 ///     <see cref="Overlapping" /> adds every earlier banner whose historical window still covers
 ///     <see cref="StartTime" /> (a banner that ran through both phases of a version, like 4.7's Aha, and the
-///     long-running pools). ServerOption.Warps.PhaseLineup picks between them. Collab banners are never part of a
-///     phase: they are their own category (<see cref="WarpPool.Collab" />, ServerOption.Warps.CollabBanners).
+///     long-running pools); <see cref="WholeVersion" /> holds the banners that opened in any phase of its version.
+///     ServerOption.Warps.PhaseLineup picks between them. Collab banners are never part of a phase: they are their
+///     own category (<see cref="WarpPool.Collab" />, ServerOption.Warps.CollabBanners).
 /// </summary>
 public sealed record WarpPhase(
     string Key,
@@ -25,9 +26,16 @@ public sealed record WarpPhase(
     IReadOnlyList<BannerConfig> Started,
     IReadOnlyList<BannerConfig> Overlapping)
 {
+    public IReadOnlyList<BannerConfig> WholeVersion { get; init; } = [];
+
     public IReadOnlyList<BannerConfig> Lineup(WarpPhaseLineupEnum lineup)
     {
-        return lineup == WarpPhaseLineupEnum.Started ? Started : Overlapping;
+        return lineup switch
+        {
+            WarpPhaseLineupEnum.Overlap => Overlapping,
+            WarpPhaseLineupEnum.Version => WholeVersion,
+            _ => Started
+        };
     }
 }
 
@@ -96,7 +104,11 @@ public sealed class WarpPool
             phases.Add(new WarpPhase(group.Key, first.Version.Trim(), first.Phase, start, started, overlapping));
         }
 
-        Phases = phases.OrderBy(p => p.StartTime).ThenBy(p => p.Key, StringComparer.Ordinal).ToList();
+        var wholeVersions = phases.GroupBy(p => p.Version).ToDictionary(g => g.Key,
+            g => (IReadOnlyList<BannerConfig>)g.SelectMany(p => p.Started).DistinctBy(b => b.GachaId)
+                .OrderBy(b => b.GachaId).ToList());
+        Phases = phases.Select(p => p with { WholeVersion = wholeVersions[p.Version] })
+            .OrderBy(p => p.StartTime).ThenBy(p => p.Key, StringComparer.Ordinal).ToList();
         _phasesByKey = Phases.ToDictionary(p => p.Key, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -204,6 +216,18 @@ public static class WarpSchedule
     public static IReadOnlyList<BannerConfig> LineupOf(WarpPhase phase)
     {
         return phase.Lineup(PhaseLineup);
+    }
+
+    /// <summary>
+    ///     The steps of the rotation (and the admin's phase lists) among <paramref name="phases" /> (in start
+    ///     order): every phase, or with the Version lineup the first phase of each version, standing for the whole
+    ///     version.
+    /// </summary>
+    public static IReadOnlyList<WarpPhase> RotationPhases(IEnumerable<WarpPhase> phases)
+    {
+        return PhaseLineup == WarpPhaseLineupEnum.Version
+            ? phases.GroupBy(p => p.Version).Select(g => g.First()).ToList()
+            : phases.ToList();
     }
 
     /// <summary>"1.0" &lt; "1.10" &lt; "2.0"; text that is not a version sorts after every version.</summary>
@@ -399,20 +423,23 @@ public static class WarpSchedule
 
     /// <summary>
     ///     Rotation position. With <paramref name="story" /> only the unlocked phases take part, in order, starting at
-    ///     RotationStartPhase when it is unlocked and at the oldest phase otherwise.
+    ///     RotationStartPhase when it is unlocked and at the oldest phase otherwise. With the Version lineup a period
+    ///     serves a whole version and a start phase stands for its version.
     /// </summary>
     public static WarpRotationState GetRotation(long now, WarpStoryProgress? story = null)
     {
         var (begin, end) = GetPeriod(now);
-        var phases = story == null ? Pool.Phases : Pool.Phases.Where(p => story.Unlocks(p.Version)).ToList();
+        var pool = Pool;
+        var phases = RotationPhases(story == null ? pool.Phases : pool.Phases.Where(p => story.Unlocks(p.Version)));
         if (phases.Count == 0) return new WarpRotationState(null, begin, end, null);
 
         var period = Math.Max(1, Option.RotationDays) * DaySeconds;
         var periodIndex = (begin - GetRotationAnchor()) / period;
-        var startKey = Option.RotationStartPhase?.Trim() ?? "";
+        var start = pool.FindPhase(Option.RotationStartPhase);
+        var byVersion = PhaseLineup == WarpPhaseLineupEnum.Version;
         var startIndex = 0;
         for (var i = 0; i < phases.Count; i++)
-            if (string.Equals(phases[i].Key, startKey, StringComparison.OrdinalIgnoreCase))
+            if (start != null && (byVersion ? phases[i].Version == start.Version : phases[i].Key == start.Key))
                 startIndex = i;
         var current = Mod(startIndex + periodIndex, phases.Count);
         return new WarpRotationState(phases[current], begin, end, phases[Mod(current + 1, phases.Count)]);

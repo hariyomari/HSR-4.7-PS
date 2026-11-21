@@ -36,7 +36,7 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- -
 `WarpChecks.cs` 在管理员登录后运行，覆盖 `/admin/api/warps*` 与设置页 `warps` 分组（行为说明见 [跃迁排期](../operations/warp-schedule.md)）。用例在进程内写入合成数据：`ItemConfigData` 中的少量物品、含常驻池 1001 与限定池 2139 的 `Banners.json`，以及跨三个阶段的历史池（其中一个卡池跨两个阶段，另一个卡池的 5★ 不在物品表中）。检查：
 
 - 未登录访问跃迁接口返回 401；`Static` 模式的 `scheduled` 即 `Banners.json` 的限定池，玩家可见列表同时包含常驻池与限定池。
-- 卡池库按阶段分组：默认 `PhaseLineup` 为 `Started`，跨阶段卡池只出现在它开放的阶段；改为 `Overlap` 后出现在两个阶段的 `banner_ids` 中。缺少物品的卡池列入 `ineligible` 且不出现在卡池库内；行数据携带历史时间、版本阶段和默认光锥池配对。
+- 卡池库按阶段分组：默认 `PhaseLineup` 为 `Started`，跨阶段卡池只出现在它开放的阶段；改为 `Overlap` 后出现在两个阶段的 `banner_ids` 中；改为 `Version` 后每个版本只列一项（以首个阶段为键），`banner_ids` 包含该版本两个阶段开放的全部卡池。缺少物品的卡池列入 `ineligible` 且不出现在卡池库内；行数据携带历史时间、版本阶段和默认光锥池配对。
 - 切换 `Rotation` 后从今天开始、由最早阶段起轮换，`scheduled` 为当前阶段阵容，起止时间等于 `rotation.period_begin/period_end` 且均在进行中；`Banners.json` 的限定池 2139 不再下发。`POST /admin/api/warps/rotation` 可切换当前阶段，未知阶段与未知模式返回 400。
 - 设置页拒绝未知的 `Warps.RotationStartPhase`、格式错误的 `Warps.RotationStart`、未知 `Warps.Mode` 及越界 `Warps.RotationDays`，配置保持不变；已知阶段可以保存并立即生效。`warps` 分组共 7 项。
 - `Warps.Story`、`Warps.PhaseLineup`（大小写不敏感，按枚举名保存）与 `Warps.CollabBanners` 可通过设置接口保存并在 `fields` 中读回；`/admin/api/warps` 随之返回 `story`、`story_active`、`phase_lineup`、`collab_banners`。未知 `Warps.PhaseLineup` 被拒绝且配置不变；随后恢复默认值。

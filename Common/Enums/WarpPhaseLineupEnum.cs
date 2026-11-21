@@ -11,5 +11,9 @@ public enum WarpPhaseLineupEnum
 
     // Also every earlier banner still running when the phase opened (live behaviour: 4.7's Aha runs through both
     // phases, and the collab pools ran on for a long time).
-    Overlap = 1
+    Overlap = 1,
+
+    // Every banner that opened in the phase's version (both phases at once). Rotation then steps one version per
+    // period instead of one phase.
+    Version = 2
 }

@@ -131,6 +131,16 @@ internal static class WarpChecks
             check("warp pool phases with PhaseLineup Overlap list a spanning banner in every phase it overlapped",
                 phases["9.0-1"].SequenceEqual([2901, 2903, 3901]) && phases["9.0-2"].SequenceEqual([2902, 2903, 3902]));
         }
+
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Version);
+        using (var pool = await GetData(client, "/admin/api/warps/pool"))
+        {
+            var phases = pool.RootElement.GetProperty("data").GetProperty("phases").EnumerateArray()
+                .ToDictionary(p => p.GetProperty("key").GetString()!, p => IntList(p.GetProperty("banner_ids")));
+            check("warp pool with PhaseLineup Version lists one step per version holding both phases",
+                phases.Keys.SequenceEqual(["9.0-1", "9.1-1"]) &&
+                phases["9.0-1"].SequenceEqual([2901, 2902, 2903, 3901, 3902]) && phases["9.1-1"].SequenceEqual([2904]));
+        }
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
         // --- Rotation ---

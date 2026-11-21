@@ -148,14 +148,15 @@ public sealed record WarpRotationView(
     string? next_phase);
 
 // story: ServerOption.Warps.Story as configured; story_active: it is in effect (not Manual mode). phase_lineup:
-// Started | Overlap (the effective value). collab: the collab banners; served with the current period as window
+// Started | Overlap | Version (the effective value). collab: the collab banners; served with the current period as window
 // while collab_banners is on, otherwise listed as history rows (never running).
 public sealed record WarpsData(
     string mode, long now, WarpRotationView rotation, List<WarpBannerView> permanent, List<WarpBannerView> scheduled,
     List<WarpManualEntryView> manual, int pool_size, int phase_count, List<int> ineligible, bool story,
     bool story_active, string phase_lineup, bool collab_banners, List<WarpBannerView> collab);
 
-// banner_ids: the phase lineup under the configured PhaseLineup settings.
+// The rotation steps: every phase, or with the Version lineup the first phase of each version standing for the whole
+// version. banner_ids: the lineup under the configured PhaseLineup setting.
 public sealed record WarpPhaseView(string key, string version, int phase, long start_time, List<int> banner_ids);
 
 // names: Config/Custom/WarpItemNames.json as loaded, language ("en", "zh-CN") -> item id -> name.

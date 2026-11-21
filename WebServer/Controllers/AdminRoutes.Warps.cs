@@ -39,7 +39,7 @@ public static partial class AdminRoutes
             return unauthorized;
 
         var pool = WarpSchedule.Pool;
-        var phases = pool.Phases
+        var phases = WarpSchedule.RotationPhases(pool.Phases)
             .Select(phase => new WarpPhaseView(phase.Key, phase.Version, phase.Phase, phase.StartTime,
                 WarpSchedule.LineupOf(phase).Select(banner => banner.GachaId).ToList()))
             .ToList();

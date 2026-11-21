@@ -74,6 +74,18 @@ internal static class WarpGachaRegression
         check("a limited banner outside the schedule is refused",
             off?.Retcode == (uint)Retcode.RetGachaIdNotExist);
 
+        // Version lineup: both phases of 4.7 from a phase-2 start; the next period moves on a whole version.
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Version);
+        var version47 = pool.Phases.Where(p => p.Version == "4.7").SelectMany(p => p.Started)
+            .Select(b => b.GachaId).ToHashSet();
+        var byVersion = WarpSchedule.GetRotation(WarpSchedule.Now());
+        check("the Version lineup sends both phases of the start phase's version",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals(version47) &&
+            version47.IsSupersetOf([2142, 3142, 2146, 3146]) && !version47.Overlaps(Collab));
+        check("the Version lineup rotates by whole versions (4.7 wraps to 1.0)",
+            byVersion.Phase?.Version == "4.7" && byVersion.NextPhase?.Key == "1.0-1");
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
+
         // Manual: one old character banner with a featured override; everything else is gone.
         option.Manual = [new() { GachaId = 2003, RateUpItems5 = [1102] }];
         option.Mode = nameof(WarpScheduleModeEnum.Manual);
@@ -152,6 +164,11 @@ internal static class WarpGachaRegression
             rotated.SetEquals([2003, 3003]));
         WarpSchedule.RestartRotation("1.2-2", WarpSchedule.Now());
         check("rotation + story serves an unlocked start phase", LimitedIds(player.GachaManager.ToProto()).SetEquals([2008, 3008]));
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Version);
+        check("rotation + story with the Version lineup serves both unlocked 1.2 phases",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals([2007, 3007, 2008, 3008]) &&
+            WarpSchedule.GetRotation(WarpSchedule.Now(), WarpSchedule.GetStoryProgress(player)).NextPhase?.Key == "1.0-1");
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
         // Missions off: no story to read, so Banners.json as written even in Rotation.
         var noMissions = new PlayerInstance(60043);

@@ -196,8 +196,15 @@ public static partial class AdminPageScripts
         return value > 0 ? new Date(value * 1000).toLocaleDateString(state.lang) : t("common.none");
       }
 
+      // With the Version lineup a phase stands for its whole version (the pool lists one per version).
       function warpPhaseLabel(phase) {
-        return `${phase.key} · ${warpDate(phase.start_time)}`;
+        const name = warpsState.data?.phase_lineup === "Version" ? phase.version : phase.key;
+        return `${name} · ${warpDate(phase.start_time)}`;
+      }
+
+      // Phase keys are "<version>-<phase>"; a configured start phase need not be the version's first.
+      function warpPhaseName(key) {
+        return key && warpsState.data?.phase_lineup === "Version" ? String(key).replace(/-\d+$/, "") : key;
       }
 
       function warpBannerLabel(banner) {
@@ -277,7 +284,7 @@ public static partial class AdminPageScripts
         const permanent = data.permanent || [];
         const collab = data.collab || [];
         const collabOn = Boolean(data.collab_banners);
-        const phaseLineup = data.phase_lineup === "Overlap" ? "Overlap" : "Started";
+        const phaseLineup = ["Overlap", "Version"].includes(data.phase_lineup) ? data.phase_lineup : "Started";
 
         setModuleActions(dirty ? chip(t("warps.unsaved"), "warn") : "");
         root.innerHTML = String(html`
@@ -303,9 +310,9 @@ public static partial class AdminPageScripts
             <div class="panel-body kv-grid">
               ${kv(t("warps.period_length"), t("warps.days", { count: rotation.days ?? "?" }))}
               ${kv(t("warps.start_date"), rotation.start || t("warps.start_unset"))}
-              ${kv(t("warps.start_phase"), rotation.start_phase || t("warps.start_phase_oldest"))}
-              ${kv(t("warps.current_phase"), rotation.current_phase || t("common.none"))}
-              ${kv(t("warps.next_phase"), rotation.next_phase || t("common.none"))}
+              ${kv(t("warps.start_phase"), warpPhaseName(rotation.start_phase) || t("warps.start_phase_oldest"))}
+              ${kv(t("warps.current_phase"), warpPhaseName(rotation.current_phase) || t("common.none"))}
+              ${kv(t("warps.next_phase"), warpPhaseName(rotation.next_phase) || t("common.none"))}
               ${kv(t("warps.period"), `${warpDate(rotation.period_begin)} – ${warpDate(rotation.period_end)}`)}
               ${kv(t("warps.period_ends"), rotation.period_end ? fmt.relative(Number(rotation.period_end) + 1) : t("common.none"))}
               ${kv(t("warps.phase_lineup"), t(`warps.lineup.${phaseLineup}`))}
