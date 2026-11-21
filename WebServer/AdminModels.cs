@@ -134,3 +134,23 @@ public sealed record GridFightCatalogEquipment(uint id, string category);
 public sealed record GridFightNameTable(
     Dictionary<string, string> augments, Dictionary<string, string> traits, Dictionary<string, string> portals,
     Dictionary<string, string> items, Dictionary<string, string> avatars);
+
+// Warps — GET /admin/api/warps and /admin/api/warps/pool
+public sealed record WarpBannerView(
+    int id, string gacha_type, string version, int phase, List<int> rate_up5, List<int> rate_up4, long begin_time,
+    long end_time, bool running, int default_pair_id);
+
+public sealed record WarpManualEntryView(
+    int gacha_id, long begin_time, long end_time, List<int>? rate_up5, List<int>? rate_up4, int paired_gacha_id);
+
+public sealed record WarpRotationView(
+    int days, string start, string start_phase, long period_begin, long period_end, string? current_phase,
+    string? next_phase);
+
+public sealed record WarpsData(
+    string mode, long now, WarpRotationView rotation, List<WarpBannerView> permanent, List<WarpBannerView> scheduled,
+    List<WarpManualEntryView> manual, int pool_size, int phase_count, List<int> ineligible);
+
+public sealed record WarpPhaseView(string key, string version, int phase, long start_time, List<int> banner_ids);
+
+public sealed record WarpPoolData(List<WarpPhaseView> phases, List<WarpBannerView> banners);

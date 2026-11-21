@@ -22,6 +22,7 @@ public static partial class AdminPageScripts
             AccessModule(),
             CommandsModule(),
             SettingsModule(),
+            WarpsModule(),
             HotfixModule(),
             LogsModule(),
             MaintenanceModule(),
@@ -70,7 +71,7 @@ public static partial class AdminPageScripts
       const moduleGroups = [
         { id: "overview", modules: ["overview"] },
         { id: "players", modules: ["accounts", "blocks", "sessions", "gridfight", "mail", "announce"] },
-        { id: "server", modules: ["commands", "access", "settings", "hotfix"] },
+        { id: "server", modules: ["commands", "access", "settings", "warps", "hotfix"] },
         { id: "ops", modules: ["logs", "maintenance", "handbook"] }
       ];
 

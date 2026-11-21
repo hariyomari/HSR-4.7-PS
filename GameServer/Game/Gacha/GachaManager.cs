@@ -123,7 +123,7 @@ public class GachaManager : BasePlayerManager<GachaData>
 
     public async ValueTask<DoGachaScRsp?> DoGacha(int bannerId, int times)
     {
-        var banner = GameData.BannersConfig.Banners.Find(x => x.GachaId == bannerId);
+        var banner = WarpSchedule.GetActiveBanners(Player).Find(x => x.GachaId == bannerId);
         if (banner == null) return BuildGachaError(bannerId, Retcode.RetGachaIdNotExist);
 
         if (times is not (1 or 10))
@@ -357,16 +357,13 @@ public class GachaManager : BasePlayerManager<GachaData>
         {
             GachaRandom = (uint)Random.Shared.Next(1000, 1999)
         };
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        foreach (var banner in GameData.BannersConfig.Banners)
+        // GetActiveBanners already drops banners outside their window (the client would hide them anyway),
+        // which keeps DoGacha's RetGachaIdNotExist the only "no such pool" path.
+        foreach (var banner in WarpSchedule.GetActiveBanners(Player))
         {
             if (banner.GachaType == GachaTypeEnum.Newbie &&
                 Data.GetPityState(GachaPityFamilyEnum.Newbie).TotalPulls >= NewbieGachaLimit)
                 continue;
-
-            // The client hides a banner whose window has closed anyway; skipping it here keeps the
-            // response honest and makes DoGacha's RetGachaIdNotExist the only "no such pool" path.
-            if (!banner.IsActiveAt(now)) continue;
 
             var newbiePulls = banner.GachaType == GachaTypeEnum.Newbie
                 ? Data.GetPityState(GachaPityFamilyEnum.Newbie).TotalPulls
@@ -384,7 +381,7 @@ public class GachaManager : BasePlayerManager<GachaData>
 
     public Retcode SetCharacterEventNonFeaturedPool(int gachaId, int decideItemType, IEnumerable<uint> selectedItems)
     {
-        var banner = GameData.BannersConfig.Banners.Find(x => x.GachaId == gachaId);
+        var banner = WarpSchedule.GetActiveBanners(Player).Find(x => x.GachaId == gachaId);
         if (banner == null)
             return Retcode.RetGachaIdNotExist;
 

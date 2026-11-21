@@ -419,6 +419,31 @@ public static class AdminPageStyles
     .finder-item:hover { background: var(--accent-soft); }
     .handbook-text { max-height: 640px; overflow: auto; padding: 14px 18px; color: var(--muted); font-size: 12.5px; }
 
+    /* -------------------------------------------------------------- warps */
+    .warp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .warp-grid.compact { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .warp-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2); text-align: left; }
+    .warp-card.idle { border-style: dashed; background: var(--panel); }
+    .warp-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .warp-card-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+    .warp-card-actions .btn { min-height: 26px; padding: 0 7px; font-size: 15px; }
+    .warp-card-actions svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .warp-featured { display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+    .warp-star { color: var(--amber); font-weight: 700; }
+    .warp-add { align-items: center; justify-content: center; min-height: 150px; border: 1.5px dashed var(--line-2); background: transparent; color: var(--muted); font-weight: 600; text-align: center; }
+    .warp-add:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-2); }
+    .warp-add-plus { font-size: 34px; font-weight: 300; line-height: 1; }
+    .warp-draft-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .warp-pick-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+    .warp-pick-tools input { flex: 1 1 220px; width: auto; }
+    .warp-pick-tools select { flex: 0 0 auto; width: auto; min-width: 140px; }
+    .warp-pick-list { display: flex; flex-direction: column; max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+    .warp-pick-item { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--ink); text-align: left; }
+    .warp-pick-item:last-child { border-bottom: 0; }
+    .warp-pick-item:hover:not(:disabled) { background: var(--accent-soft); }
+    .warp-pick-item:disabled { cursor: default; opacity: .6; }
+    .warp-pick-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
     /* ------------------------------------------------------------- toasts */
     .toast-host { position: fixed; right: 18px; bottom: 18px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, calc(100vw - 36px)); }
     .toast { padding: 11px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--ink); font-size: 13px; box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); transition: opacity .2s ease, transform .2s ease; cursor: pointer; overflow-wrap: anywhere; }
@@ -429,6 +454,7 @@ public static class AdminPageStyles
     /* -------------------------------------------------------------- modal */
     .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(24, 34, 48, 0.28); backdrop-filter: blur(4px); }
     .modal { width: min(100%, 460px); padding: 22px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px; }
+    .modal.wide { width: min(100%, 760px); max-height: calc(100vh - 40px); overflow-y: auto; }
     .modal-message { color: var(--muted); font-size: 13.5px; white-space: pre-wrap; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 

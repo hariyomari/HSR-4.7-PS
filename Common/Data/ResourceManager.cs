@@ -60,7 +60,7 @@ public class ResourceManager
         var t10 = Task.Run(LoadFinalityBattleTurnLimit);
         GameData.ActivityConfig = LoadCustomFile<ActivityConfig>("Activity", "ActivityConfig") ?? new ActivityConfig();
         LoadMissionInfoOverrides();
-        GameData.BannersConfig = LoadBanners();
+        ReloadBanners();
         GameData.VideoKeysConfig =
             LoadCustomFile<VideoKeysConfig>("VideoKeys", "VideoKeysConfig") ?? new VideoKeysConfig();
         GameData.RogueMapGenData =
@@ -567,6 +567,15 @@ public class ResourceManager
     }
 
     /// <summary>
+    ///     Re-reads both operator banner files: the served list (Banners.json) and the history pool.
+    /// </summary>
+    public static void ReloadBanners()
+    {
+        GameData.BannersConfig = LoadBanners();
+        GameData.BannerHistoryConfig = LoadBannerHistory();
+    }
+
+    /// <summary>
     ///     Reads Config/Custom/Banners.json.
     ///     Parsed entry by entry on purpose: a single bad row (most often a gachaType the server does not
     ///     know) used to abort the whole file and leave the player with no banners at all, standard pool
@@ -576,18 +585,33 @@ public class ResourceManager
     /// </summary>
     public static BannersConfig LoadBanners()
     {
-        const string filetype = "Banner";
+        return LoadBannerFile("Banner", "Banners.json", true);
+    }
+
+    /// <summary>
+    ///     Reads Config/Custom/Banners.history.json, the pool of past limited banners that the Rotation and
+    ///     Manual warp modes draw from. Its dates are historical, so no time-window warning; a missing file
+    ///     only matters when one of those modes is on, and the scheduler says so then.
+    /// </summary>
+    public static BannersConfig LoadBannerHistory()
+    {
+        return LoadBannerFile("Banner history", "Banners.history.json", false);
+    }
+
+    private static BannersConfig LoadBannerFile(string filetype, string filename, bool isServedFile)
+    {
         Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadingItem", filetype));
 
-        var customPath = Path.Combine(ConfigManager.Config.Path.ConfigPath, "Custom", "Banners.json");
-        var legacyPath = Path.Combine(ConfigManager.Config.Path.ConfigPath, "Banners.json");
-        FileInfo file = new(File.Exists(customPath) ? customPath : legacyPath);
+        var customPath = Path.Combine(ConfigManager.Config.Path.ConfigPath, "Custom", filename);
+        var legacyPath = Path.Combine(ConfigManager.Config.Path.ConfigPath, filename);
+        FileInfo file = new(File.Exists(customPath) || !isServedFile ? customPath : legacyPath);
         var config = new BannersConfig();
 
         if (!file.Exists)
         {
-            Logger.Warn(I18NManager.Translate("Server.ServerInfo.ConfigMissing", filetype,
-                $"{ConfigManager.Config.Path.ConfigPath}/Banners.json", filetype));
+            if (isServedFile)
+                Logger.Warn(I18NManager.Translate("Server.ServerInfo.ConfigMissing", filetype,
+                    $"{ConfigManager.Config.Path.ConfigPath}/{filename}", filetype));
             return config;
         }
 
@@ -635,11 +659,18 @@ public class ResourceManager
             // The client hides a pool outside its window, so a stale beginTime/endTime is by far the most
             // common reason a freshly added event banner "does not show up". Say so instead of silently
             // handing the client a banner it will never render.
-            if (!banner.IsActiveAt(now))
+            if (isServedFile && !banner.IsActiveAt(now))
                 Logger.Warn(
                     $"Banner {banner.GachaId} ({banner.GachaType}) is outside its time window " +
                     $"(beginTime {banner.BeginTime}, endTime {banner.EndTime}, now {now}) and will not be " +
                     "shown by the client.");
+
+            // The client keys pools by gacha id, so a second row with the same id could never be shown.
+            if (config.Banners.Exists(x => x.GachaId == banner.GachaId))
+            {
+                Logger.Warn($"Banner {banner.GachaId} appears more than once in {file.Name}; later rows skipped.");
+                continue;
+            }
 
             config.Banners.Add(banner);
         }

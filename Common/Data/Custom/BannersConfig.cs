@@ -29,6 +29,38 @@ public partial class BannerConfig
     // Append-only for compatibility with existing MemoryPack resource caches.
     public List<int> PrizeItems { get; set; } = [];
 
+    // History pool only (Banners.history.json): the version and phase the banner started in, e.g. "4.7" / 1.
+    // Not part of the resource cache layout; banners are always re-read from JSON after the cache branch.
+    [MemoryPackIgnore] public string Version { get; set; } = "";
+    [MemoryPackIgnore] public int Phase { get; set; }
+
+    /// <summary>
+    ///     Copy served to a player: same pool rules, new time window, optionally other featured items. The
+    ///     prize panel is rebuilt from the featured items when they change (4★ first, then 5★, as in the data).
+    /// </summary>
+    public BannerConfig WithWindow(long beginTime, long endTime, List<int>? rateUpItems5 = null,
+        List<int>? rateUpItems4 = null)
+    {
+        var featuredChanged = rateUpItems5 != null || rateUpItems4 != null;
+        var rate5 = rateUpItems5 ?? RateUpItems5;
+        var rate4 = rateUpItems4 ?? RateUpItems4;
+        return new BannerConfig
+        {
+            GachaId = GachaId,
+            BeginTime = beginTime,
+            EndTime = endTime,
+            GachaType = GachaType,
+            RateUpItems5 = [..rate5],
+            RateUpItems4 = [..rate4],
+            GetRateUpItem5Chance = GetRateUpItem5Chance,
+            MaxCount = MaxCount,
+            EventChance = EventChance,
+            PrizeItems = featuredChanged ? [..rate4, ..rate5] : [..PrizeItems],
+            Version = Version,
+            Phase = Phase
+        };
+    }
+
     public int DoGacha(
         List<int> characterEventNonFeaturedPool,
         List<int> standardGoldAvatars,

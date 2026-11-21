@@ -117,7 +117,7 @@ public static partial class AdminRoutes
             {
                 case "banner":
                 case "banners":
-                    GameData.BannersConfig = ResourceManager.LoadBanners();
+                    ResourceManager.ReloadBanners();
                     return Success(new ReloadData("banner", "Banners reloaded"));
                 case "activity":
                     GameData.ActivityConfig = ResourceManager.LoadCustomFile<ActivityConfig>("Activity", "ActivityConfig") ??

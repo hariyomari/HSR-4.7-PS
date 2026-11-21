@@ -19,7 +19,8 @@ public static partial class AdminPageScripts
         hotfix: '<svg viewBox="0 0 20 20"><path d="M4 14a4 4 0 0 1 1-7.9A5 5 0 0 1 14.5 7a3.5 3.5 0 0 1 .5 7zm6-6v7m-3-3l3 3 3-3"/></svg>',
         logs: '<svg viewBox="0 0 20 20"><path d="M4 3h12v14H4zm3 4h6m-6 3h6m-6 3h4"/></svg>',
         maintenance: '<svg viewBox="0 0 20 20"><path d="M12.5 3a4 4 0 0 0-3.7 5.5L3 14.3 5.7 17l5.8-5.8A4 4 0 0 0 17 7.5l-2.5 1-1.6-1.6 1-2.5A4 4 0 0 0 12.5 3z"/></svg>',
-        handbook: '<svg viewBox="0 0 20 20"><path d="M4 3h9a3 3 0 0 1 3 3v11H7a3 3 0 0 0-3 3zm0 0v14m3-11h6m-6 3h6"/></svg>'
+        handbook: '<svg viewBox="0 0 20 20"><path d="M4 3h9a3 3 0 0 1 3 3v11H7a3 3 0 0 0-3 3zm0 0v14m3-11h6m-6 3h6"/></svg>',
+        warps: '<svg viewBox="0 0 20 20"><path d="M9 2.5Q9.6 8.4 15.5 9 9.6 9.6 9 15.5 8.4 9.6 2.5 9 8.4 8.4 9 2.5zm6.5 10.8q.2 2 2.2 2.2-2 .2-2.2 2.2-.2-2-2.2-2.2 2-.2 2.2-2.2z"/></svg>'
       };
 
       registerModule({

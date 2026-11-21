@@ -51,6 +51,7 @@ public static partial class AdminRoutes
         MapHotfixRoutes(app);
         MapLogRoutes(app);
         MapMaintenanceRoutes(app);
+        MapWarpRoutes(app);
     }
 
     private static IResult Login(HttpContext ctx, AdminLoginRequest? request)

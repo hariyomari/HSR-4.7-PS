@@ -22,6 +22,9 @@ public static partial class GameData
 
     public static BannersConfig BannersConfig { get; set; } = new();
 
+    // Config/Custom/Banners.history.json: past limited banners for the Rotation / Manual warp modes.
+    public static BannersConfig BannerHistoryConfig { get; set; } = new();
+
     #endregion
 
     #region VideoKeys

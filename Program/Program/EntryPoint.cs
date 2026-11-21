@@ -263,7 +263,7 @@ public class EntryPoint
                 // a change only needs a restart (or the matching /reload subcommand).
                 ResourceManager.LoadMissionInfoOverrides();
                 ResourceManager.ReportTruncatedMissionGraphs();
-                GameData.BannersConfig = ResourceManager.LoadBanners();
+                ResourceManager.ReloadBanners();
                 GameData.VideoKeysConfig =
                     ResourceManager.LoadCustomFile<VideoKeysConfig>("VideoKeys", "VideoKeysConfig") ??
                     new VideoKeysConfig();

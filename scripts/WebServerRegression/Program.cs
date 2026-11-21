@@ -294,6 +294,7 @@ for (var i = 0; i < 3; i++)
     Console.WriteLine($"MEASURE maintenance request {i + 1}: {timer.Elapsed.TotalMilliseconds:F1} ms; memory {available:F0}/{total:F0} MB available");
     Check($"maintenance sample {i + 1} has valid memory", total > 0 && available >= 0 && available <= total);
 }
+await WarpChecks.Run(client, address, Check);
 await SecuritySessionChecks.Run(client, fixtureUid, fixturePassword, Check);
 Check("temporary command sessions are removed", MuipManager.Sessions.Count == 0);
 await app.StopAsync();

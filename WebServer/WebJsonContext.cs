@@ -94,6 +94,8 @@ namespace March7thHoney.WebServer;
 [JsonSerializable(typeof(AdminResult<ReloadData>))]
 [JsonSerializable(typeof(AdminResult<RateLimitData>))]
 [JsonSerializable(typeof(AdminResult<ClearedData>))]
+[JsonSerializable(typeof(AdminResult<WarpsData>))]
+[JsonSerializable(typeof(AdminResult<WarpPoolData>))]
 [JsonSerializable(typeof(AdminResult<AdminKeyRotateData>))]
 // Admin request bodies (RDG resolves these at endpoint-build time, so they must be source-gen'd
 // under AOT or the whole endpoint graph fails to materialize -> 500 on every route).
@@ -115,6 +117,10 @@ namespace March7thHoney.WebServer;
 [JsonSerializable(typeof(AdminRoutes.AdminDefaultPermissionsRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminSettingsRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminHotfixRequest))]
+[JsonSerializable(typeof(AdminRoutes.AdminWarpManualRequest))]
+[JsonSerializable(typeof(AdminRoutes.AdminWarpManualEntry))]
+[JsonSerializable(typeof(AdminRoutes.AdminWarpModeRequest))]
+[JsonSerializable(typeof(AdminRoutes.AdminWarpRotationRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminReloadRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminRateLimitClearRequest))]
 // Website game-account provisioning (WebAccountRoutes)

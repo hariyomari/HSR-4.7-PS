@@ -10,8 +10,8 @@ public class CommandReload : ICommand
     [CommandMethod("0 banner")]
     public async ValueTask ReloadBanner(CommandArg arg)
     {
-        // Reload the banners
-        GameData.BannersConfig = ResourceManager.LoadBanners();
+        // Reload the banners and the warp history pool
+        ResourceManager.ReloadBanners();
         await arg.SendMsg(I18NManager.Translate("Game.Command.Reload.ConfigReloaded",
             I18NManager.Translate("Word.Banner")));
     }

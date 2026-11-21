@@ -136,6 +136,7 @@ public class ServerOption
     // Show the Oneiric Shard tiers and grant them instantly instead of running the real SDK payment.
     public bool EnableFakeRecharge { get; set; } = true;
     public ServerTimeOption ServerTime { get; set; } = new();
+    public WarpScheduleOption Warps { get; set; } = new();
     public WelcomeMailConfig WelcomeMail { get; set; } = new();
 
     // Local hour (server time zone, the one PlayerLoginScRsp advertises) at which daily training rolls over.
@@ -316,6 +317,47 @@ public class WelcomeMailItemConfig
     public int Level { get; set; } = 1;
     public int Promotion { get; set; } = 0;
     public int TalentLevel { get; set; }
+}
+
+/// <summary>
+///     Which limited warp banners the server offers. "Static" serves Config/Custom/Banners.json as written (the
+///     historical behaviour). "Rotation" and "Manual" serve the permanent pools of Banners.json plus limited banners
+///     from the history pool in Config/Custom/Banners.history.json, stamped with fresh time windows.
+/// </summary>
+public class WarpScheduleOption
+{
+    // Static | Rotation | Manual
+    public string Mode { get; set; } = "Static";
+
+    // Length of one rotation period; manual banners without an explicit end also roll over with it.
+    public int RotationDays { get; set; } = 7;
+
+    // yyyy-MM-dd, server-local midnight. Period 0 of the rotation starts here; empty = 1970-01-01.
+    public string RotationStart { get; set; } = "";
+
+    // Phase key ("4.7-1") that runs in period 0; empty = the oldest phase in the pool.
+    public string RotationStartPhase { get; set; } = "";
+
+    // Active limited banners in Manual mode. Replaced as a whole on every change (never mutated in place),
+    // because game threads read it while the admin panel writes it.
+    public List<WarpManualEntry> Manual { get; set; } = [];
+}
+
+public class WarpManualEntry
+{
+    // Gacha id of a banner in the history pool.
+    public int GachaId { get; set; }
+
+    // Unix seconds; 0 = follow the current rotation period, so the banner never runs out.
+    public long BeginTime { get; set; }
+    public long EndTime { get; set; }
+
+    // null = the history entry's featured items.
+    public List<int>? RateUpItems5 { get; set; }
+    public List<int>? RateUpItems4 { get; set; }
+
+    // Light cone banner shown as this character banner's partner in the admin panel; 0 = none.
+    public int PairedGachaId { get; set; }
 }
 
 public class ServerTimeOption

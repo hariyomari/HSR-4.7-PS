@@ -1,5 +1,7 @@
 using System.Globalization;
 using March7thHoney.Configuration;
+using March7thHoney.Enums;
+using March7thHoney.GameServer.Game.Gacha;
 using March7thHoney.Util;
 
 namespace March7thHoney.WebServer.Handler;
@@ -100,6 +102,7 @@ public static class AdminSettingsRegistry
         var watermark = option.Watermark;
         var log = option.LogOption;
         var time = option.ServerTime;
+        var warps = option.Warps;
         var http = Config.HttpServer;
         var game = Config.GameServer;
         var serverConfig = option.ServerConfig;
@@ -227,6 +230,35 @@ public static class AdminSettingsRegistry
                     !ServerTimeProvider.TryParseDateInput(trimmed, out _))
                     return "expected yyyy-MM-dd or today";
                 time.FixedDate = trimmed;
+                return null;
+            }, false, null, null);
+
+        // --- warps ---
+        // Mode goes through WarpSchedule.SetMode so entering Manual / Rotation seeds the list and start date the
+        // same way the warps panel does.
+        yield return Choice("Warps.Mode", "warps", () => WarpSchedule.Mode.ToString(),
+            v => WarpSchedule.SetMode(Enum.Parse<WarpScheduleModeEnum>(v), WarpSchedule.Now()),
+            () => Enum.GetNames<WarpScheduleModeEnum>().ToList());
+        yield return Int("Warps.RotationDays", "warps", () => warps.RotationDays, v => warps.RotationDays = v, 1, 365);
+        yield return new SettingDef("Warps.RotationStart", "warps", "string",
+            () => warps.RotationStart,
+            value =>
+            {
+                var trimmed = value.Trim();
+                if (trimmed.Length > 0 && !ServerTimeProvider.TryParseDateInput(trimmed, out _))
+                    return "expected yyyy-MM-dd or empty";
+                warps.RotationStart = trimmed;
+                return null;
+            }, false, null, null);
+        yield return new SettingDef("Warps.RotationStartPhase", "warps", "string",
+            () => warps.RotationStartPhase,
+            value =>
+            {
+                var trimmed = value.Trim();
+                if (trimmed.Length == 0) return Assign(() => warps.RotationStartPhase = "");
+                if (WarpSchedule.Pool.FindPhase(trimmed) is not { } phase)
+                    return "not a phase of the warp history pool";
+                warps.RotationStartPhase = phase.Key;
                 return null;
             }, false, null, null);
 
