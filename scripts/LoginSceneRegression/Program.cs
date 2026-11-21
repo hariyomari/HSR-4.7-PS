@@ -3032,6 +3032,7 @@ Check("banner config loads every captured 4.6 pool with known rate-up items",
     banners.Banners.All(b => b.RateUpItems5.Concat(b.RateUpItems4).Concat(b.PrizeItems)
         .All(id => GameData.AvatarConfigData.ContainsKey(id) || GameData.EquipmentConfigData.ContainsKey(id))));
 await WarpGachaRegression.Run(Check, repository, scratch);
+await ProgressionRewardsRegression.Run(Check);
 
 var fakeRaw = Path.Combine(scratch, "fake-raw");
 Directory.CreateDirectory(Path.Combine(fakeRaw, "ExcelOutputGameCore"));

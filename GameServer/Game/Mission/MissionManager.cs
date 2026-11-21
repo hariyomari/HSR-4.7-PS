@@ -14,6 +14,7 @@ using March7thHoney.GameServer.Game.Mission.FinishAction;
 using March7thHoney.GameServer.Game.Mission.FinishType;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Scene.Entity;
+using March7thHoney.GameServer.Game.Progression;
 using March7thHoney.GameServer.Game.Task;
 using March7thHoney.GameServer.Server.Packet.Send.HeartDial;
 using March7thHoney.GameServer.Server.Packet.Send.Mission;
@@ -667,6 +668,7 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             }
         }
 
+        itemList.AddRange(await ProgressionRewards.GrantMainMission(Player, mainMission));
 
         if (itemList.Count > 0)
             await Player.SendPacket(new PacketMissionRewardScNotify(mainMissionId, 0, itemList));
@@ -688,6 +690,7 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             if (res != null) itemList.Add(res);
         }
 
+        itemList.AddRange(await ProgressionRewards.GrantSubMission(Player, subMissionId));
         await Player.SendPacket(new PacketSubMissionRewardScNotify(subMissionId, itemList));
     }
 

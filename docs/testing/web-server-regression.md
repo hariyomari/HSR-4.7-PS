@@ -45,3 +45,7 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- -
 - 读取仓库中的 `Config/Custom/Banners.history.json`：300 个卡池；补齐所有引用物品后全部合格，共 65 个阶段，`4.7-2` 阵容包含 2142、3142、2146、2147、2148、3146、3147、3148；卡池库接口返回相同数量。
 
 结束时恢复 `ServerOption.Warps` 默认值、原卡池配置并移除临时物品；`Config.json` 只写入临时目录。
+
+## 进度奖励设置
+
+`ProgressionRewardSettingsChecks.cs` 通过 `PUT /admin/api/settings` 检查设置页 `rewards` 分组（行为说明见 [进度奖励](../operations/progression-rewards.md)）：分组共 16 项，默认关闭，主任务奖励为 `1:180`、`2:10000`、`101:1`，只勾选剧情战斗；未知物品、缺少数量和非正数量均被拒绝且原列表对象不变；开关、按行编辑的奖励列表（接受 `\r\n` 与空格分隔）和战斗类型可以一起保存。结束时恢复 `ServerOption.ProgressionRewards` 并移除临时物品。

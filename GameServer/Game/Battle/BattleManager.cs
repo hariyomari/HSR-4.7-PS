@@ -6,6 +6,7 @@ using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Friend;
 using March7thHoney.GameServer.Game.GridFight;
+using March7thHoney.GameServer.Game.Progression;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
@@ -463,6 +464,9 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         // call battle end
         battle.MonsterDropItems = dropItems;
         battle.BattleResult = req;
+        // Progression bonus: listed with the drops so the result screen shows it.
+        if (req.EndStatus == BattleEndStatus.BattleEndWin)
+            dropItems.AddRange(await ProgressionRewards.GrantBattleWin(Player, battle));
 
         Player.BattleInstance = null;
 

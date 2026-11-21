@@ -32,6 +32,7 @@ March7thHoney 的文档按用途集中维护在此目录。仓库根目录的 `R
 - [账号清理与设备 / IP 封锁](operations/account-security.zh-CN.md)
 - [场景缓存元数据升级](operations/scene-cache-upgrade.md)
 - [Warp schedule（限定跃迁轮换）](operations/warp-schedule.md)
+- [Progression rewards（任务与战斗额外奖励）](operations/progression-rewards.md)
 
 ## 测试
 

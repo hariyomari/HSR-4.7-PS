@@ -1,5 +1,6 @@
 using System.Globalization;
 using March7thHoney.Configuration;
+using March7thHoney.Data;
 using March7thHoney.Enums;
 using March7thHoney.GameServer.Game.Gacha;
 using March7thHoney.Util;
@@ -103,6 +104,8 @@ public static class AdminSettingsRegistry
         var log = option.LogOption;
         var time = option.ServerTime;
         var warps = option.Warps;
+        var rewards = option.ProgressionRewards;
+        var kinds = rewards.BattleKinds;
         var http = Config.HttpServer;
         var game = Config.GameServer;
         var serverConfig = option.ServerConfig;
@@ -262,6 +265,24 @@ public static class AdminSettingsRegistry
                 return null;
             }, false, null, null);
 
+        // --- progression rewards ---
+        yield return Bool("ProgressionRewards.Enabled", "rewards", () => rewards.Enabled, v => rewards.Enabled = v);
+        yield return RewardItems("ProgressionRewards.MainMission", () => rewards.MainMission, v => rewards.MainMission = v);
+        yield return RewardItems("ProgressionRewards.SubMission", () => rewards.SubMission, v => rewards.SubMission = v);
+        yield return RewardItems("ProgressionRewards.BattleWin", () => rewards.BattleWin, v => rewards.BattleWin = v);
+        yield return Bool("ProgressionRewards.IncludeDailyMissions", "rewards", () => rewards.IncludeDailyMissions, v => rewards.IncludeDailyMissions = v);
+        yield return Bool("ProgressionRewards.IncludeCommandFinishes", "rewards", () => rewards.IncludeCommandFinishes, v => rewards.IncludeCommandFinishes = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Story", "rewards", () => kinds.Story, v => kinds.Story = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Domain", "rewards", () => kinds.Domain, v => kinds.Domain = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Rogue", "rewards", () => kinds.Rogue, v => kinds.Rogue = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Challenge", "rewards", () => kinds.Challenge, v => kinds.Challenge = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Raid", "rewards", () => kinds.Raid, v => kinds.Raid = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Trial", "rewards", () => kinds.Trial, v => kinds.Trial = v);
+        yield return Bool("ProgressionRewards.BattleKinds.CurrencyWars", "rewards", () => kinds.CurrencyWars, v => kinds.CurrencyWars = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Finality", "rewards", () => kinds.Finality, v => kinds.Finality = v);
+        yield return Bool("ProgressionRewards.BattleKinds.GmSpawn", "rewards", () => kinds.GmSpawn, v => kinds.GmSpawn = v);
+        yield return Bool("ProgressionRewards.BattleKinds.Other", "rewards", () => kinds.Other, v => kinds.Other = v);
+
         // --- logging ---
         yield return Bool("LogOption.EnableGamePacketLog", "logging", () => log.EnableGamePacketLog, v => log.EnableGamePacketLog = v);
         yield return Bool("LogOption.LogPacketToConsole", "logging", () => log.LogPacketToConsole, v => log.LogPacketToConsole = v);
@@ -379,6 +400,35 @@ public static class AdminSettingsRegistry
             set(trimmed.ToUpperInvariant());
             return null;
         }, false, null, null);
+    }
+
+    // One reward per line: itemId:count. Assigns a new list so game threads never see a half-edited one.
+    private static SettingDef RewardItems(string key, Func<List<ProgressionRewardItem>> get,
+        Action<List<ProgressionRewardItem>> set)
+    {
+        return new SettingDef(key, "rewards", "items",
+            () => string.Join("\n", get().Select(item => $"{item.ItemId}:{item.Count}")),
+            value =>
+            {
+                var items = new List<ProgressionRewardItem>();
+                var lines = value.Replace("\r\n", "\n")
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var line in lines)
+                {
+                    var parts = line.Split([':', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (parts.Length != 2 ||
+                        !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) ||
+                        !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var count))
+                        return $"'{line}': expected itemId:count";
+                    if (itemId <= 0 || count <= 0) return $"'{line}': item id and count must be positive";
+                    if (GameData.ItemConfigData.Count > 0 && !GameData.ItemConfigData.ContainsKey(itemId))
+                        return $"'{line}': item {itemId} does not exist";
+                    items.Add(new ProgressionRewardItem { ItemId = itemId, Count = count });
+                }
+
+                set(items);
+                return null;
+            }, false, null, null);
     }
 
     private static string? Assign(Action action)

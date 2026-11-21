@@ -1,3 +1,4 @@
+using March7thHoney.GameServer.Game.Progression;
 using March7thHoney.GameServer.Server;
 using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
@@ -340,6 +341,8 @@ public class CommandManager
     private async Task InvokeCommandMethod(GeneratedCommandMethod method, ICommand command, CommandArg arg,
         ICommandSender sender, string commandName)
     {
+        // Missions a command finishes pay the progression bonus only when the server allows it.
+        using var rewardScope = ProgressionRewards.EnterCommand();
         var result = method.Invoke(command, arg);
         switch (result)
         {

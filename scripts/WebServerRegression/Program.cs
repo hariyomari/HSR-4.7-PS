@@ -295,6 +295,7 @@ for (var i = 0; i < 3; i++)
     Check($"maintenance sample {i + 1} has valid memory", total > 0 && available >= 0 && available <= total);
 }
 await WarpChecks.Run(client, address, Check);
+await ProgressionRewardSettingsChecks.Run(client, Check);
 await SecuritySessionChecks.Run(client, fixtureUid, fixturePassword, Check);
 Check("temporary command sessions are removed", MuipManager.Sessions.Count == 0);
 await app.StopAsync();

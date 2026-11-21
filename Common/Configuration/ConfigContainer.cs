@@ -137,6 +137,7 @@ public class ServerOption
     public bool EnableFakeRecharge { get; set; } = true;
     public ServerTimeOption ServerTime { get; set; } = new();
     public WarpScheduleOption Warps { get; set; } = new();
+    public ProgressionRewardsOption ProgressionRewards { get; set; } = new();
     public WelcomeMailConfig WelcomeMail { get; set; } = new();
 
     // Local hour (server time zone, the one PlayerLoginScRsp advertises) at which daily training rolls over.
@@ -358,6 +359,54 @@ public class WarpManualEntry
 
     // Light cone banner shown as this character banner's partner in the admin panel; 0 = none.
     public int PairedGachaId { get; set; }
+}
+
+/// <summary>
+///     Bonus items paid on top of the official rewards when a player finishes a main mission or a sub-mission, or wins
+///     a battle of an enabled kind. Off by default; with <see cref="Enabled" /> false nothing changes.
+/// </summary>
+public class ProgressionRewardsOption
+{
+    public bool Enabled { get; set; } = false;
+
+    // Defaults: Stellar Jade (1), Credit (2), Star Rail Pass (101, the standard pass).
+    public List<ProgressionRewardItem> MainMission { get; set; } =
+        [new() { ItemId = 1, Count = 180 }, new() { ItemId = 2, Count = 10000 }, new() { ItemId = 101, Count = 1 }];
+
+    public List<ProgressionRewardItem> SubMission { get; set; } =
+        [new() { ItemId = 1, Count = 60 }, new() { ItemId = 2, Count = 2000 }];
+
+    public List<ProgressionRewardItem> BattleWin { get; set; } =
+        [new() { ItemId = 1, Count = 20 }, new() { ItemId = 2, Count = 500 }];
+
+    // Daily main missions repeat every day, so they and their sub-missions pay only when this is on.
+    public bool IncludeDailyMissions { get; set; } = false;
+
+    // Missions finished by /mission pass|finish|finishmain or /unlockall pay only when this is on.
+    public bool IncludeCommandFinishes { get; set; } = false;
+
+    public ProgressionBattleKindsOption BattleKinds { get; set; } = new();
+}
+
+public class ProgressionRewardItem
+{
+    public int ItemId { get; set; }
+    public int Count { get; set; }
+}
+
+// Which battle kinds pay BattleWin; see ProgressionBattleKindEnum for how a battle is classified.
+public class ProgressionBattleKindsOption
+{
+    public bool Story { get; set; } = true;
+    public bool Domain { get; set; } = false;
+    public bool Rogue { get; set; } = false;
+    public bool Challenge { get; set; } = false;
+    public bool Raid { get; set; } = false;
+    public bool Trial { get; set; } = false;
+    public bool CurrencyWars { get; set; } = false;
+    public bool Finality { get; set; } = false;
+    public bool GmSpawn { get; set; } = false;
+    public bool Other { get; set; } = false;
 }
 
 public class ServerTimeOption
