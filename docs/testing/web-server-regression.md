@@ -18,7 +18,7 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj
 dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- --serve
 ```
 
-打开 `http://127.0.0.1:21000/admin/index.html`，使用测试密钥 `local-web-regression-only` 登录，完成后按 Ctrl+C 停止。此模式只启动回环地址上的测试后台；配置及存库操作不用于验证。
+打开 `http://127.0.0.1:21000/admin/index.html`，使用测试密钥 `local-web-regression-only` 登录，完成后按 Ctrl+C 停止。此模式只启动回环地址上的测试后台；配置及存库操作不用于验证。跃迁页面载入仓库中的 `Banners.history.json` 与 `WarpItemNames.json`，并为卡池引用的物品补充占位行，因此可以查看带名称的卡池、按名称搜索和切换剧情筛选。
 
 ## 凭据撤销与 MUIP 生命周期
 

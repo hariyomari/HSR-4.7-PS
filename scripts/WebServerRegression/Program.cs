@@ -22,6 +22,9 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using March7thHoney.Data;
+using March7thHoney.Data.Custom;
+using March7thHoney.Data.Excel;
 
 // An isolated HTTP/command regression runner. Never load the operator's Config.json or database.
 var repository = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
@@ -69,6 +72,14 @@ if (serve)
 {
     // Pretend the fixture player is in-game so the console can actually run commands.
     connections.Add(2, new TestConnection(fixtureUid));
+    // Warps page: the repo history pool and item names, with stub item rows so every banner is eligible (the
+    // fixture loads no game data).
+    var warpHistory = ResourceManager.LoadBannerHistory();
+    foreach (var id in warpHistory.Banners.SelectMany(b => b.RateUpItems5.Concat(b.RateUpItems4).Concat(b.PrizeItems)))
+        GameData.ItemConfigData.TryAdd(id, new ItemConfigExcel { ID = id });
+    GameData.BannerHistoryConfig = warpHistory;
+    GameData.WarpItemNamesConfig =
+        ResourceManager.LoadCustomFile<WarpItemNamesConfig>("Warp item names", "WarpItemNames") ?? new WarpItemNamesConfig();
     Console.WriteLine($"UI fixture: {address}/admin/index.html (key: local-web-regression-only)");
     Console.WriteLine($"UI fixture: {address}/player/index.html (uid: {fixtureUid}, password: {fixturePassword})");
     await app.WaitForShutdownAsync();
