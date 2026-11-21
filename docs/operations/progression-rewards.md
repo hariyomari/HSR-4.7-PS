@@ -18,7 +18,7 @@ Reward lists are `{ "ItemId": n, "Count": n }` entries. In the admin console the
 
 ## When a mission pays
 
-A mission pays when it moves from accepted to finished, in the same step as its official reward. The bonus is added to the official reward notify, so the client shows both together. A finish call for a mission that is already finished pays nothing. Rogue tutorial missions that are being replayed pay nothing, like their official rewards.
+A mission pays when it moves from accepted to finished, in the same step as its official reward. The bonus is added to the official reward notify, so the client shows both together. A finish call for a mission that is already finished pays nothing. Rogue tutorial missions that are being replayed pay nothing, like their official rewards. A main mission without sub-missions pays no main bonus: it has nothing to play, and the server closes such rows (display-only Gap rows, empty Branch rows) on its own.
 
 A mission that is removed and accepted again (for example with `/mission rollback` or `/mission reaccept`) pays again when it is finished again. Those commands need GM permission.
 

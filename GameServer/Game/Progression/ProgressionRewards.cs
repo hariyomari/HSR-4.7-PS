@@ -33,8 +33,12 @@ public static class ProgressionRewards
 
     public static ValueTask<List<ItemData>> GrantMainMission(PlayerInstance player, MainMissionExcel mission)
     {
+        // A row without sub-missions has nothing to play; the server closes those itself (display-only Gap rows,
+        // empty Branch rows), so they are not progress.
         var option = Option;
-        return PaysMission(option, mission) ? Grant(player, option.MainMission) : ValueTask.FromResult(new List<ItemData>());
+        return mission.MissionInfo.SubMissionList.Count > 0 && PaysMission(option, mission)
+            ? Grant(player, option.MainMission)
+            : ValueTask.FromResult(new List<ItemData>());
     }
 
     public static ValueTask<List<ItemData>> GrantSubMission(PlayerInstance player, int subMissionId)

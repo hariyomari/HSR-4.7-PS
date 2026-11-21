@@ -1,5 +1,6 @@
 using March7thHoney.Configuration;
 using March7thHoney.Data;
+using March7thHoney.Data.Excel;
 using March7thHoney.Enums.Fight;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Battle;
@@ -111,6 +112,17 @@ internal static class ProgressionRewardsRegression
         var dailyBonus = await Bonus(rewards, player => FinishMain(player, daily.MainMissionID));
         check($"daily main mission {daily.MainMissionID} pays nothing by default",
             dailyBonus is { Reached: true, Jade: 0, Credit: 0, Pass: 0 });
+
+        // Rows without sub-missions have nothing to play (the server closes such Gap/Branch rows itself). The 4.7
+        // cache ships none, so this uses an in-process row.
+        rewards.Enabled = true;
+        var emptyPlayer = new PlayerInstance(_nextUid++);
+        await emptyPlayer.InitializeAsync();
+        var emptyRow = new MainMissionExcel { MainMissionID = 99900001, Type = MainMissionTypeEnum.Branch };
+        var jadeBefore = Counts(emptyPlayer).Jade;
+        var emptyPaid = await ProgressionRewards.GrantMainMission(emptyPlayer, emptyRow);
+        check("a main mission without sub-missions pays nothing",
+            emptyPaid.Count == 0 && Counts(emptyPlayer).Jade == jadeBefore);
 
         var commandBonus = await Bonus(rewards, FinishMainByCommand);
         check("a mission finished by a command pays nothing by default",
