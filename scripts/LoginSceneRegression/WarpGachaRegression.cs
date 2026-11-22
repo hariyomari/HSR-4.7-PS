@@ -346,12 +346,21 @@ internal static class WarpGachaRegression
             (await player.GachaManager.DoGacha(4001, 1))?.Retcode == (uint)Retcode.RetGachaNumInvalid &&
             Passes() == startPasses + 48);
         var results = new List<List<int>>();
+        var rspCounts = new List<uint>();
+        var infoCounts = new List<uint>();
         for (var batch = 0; batch < 5; batch++)
         {
             var rsp = await player.GachaManager.DoGacha(4001, 10);
-            if (rsp is { Retcode: 0 })
-                results.Add(rsp.GachaItemList.Select(g => (int)g.GachaItem_.ItemId).ToList());
+            if (rsp is not { Retcode: 0 }) continue;
+            results.Add(rsp.GachaItemList.Select(g => (int)g.GachaItem_.ItemId).ToList());
+            rspCounts.Add(rsp.NewbiePullCount);
+            infoCounts.Add(player.GachaManager.ToProto().GachaInfoList.FirstOrDefault(g => g.GachaId == 4001)
+                ?.NewbiePullCount ?? 0);
         }
+
+        // The client shows "Remaining Warps" as 50 minus newbie_pull_count; the banner is no longer sent at 50.
+        check("the Departure Warp pull count reaches the client after every 10-pull and in the banner list",
+            rspCounts.SequenceEqual([10u, 20u, 30u, 40u, 50u]) && infoCounts.SequenceEqual([10u, 20u, 30u, 40u, 0u]));
 
         var gold = player.GachaManager.GetGoldAvatars();
         check("five Departure Warp 10-pulls cost 40 passes, each with a 4-star or better, and one standard 5-star",

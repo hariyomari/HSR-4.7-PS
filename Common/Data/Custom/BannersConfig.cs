@@ -99,8 +99,7 @@ public partial class BannerConfig
         return threeStarItem;
     }
 
-    public GachaInfo ToInfo(List<int> decideOrder, List<int> goldAvatar, int gachaPullCount = 0,
-        int gachaPullLimit = 0)
+    public GachaInfo ToInfo(List<int> decideOrder, List<int> goldAvatar, int newbiePullCount = 0)
     {
         var info = new GachaInfo
         {
@@ -124,11 +123,9 @@ public partial class BannerConfig
             info.EndTime = EndTime;
         }
 
-        // TODO 4.3: 4.2 的新手池抽数/上限字段 FJIBOAGDNDG(tag13)/OKFNNHNLBOO(tag14) 在 4.3
-        // proto 整体重排后已无对应 tag，且剩余混淆字段语义不明，暂不下发新手池进度计数。
-        // 抽卡不在登录路径，不影响主流程。
-        _ = gachaPullCount;
-        _ = gachaPullLimit;
+        // Departure Warp: the client shows "Remaining Warps" as its own 50 minus this count; the server enforces the
+        // cap. The other unnamed uint32 (NHBBHEMPJJM) is not the displayed limit (in-game test, 2026-11-22).
+        if (GachaType == GachaTypeEnum.Newbie) info.NewbiePullCount = (uint)newbiePullCount;
 
         if (GachaId == 1001)
         {

@@ -34,7 +34,7 @@ message DoGachaScRsp {
 	uint32 gacha_num = 6;
 	uint32 LDBCKJIPDHF = 9;
 	uint32 NCBEDGBOJLC = 10;
-	uint32 GLLJFPENLHD = 12;
+	uint32 newbie_pull_count = 12;
 	uint32 gacha_id = 13;
 }
 
@@ -74,7 +74,7 @@ message GachaInfo {
 	repeated uint32 item_detail_list = 11;
 	repeated uint32 ONIHOMCELJK = 13;
 	string history_url = 14;
-	uint32 GLLJFPENLHD = 15;
+	uint32 newbie_pull_count = 15;
 }
 
 message GachaItem {

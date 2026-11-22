@@ -368,8 +368,8 @@ public class GachaManager : BasePlayerManager<GachaData>
             GachaId = (uint)bannerId,
             GachaNum = (uint)times
         };
-        // TODO 4.3: 4.2 的 DoGachaScRsp 新手池抽数/上限字段 (FJIBOAGDNDG/OKFNNHNLBOO) 在 4.3
-        // proto 重排后无法可靠对应，暂不下发新手池进度计数 (pity 状态仍持久化于 GachaData)。
+        // Departure Warp: the client shows "Remaining Warps" as 50 minus this count (in-game test, 2026-11-22).
+        if (banner.GachaType == GachaTypeEnum.Newbie) proto.NewbiePullCount = (uint)pityState.TotalPulls;
         proto.GachaItemList.AddRange(gachaItems);
         return proto;
     }
@@ -391,9 +391,7 @@ public class GachaManager : BasePlayerManager<GachaData>
             var newbiePulls = banner.GachaType == GachaTypeEnum.Newbie
                 ? Data.GetPityState(GachaPityFamilyEnum.Newbie).TotalPulls
                 : 0;
-            var newbieLimit = banner.GachaType == GachaTypeEnum.Newbie ? NewbieGachaLimit : 0;
-            proto.GachaInfoList.Add(banner.ToInfo(GetCharacterEventNonFeaturedPool(), GetGoldAvatars(), newbiePulls,
-                newbieLimit));
+            proto.GachaInfoList.Add(banner.ToInfo(GetCharacterEventNonFeaturedPool(), GetGoldAvatars(), newbiePulls));
         }
 
         // TODO 4.3: 4.2 的角色活动 decide-item / featured pool 下发结构 (NMBAAOBBJMI / OEIEJHBCOOM)
