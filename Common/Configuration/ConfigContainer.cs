@@ -352,6 +352,11 @@ public class WarpScheduleOption
     // through the unlocked phases in order. Manual ignores it. Players with the mission system off get Banners.json.
     public bool Story { get; set; }
 
+    // With Story: the 1.0 and 1.1 phases also wait for their story chapter (ChapterGates in WarpStoryGates.json):
+    // Seele and Silver Wolf for Jarilo-VI, Jing Yuan and Luocha for the first Xianzhou Luofu chapter, so a new account
+    // has no limited banner until it reaches Jarilo-VI. Off = whole versions only. No effect without Story.
+    public bool StoryByChapter { get; set; }
+
     // Active limited banners in Manual mode. Replaced as a whole on every change (never mutated in place),
     // because game threads read it while the admin panel writes it.
     public List<WarpManualEntry> Manual { get; set; } = [];

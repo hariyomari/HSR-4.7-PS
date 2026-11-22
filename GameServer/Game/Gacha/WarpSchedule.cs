@@ -42,18 +42,35 @@ public sealed record WarpPhase(
 /// <summary>
 ///     How far a player's story has got, for the Story filter: versions before <see cref="NextVersion" /> are
 ///     unlocked (all of them when it is null). A version without story of its own (1.1, 1.4-1.6, 2.4-2.6) unlocks
-///     with the story version before it. <see cref="Unreadable" />: the filter is on but the player's story
-///     cannot be read (mission system off, no gate data), so they get Banners.json as written.
+///     with the story version before it. With StoryByChapter, <see cref="LockedPhases" /> holds the phase keys of
+///     unlocked versions that still wait for their story chapter (empty otherwise). <see cref="Unreadable" />: the
+///     filter is on but the player's story cannot be read (mission system off, no gate data), so they get
+///     Banners.json as written.
 /// </summary>
 public sealed record WarpStoryProgress(string? ReachedVersion, string? NextVersion)
 {
     public static readonly WarpStoryProgress Unreadable = new(null, null);
 
+    /// <summary>Phase keys ("1.0-1") locked by an unreached chapter gate although their version is unlocked.</summary>
+    public IReadOnlySet<string> LockedPhases { get; init; } = new HashSet<string>();
+
     public bool IsReadable => ReachedVersion != null;
 
-    public bool Unlocks(string version)
+    /// <summary>Whether the phase <paramref name="phaseKey" /> of <paramref name="version" /> is unlocked.</summary>
+    public bool Unlocks(string version, string phaseKey)
     {
-        return NextVersion == null || WarpSchedule.CompareVersions(version, NextVersion) < 0;
+        return (NextVersion == null || WarpSchedule.CompareVersions(version, NextVersion) < 0) &&
+               !LockedPhases.Contains(phaseKey.Trim());
+    }
+
+    public bool Unlocks(WarpPhase phase)
+    {
+        return Unlocks(phase.Version, phase.Key);
+    }
+
+    public bool Unlocks(BannerConfig banner)
+    {
+        return Unlocks(banner.Version, WarpPool.PhaseKey(banner.Version, banner.Phase));
     }
 }
 
@@ -268,7 +285,9 @@ public static class WarpSchedule
     /// <summary>
     ///     Story progress of <paramref name="player" /> for the Story filter, or null when the filter is not in
     ///     effect. The newest gate version with any main mission accepted or finished is the one reached; the first
-    ///     gate (1.0) counts as reached from the start.
+    ///     gate (1.0) counts as reached from the start. With StoryByChapter the phases of every unreached chapter
+    ///     gate are locked; a chapter gate is reached through its own main missions, through a later chapter gate
+    ///     (version, then file order), or once the reached version is newer than the gate's.
     /// </summary>
     public static WarpStoryProgress? GetStoryProgress(PlayerInstance player)
     {
@@ -276,23 +295,47 @@ public static class WarpSchedule
         var missions = player.MissionManager;
         if (missions == null || !player.MissionEnabled) return WarpStoryProgress.Unreadable;
 
-        var gates = GameData.WarpStoryGatesConfig.Gates
+        Func<IEnumerable<int>, bool> anyReached = ids =>
+            ids.Any(id => missions.GetMainMissionStatus(id) is MissionPhaseEnum.Accept or MissionPhaseEnum.Finish);
+        var byVersion = Comparer<string>.Create(CompareVersions);
+        var config = GameData.WarpStoryGatesConfig;
+        var gates = config.Gates
             .Where(gate => !string.IsNullOrWhiteSpace(gate.Version))
-            .OrderBy(gate => gate.Version, Comparer<string>.Create(CompareVersions))
+            .OrderBy(gate => gate.Version, byVersion)
             .ToList();
         if (gates.Count == 0) return WarpStoryProgress.Unreadable;
 
         var reached = 0;
         for (var i = gates.Count - 1; i > 0; i--)
         {
-            if (!gates[i].MainMissions.Any(id =>
-                    missions.GetMainMissionStatus(id) is MissionPhaseEnum.Accept or MissionPhaseEnum.Finish)) continue;
+            if (!anyReached(gates[i].MainMissions)) continue;
             reached = i;
             break;
         }
 
-        return new WarpStoryProgress(gates[reached].Version.Trim(),
+        var reachedVersion = gates[reached].Version.Trim();
+        var progress = new WarpStoryProgress(reachedVersion,
             reached + 1 < gates.Count ? gates[reached + 1].Version.Trim() : null);
+        if (!Option.StoryByChapter) return progress;
+
+        // OrderBy is stable, so chapters of one version keep their file (story) order.
+        var chapterGates = config.ChapterGates
+            .Where(gate => !string.IsNullOrWhiteSpace(gate.Version))
+            .OrderBy(gate => gate.Version, byVersion)
+            .ToList();
+        var locked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var laterReached = false;
+        for (var i = chapterGates.Count - 1; i >= 0; i--)
+        {
+            var gate = chapterGates[i];
+            laterReached = laterReached || CompareVersions(reachedVersion, gate.Version) > 0 ||
+                           anyReached(gate.MainMissions);
+            if (laterReached) continue;
+            foreach (var phase in gate.Phases.Where(phase => !string.IsNullOrWhiteSpace(phase)))
+                locked.Add(phase.Trim());
+        }
+
+        return progress with { LockedPhases = locked };
     }
 
     /// <summary>
@@ -309,8 +352,9 @@ public static class WarpSchedule
 
     /// <param name="story">
     ///     Null: no Story filter. <see cref="WarpStoryProgress.Unreadable" />: Banners.json as written, whatever the
-    ///     mode. Otherwise only banners of unlocked versions (Static and Rotation; Manual ignores it). Collab banners
-    ///     are a separate group in every case (<see cref="GetCollabBanners" />).
+    ///     mode. Otherwise only banners of unlocked phases: unlocked versions, minus the phases StoryByChapter still
+    ///     locks (Static and Rotation; Manual ignores it). Collab banners are a separate group in every case
+    ///     (<see cref="GetCollabBanners" />).
     /// </param>
     public static List<BannerConfig> GetActiveBanners(long realNow, long playerNow, WarpStoryProgress? story = null)
     {
@@ -372,10 +416,11 @@ public static class WarpSchedule
         {
             case WarpScheduleModeEnum.Rotation:
             {
+                // A served lineup can hold locked banners (the Version lineup's whole version, Overlap's carry-overs).
                 var rotation = GetRotation(now, story);
                 if (rotation.Phase == null) return [];
                 return LineupOf(rotation.Phase)
-                    .Where(b => story == null || story.Unlocks(b.Version))
+                    .Where(b => story == null || story.Unlocks(b))
                     .Select(b => b.WithWindow(rotation.PeriodBegin, rotation.PeriodEnd))
                     .ToList();
             }
@@ -402,7 +447,7 @@ public static class WarpSchedule
 
                 // Static + Story: every unlocked history banner at once, rolling with the rotation period.
                 var (begin, end) = GetPeriod(now);
-                return Pool.Banners.Where(b => !IsCollab(b.GachaType) && story.Unlocks(b.Version))
+                return Pool.Banners.Where(b => !IsCollab(b.GachaType) && story.Unlocks(b))
                     .OrderBy(b => b.GachaId)
                     .Select(b => b.WithWindow(begin, end))
                     .ToList();
@@ -422,15 +467,17 @@ public static class WarpSchedule
     }
 
     /// <summary>
-    ///     Rotation position. With <paramref name="story" /> only the unlocked phases take part, in order, starting at
-    ///     RotationStartPhase when it is unlocked and at the oldest phase otherwise. With the Version lineup a period
-    ///     serves a whole version and a start phase stands for its version.
+    ///     Rotation position. With <paramref name="story" /> only the unlocked phases take part (StoryByChapter can
+    ///     lock a phase of an unlocked version), in order, starting at RotationStartPhase when it is unlocked and at
+    ///     the oldest phase otherwise; no phase at all when none is unlocked. With the Version lineup a period serves
+    ///     a whole version, which takes part when any of its phases is unlocked, and a start phase stands for its
+    ///     version.
     /// </summary>
     public static WarpRotationState GetRotation(long now, WarpStoryProgress? story = null)
     {
         var (begin, end) = GetPeriod(now);
         var pool = Pool;
-        var phases = RotationPhases(story == null ? pool.Phases : pool.Phases.Where(p => story.Unlocks(p.Version)));
+        var phases = RotationPhases(story == null ? pool.Phases : pool.Phases.Where(p => story.Unlocks(p)));
         if (phases.Count == 0) return new WarpRotationState(null, begin, end, null);
 
         var period = Math.Max(1, Option.RotationDays) * DaySeconds;

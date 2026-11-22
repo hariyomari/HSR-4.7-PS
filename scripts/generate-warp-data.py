@@ -3,8 +3,10 @@
 
 Writes two files (default: Config/Custom):
 
-  WarpStoryGates.json  version -> main mission ids of that version's Trailblaze chapters. A player has reached a
-                       version once any of them is accepted or finished.
+  WarpStoryGates.json  Gates: version -> main mission ids of that version's Trailblaze chapters. A player has reached
+                       a version once any of them is accepted or finished.
+                       ChapterGates: for ServerOption.Warps.StoryByChapter, the banner phases that wait for one
+                       chapter of their version (PHASE_CHAPTERS) instead of the whole version.
   WarpItemNames.json   names of every character and light cone, in English and Simplified Chinese, for the admin
                        Warps page.
 
@@ -60,6 +62,16 @@ NOT_STORY_CHAPTERS = {100000}
 # Main missions filed under a story chapter that are not part of it: 4030001 "Simulated Universe: First Closed Beta".
 NOT_STORY_MISSIONS = {4030001}
 
+# ChapterID -> banner phases ("{Version}-{Phase}" of Banners.history.json) that open with that chapter instead of with
+# their whole version, for ServerOption.Warps.StoryByChapter. Only 1.0 has several story chapters (from 1.2 on every
+# version has exactly one), and 1.1 has no story of its own, so only these four phases change: Seele (1.0-1) and
+# Silver Wolf (1.1-1) wait for Jarilo-VI, Jing Yuan (1.0-2) and Luocha (1.1-2) for the first Xianzhou Luofu chapter.
+# Owner decision 2026-11-22.
+PHASE_CHAPTERS = {
+    101001: ["1.0-1", "1.1-1"],  # In the Withering Wintry Night (Jarilo-VI)
+    102001: ["1.0-2", "1.1-2"],  # Windswept Wanderlust (Xianzhou Luofu)
+}
+
 LANGUAGES = {"en": "EN", "zh-CN": "CHS"}
 
 TAG = re.compile(r"<[^>]+>")
@@ -77,7 +89,12 @@ def version_key(version: str):
 def build_gates(excel: Path):
     chapters = {row["ID"]: row for row in load(excel / "MissionChapterConfig.json")}
     text = load(excel.parent / "TextMap" / "TextMapEN.json")
+
+    def chapter_name(chapter):
+        return text.get(str(chapters.get(chapter, {}).get("ChapterName", {}).get("Hash", "")), str(chapter))
+
     by_version = {}
+    by_chapter = {chapter: [] for chapter in PHASE_CHAPTERS}
     unmapped = set()
     for mission in load(excel / "MainMission.json"):
         if mission.get("Type") != "Main" or mission["MainMissionID"] in NOT_STORY_MISSIONS:
@@ -90,24 +107,38 @@ def build_gates(excel: Path):
             unmapped.add(chapter)
             continue
         entry = by_version.setdefault(version, {"Version": version, "Chapters": [], "MainMissions": []})
-        name = text.get(str(chapters.get(chapter, {}).get("ChapterName", {}).get("Hash", "")), str(chapter))
+        name = chapter_name(chapter)
         if name not in entry["Chapters"]:
             entry["Chapters"].append(name)
         entry["MainMissions"].append(mission["MainMissionID"])
+        if chapter in by_chapter:
+            by_chapter[chapter].append(mission["MainMissionID"])
 
     if unmapped:
         sys.exit(f"Story chapters without a version in CHAPTER_VERSIONS: {sorted(unmapped)}")
     missing = sorted(set(CHAPTER_VERSIONS) - {m.get("ChapterID") for m in load(excel / "MainMission.json")})
     if missing:
         sys.exit(f"CHAPTER_VERSIONS lists chapters that are not in MainMission.json: {missing}")
+    empty = sorted(chapter for chapter, missions in by_chapter.items() if not missions)
+    if empty:
+        sys.exit(f"PHASE_CHAPTERS lists chapters without story main missions: {empty}")
 
     gates = sorted(by_version.values(), key=lambda entry: version_key(entry["Version"]))
     for entry in gates:
         entry["MainMissions"].sort()
+    # Version, then PHASE_CHAPTERS order (story order within a version); the server relies on it.
+    chapter_gates = sorted(({
+        "Phases": phases,
+        "Version": CHAPTER_VERSIONS[chapter],
+        "ChapterId": chapter,
+        "Chapter": chapter_name(chapter),
+        "MainMissions": sorted(by_chapter[chapter]),
+    } for chapter, phases in PHASE_CHAPTERS.items()), key=lambda entry: version_key(entry["Version"]))
     return {
         "Source": "MainMission.json chapters; versions from the Fandom wiki Trailblaze Mission change history "
                   "(scripts/generate-warp-data.py)",
         "Gates": gates,
+        "ChapterGates": chapter_gates,
     }
 
 
@@ -156,7 +187,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     write(args.out / "WarpStoryGates.json", gates)
     write(args.out / "WarpItemNames.json", names)
-    print(f"{len(gates['Gates'])} story versions, "
+    print(f"{len(gates['Gates'])} story versions, {len(gates['ChapterGates'])} chapter gates, "
           + ", ".join(f"{lang}: {len(table)} names" for lang, table in names["Names"].items()))
 
 

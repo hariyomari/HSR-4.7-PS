@@ -265,6 +265,7 @@ public static class AdminSettingsRegistry
                 return null;
             }, false, null, null);
         yield return Bool("Warps.Story", "warps", () => warps.Story, v => warps.Story = v);
+        yield return Bool("Warps.StoryByChapter", "warps", () => warps.StoryByChapter, v => warps.StoryByChapter = v);
         yield return new SettingDef("Warps.PhaseLineup", "warps", "choice",
             () => WarpSchedule.PhaseLineup.ToString(),
             value =>

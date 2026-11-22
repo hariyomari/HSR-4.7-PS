@@ -32,13 +32,23 @@ With `Story` on, each player is offered only the limited banners of versions who
 - **Versions without new story** (1.1, 1.4–1.6, 2.4–2.6) unlock together with the story version before them: a player in 1.0's story sees the 1.0 and 1.1 banners.
 - **Order follows the version, not mission ids.** 3.8's chapter ("Memories are the Prelude to Dreams") has lower mission ids than 3.6 and 3.7.
 - **No story to read.** A player with the mission system off (server `EnableMission` false, or the per-account override) gets the `Banners.json` limited banners as written, in every mode. The same happens when the gate file is missing or empty.
+- **Per chapter (`StoryByChapter`, off by default).** With it off, gates are per version as above. With it on (and `Story` in effect), the four phases of 1.0 and 1.1 unlock per chapter instead; from 1.2 on every version has exactly one story chapter, so nothing else changes. A new account then sees no limited banners until it reaches Jarilo-VI.
+
+  | Phase | 5★ | Unlocks with chapter (`ChapterID` in `MainMission.json`) |
+  | --- | --- | --- |
+  | `1.0-1` | Seele | 101001 "In the Withering Wintry Night" (Jarilo-VI) |
+  | `1.1-1` | Silver Wolf | 101001 |
+  | `1.0-2` | Jing Yuan | 102001 "Windswept Wanderlust" (first Xianzhou Luofu chapter) |
+  | `1.1-2` | Luocha | 102001 |
+
+  A chapter counts as reached once any of its main missions is accepted or finished, once a later chapter gate is reached, or once the player has reached a version newer than the chapter's. A phase whose chapter is not reached stays hidden even though its version is unlocked.
 - The list is computed per player on every warp request, and `DoGacha` checks the same list, so a locked banner cannot be pulled. The admin Warps page shows the server-wide schedule; it notes when the filter narrows it per player.
 
 ### Generated data
 
 `scripts/generate-warp-data.py <resource dir>` writes two files into `Config/Custom` from a raw game-data tree with `ExcelOutput/` and `TextMap/` (for example `TurnBasedGameData`):
 
-- `WarpStoryGates.json`: the main missions of every story chapter (`MainMission.json`, `Type` `Main`, grouped by `ChapterID`), grouped by version. The game data does not say which version shipped a chapter, so the script carries that table, taken from the Fandom wiki's [Trailblaze Mission change history](https://honkai-star-rail.fandom.com/wiki/Trailblaze_Mission/Change_History). A new version needs one new line there; the script stops when the data has a story chapter the table does not cover. The server has no chapter data of its own, which is why the mission ids are listed explicitly.
+- `WarpStoryGates.json`: the main missions of every story chapter (`MainMission.json`, `Type` `Main`, grouped by `ChapterID`), grouped by version. The game data does not say which version shipped a chapter, so the script carries that table, taken from the Fandom wiki's [Trailblaze Mission change history](https://honkai-star-rail.fandom.com/wiki/Trailblaze_Mission/Change_History). A new version needs one new line there; the script stops when the data has a story chapter the table does not cover. The server has no chapter data of its own, which is why the mission ids are listed explicitly. The `ChapterGates` list holds the per-chapter gates used by `StoryByChapter` (phases, version, chapter id and name, and the chapter's main missions).
 - `WarpItemNames.json`: character and light cone names in English and Simplified Chinese, for the admin Warps page (cards, edit dialog, search by name). The page falls back to the GM handbook when an id is not in the file.
 
 ## Configuration (`ServerOption.Warps`)
@@ -52,6 +62,7 @@ With `Story` on, each player is offered only the limited banners of versions who
 | `PhaseLineup` | `"Started"` | Which banners make up a phase in `Rotation` and Load phase: `Started` = only the banners that opened in it; `Overlap` = also every earlier banner still running when it opened (the live lineup); `Version` = every banner that opened in either phase of its version, and the rotation steps one version per period. An unknown value behaves as `Started`. |
 | `CollabBanners` | `true` | Serve the collab banners as their own group in every mode (see above); `false` = never. |
 | `Story` | `false` | Story filter, see above. |
+| `StoryByChapter` | `false` | With the Story filter in effect, unlock the 1.0 and 1.1 phases per chapter instead of per version (see above). No effect while `Story` is off or in `Manual`. |
 | `Manual` | `[]` | Manual-mode entries, see below. |
 
 Manual entry fields:
@@ -81,7 +92,7 @@ All routes require an admin session (`Authorization: Bearer <token>` or `X-Admin
 
 | Method and path | Body | Result |
 | --- | --- | --- |
-| `GET /admin/api/warps` | — | Mode, `now`, rotation state (`days`, `start`, `start_phase`, `period_begin`, `period_end`, `current_phase`, `next_phase`), `permanent` (`Banners.json` Newbie/Normal), `scheduled` (limited banners of the current mode with served windows, including manual entries not yet open or already closed; server-wide, without the Story filter and the collab group), raw `manual` list, `pool_size`, `phase_count`, `ineligible` ids, the filter settings `story`, `story_active` (on and not `Manual`), `phase_lineup`, and `collab_banners` with the `collab` group (served windows when on; history rows, not running, when off). |
+| `GET /admin/api/warps` | — | Mode, `now`, rotation state (`days`, `start`, `start_phase`, `period_begin`, `period_end`, `current_phase`, `next_phase`), `permanent` (`Banners.json` Newbie/Normal), `scheduled` (limited banners of the current mode with served windows, including manual entries not yet open or already closed; server-wide, without the Story filter and the collab group), raw `manual` list, `pool_size`, `phase_count`, `ineligible` ids, the filter settings `story`, `story_by_chapter` (as configured), `story_active` (`story` on and not `Manual`), `phase_lineup`, and `collab_banners` with the `collab` group (served windows when on; history rows, not running, when off). |
 | `GET /admin/api/warps/pool` | — | `phases` (the rotation steps: every phase, or one per version, keyed by its first phase, with `PhaseLineup` `Version`; `key`, `version`, `phase`, `start_time`, `banner_ids` under the current `PhaseLineup` setting), the eligible `banners` with their historical windows, and `names` (`WarpItemNames.json`: `{ "en": { "1306": "Sparkle", ... }, "zh-CN": { ... } }`). |
 | `PUT /admin/api/warps/manual` | `{ "entries": [{ "gacha_id", "begin_time"?, "end_time"?, "rate_up5"?, "rate_up4"?, "paired_gacha_id"? }] }` | Validates, replaces the manual list, switches to `Manual`, saves `Config.json`. An empty list is allowed (no limited banners). |
 | `POST /admin/api/warps/mode` | `{ "mode": "Static" \| "Rotation" \| "Manual" }` | Switches mode (seeding as described above) and saves. |
@@ -89,7 +100,7 @@ All routes require an admin session (`Authorization: Bearer <token>` or `X-Admin
 
 Banner objects carry `id`, `gacha_type`, `version`, `phase`, `rate_up5`, `rate_up4`, `begin_time`, `end_time`, `running` (window contains `now`) and `default_pair_id` (the light cone banner `id + 1000` that ran beside a character banner, or 0).
 
-The Settings page exposes `Warps.Mode`, `Warps.RotationDays`, `Warps.RotationStart`, `Warps.RotationStartPhase`, `Warps.Story`, `Warps.PhaseLineup` and `Warps.CollabBanners`; it rejects an unknown mode or lineup, a malformed date and a phase key that is not in the pool. The Warps page also has the Story and Collab banners switches. A manual list with a collab banner is rejected (HTTP 400).
+The Settings page exposes `Warps.Mode`, `Warps.RotationDays`, `Warps.RotationStart`, `Warps.RotationStartPhase`, `Warps.Story`, `Warps.StoryByChapter`, `Warps.PhaseLineup` and `Warps.CollabBanners`; it rejects an unknown mode or lineup, a malformed date and a phase key that is not in the pool. The Warps page also has the Story, Per chapter and Collab banners switches. A manual list with a collab banner is rejected (HTTP 400).
 
 ## Reloading and client behaviour
 

@@ -304,6 +304,11 @@ public static partial class AdminPageScripts
                 ${toggleSwitch("warps-story", Boolean(data.story), t("warps.story"))}
                 <div class="muted small">${t("warps.story_hint")}</div>
               </div>
+              <div>
+                ${toggleSwitch("warps-story-chapter", Boolean(data.story_by_chapter), t("warps.story_chapter"))}
+                <div class="muted small">${t("warps.story_chapter_hint")}</div>
+                ${data.story ? "" : html`<div class="muted small">${t("warps.story_chapter_idle")}</div>`}
+              </div>
               ${data.story && mode === "Manual" ? html`<div class="notice">${t("warps.story_manual")}</div>` : ""}
               ${data.story_active ? html`<div class="notice">${t("warps.story_active")}</div>` : ""}
             </div>
@@ -403,6 +408,7 @@ public static partial class AdminPageScripts
 
         on(root, "[data-warp-mode]", "click", event => switchWarpMode(event.currentTarget, event.currentTarget.dataset.warpMode));
         $("#warps-story").addEventListener("change", event => setWarpSwitch(event.currentTarget, "Warps.Story", "warps.story_on", "warps.story_off"));
+        $("#warps-story-chapter").addEventListener("change", event => setWarpSwitch(event.currentTarget, "Warps.StoryByChapter", "warps.story_chapter_on", "warps.story_chapter_off"));
         $("#warps-collab").addEventListener("change", event => setWarpSwitch(event.currentTarget, "Warps.CollabBanners", "warps.collab_on", "warps.collab_off"));
         $("#warps-back")?.addEventListener("click", event => switchWarpMode(event.currentTarget, "Rotation"));
         $("#warps-restart-phase").addEventListener("change", event => warpsState.restartPhase = event.currentTarget.value);
@@ -487,8 +493,8 @@ public static partial class AdminPageScripts
         }, t("warps.mode_changed", { mode: label }));
       }
 
-      // Warps.Story and Warps.CollabBanners go through the Settings API like any other key. Neither changes the
-      // server-wide limited lineup, so an unsaved draft is kept.
+      // Warps.Story, Warps.StoryByChapter and Warps.CollabBanners go through the Settings API like any other key. None
+      // changes the server-wide limited lineup, so an unsaved draft is kept.
       async function setWarpSwitch(input, key, onMessage, offMessage) {
         const enabled = input.checked;
         const data = await run(input, async () => {

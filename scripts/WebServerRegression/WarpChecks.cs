@@ -196,7 +196,7 @@ internal static class WarpChecks
                 data.GetProperty("applied").GetInt32() == 0 && data.GetProperty("errors").GetArrayLength() == 4 &&
                 option.RotationStartPhase == "9.0-2" && option.Mode == "Rotation" && option.RotationDays == 7);
             check("settings list the warps group",
-                data.GetProperty("fields").EnumerateArray().Count(f => f.GetProperty("group").GetString() == "warps") == 7);
+                data.GetProperty("fields").EnumerateArray().Count(f => f.GetProperty("group").GetString() == "warps") == 8);
         }
 
         using (var settings = await SendData(client, HttpMethod.Put, "/admin/api/settings",
@@ -213,16 +213,18 @@ internal static class WarpChecks
                {
                    values = new Dictionary<string, string>
                    {
-                       ["Warps.Story"] = "true", ["Warps.PhaseLineup"] = "overlap", ["Warps.CollabBanners"] = "false"
+                       ["Warps.Story"] = "true", ["Warps.StoryByChapter"] = "true", ["Warps.PhaseLineup"] = "overlap",
+                       ["Warps.CollabBanners"] = "false"
                    }
                }))
         {
             var data = settings.RootElement.GetProperty("data");
             var fields = SettingValues(data);
-            check("settings round-trip Warps.Story, Warps.PhaseLineup and Warps.CollabBanners",
-                data.GetProperty("applied").GetInt32() == 3 && data.GetProperty("errors").GetArrayLength() == 0 &&
-                option.Story && option.PhaseLineup == "Overlap" && !option.CollabBanners &&
+            check("settings round-trip Warps.Story, Warps.StoryByChapter, Warps.PhaseLineup and Warps.CollabBanners",
+                data.GetProperty("applied").GetInt32() == 4 && data.GetProperty("errors").GetArrayLength() == 0 &&
+                option.Story && option.StoryByChapter && option.PhaseLineup == "Overlap" && !option.CollabBanners &&
                 fields.GetValueOrDefault("Warps.Story") == "true" &&
+                fields.GetValueOrDefault("Warps.StoryByChapter") == "true" &&
                 fields.GetValueOrDefault("Warps.PhaseLineup") == "Overlap" &&
                 fields.GetValueOrDefault("Warps.CollabBanners") == "false");
         }
@@ -231,7 +233,8 @@ internal static class WarpChecks
         {
             var data = warps.RootElement.GetProperty("data");
             check("warps reports the story filter, phase lineup and collab banner settings",
-                data.GetProperty("story").GetBoolean() && data.GetProperty("story_active").GetBoolean() &&
+                data.GetProperty("story").GetBoolean() && data.GetProperty("story_by_chapter").GetBoolean() &&
+                data.GetProperty("story_active").GetBoolean() &&
                 data.GetProperty("phase_lineup").GetString() == "Overlap" &&
                 !data.GetProperty("collab_banners").GetBoolean());
         }
@@ -249,12 +252,13 @@ internal static class WarpChecks
                {
                    values = new Dictionary<string, string>
                    {
-                       ["Warps.Story"] = "false", ["Warps.PhaseLineup"] = "Started", ["Warps.CollabBanners"] = "true"
+                       ["Warps.Story"] = "false", ["Warps.StoryByChapter"] = "false", ["Warps.PhaseLineup"] = "Started",
+                       ["Warps.CollabBanners"] = "true"
                    }
                }))
             check("settings restore the story filter, phase lineup and collab banner defaults",
-                settings.RootElement.GetProperty("data").GetProperty("applied").GetInt32() == 3 &&
-                !option.Story && option.PhaseLineup == "Started" && option.CollabBanners);
+                settings.RootElement.GetProperty("data").GetProperty("applied").GetInt32() == 4 &&
+                !option.Story && !option.StoryByChapter && option.PhaseLineup == "Started" && option.CollabBanners);
 
         // --- Manual ---
         // Seeded from the Overlap lineup of 9.0-2, which carries 2903 without its light cone banner (pair 0).

@@ -133,6 +133,7 @@ public static partial class AdminRoutes
             pool.Phases.Count,
             pool.IneligibleIds.ToList(),
             option.Story,
+            option.StoryByChapter,
             WarpSchedule.StoryActive,
             WarpSchedule.PhaseLineup.ToString(),
             option.CollabBanners,

@@ -19,16 +19,17 @@ internal static class WarpGachaRegression
 
         var option = ConfigManager.Config.ServerOption.Warps;
         var saved = (option.Mode, option.RotationDays, option.RotationStart, option.RotationStartPhase, option.Manual,
-            option.PhaseLineup, option.CollabBanners, option.Story);
+            option.PhaseLineup, option.CollabBanners, option.Story, option.StoryByChapter);
         try
         {
             await Scenarios(check);
             await StoryScenarios(check);
+            await ChapterScenarios(check);
         }
         finally
         {
             (option.Mode, option.RotationDays, option.RotationStart, option.RotationStartPhase, option.Manual,
-                option.PhaseLineup, option.CollabBanners, option.Story) = saved;
+                option.PhaseLineup, option.CollabBanners, option.Story, option.StoryByChapter) = saved;
         }
     }
 
@@ -130,6 +131,7 @@ internal static class WarpGachaRegression
         var option = ConfigManager.Config.ServerOption.Warps;
         var history = WarpSchedule.Pool.Banners;
         option.Story = true;
+        option.StoryByChapter = false;
         option.Mode = nameof(WarpScheduleModeEnum.Static);
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
@@ -188,6 +190,78 @@ internal static class WarpGachaRegression
         option.Manual = [new() { GachaId = 2146 }];
         option.Mode = nameof(WarpScheduleModeEnum.Manual);
         check("manual mode ignores the story filter", LimitedIds(player.GachaManager.ToProto()).SetEquals([2146]));
+    }
+
+    // StoryByChapter: the 1.0 and 1.1 phases also wait for their story chapter (ChapterGates in WarpStoryGates.json):
+    // Seele / Silver Wolf for Jarilo-VI (101001), Jing Yuan / Luocha for the first Xianzhou Luofu chapter (102001).
+    private static async Task ChapterScenarios(Action<string, bool> check)
+    {
+        var option = ConfigManager.Config.ServerOption.Warps;
+        option.Story = true;
+        option.StoryByChapter = false;
+        option.Mode = nameof(WarpScheduleModeEnum.Static);
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
+        int[] firstEight = [2003, 3003, 2004, 3004, 2005, 3005, 2006, 3006];
+
+        var chapters = GameData.WarpStoryGatesConfig.ChapterGates;
+        check("the chapter gates hold the Jarilo-VI and Xianzhou Luofu missions used below",
+            chapters.Any(g => g.ChapterId == 101001 && g.MainMissions.Contains(1010002) &&
+                              g.Phases.SequenceEqual(["1.0-1", "1.1-1"])) &&
+            chapters.Any(g => g.ChapterId == 102001 && g.MainMissions.Contains(1020101) &&
+                              g.Phases.SequenceEqual(["1.0-2", "1.1-2"])));
+
+        var player = new PlayerInstance(60044) { PendingMissionEnabledOverride = true };
+        await player.InitializeAsync();
+        await player.InventoryManager!.AddItem(102, 50, false, sync: false);
+        check("with StoryByChapter off a new player still gets Seele, Jing Yuan, Silver Wolf and Luocha",
+            LimitedIds(player.GachaManager!.ToProto()).IsSupersetOf([2003, 2004, 2005, 2006]) &&
+            WarpSchedule.GetStoryProgress(player)?.LockedPhases.Count == 0);
+
+        option.StoryByChapter = true;
+        check("story by chapter locks the four 1.0 / 1.1 phases of a new player",
+            WarpSchedule.GetStoryProgress(player)?.LockedPhases.SetEquals(["1.0-1", "1.1-1", "1.0-2", "1.1-2"]) == true);
+        check("static + story by chapter sends a new player no limited banner (none of 2003-2008 / 3003-3008)",
+            LimitedIds(player.GachaManager.ToProto()).Count == 0);
+        check("static + story by chapter refuses Seele's banner before Jarilo-VI",
+            (await player.GachaManager.DoGacha(2003, 1))?.Retcode == (uint)Retcode.RetGachaIdNotExist);
+
+        // Rotation with no phase unlocked: no phase, no limited banner, and no fallback to the whole pool.
+        WarpSchedule.RestartRotation("1.0-1", WarpSchedule.Now());
+        check("rotation + story by chapter sends a new player no limited banner",
+            LimitedIds(player.GachaManager.ToProto()).Count == 0 &&
+            WarpSchedule.GetRotation(WarpSchedule.Now(), WarpSchedule.GetStoryProgress(player)).Phase == null);
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Version);
+        check("rotation + story by chapter with the Version lineup sends a new player no limited banner",
+            LimitedIds(player.GachaManager.ToProto()).Count == 0);
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
+        option.Mode = nameof(WarpScheduleModeEnum.Static);
+
+        // Jarilo-VI: Seele and Silver Wolf; Jing Yuan and Luocha still wait for the Xianzhou Luofu.
+        player.MissionManager!.Data.SetMainMissionStatus(1010002, MissionPhaseEnum.Accept);
+        check("starting Jarilo-VI unlocks the Seele and Silver Wolf banners only",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals([2003, 3003, 2005, 3005]));
+        check("story by chapter refuses Jing Yuan's banner before the Xianzhou Luofu",
+            (await player.GachaManager.DoGacha(2004, 1))?.Retcode == (uint)Retcode.RetGachaIdNotExist);
+        WarpSchedule.RestartRotation("1.0-2", WarpSchedule.Now());
+        check("rotation + story by chapter starts at the oldest unlocked phase when the start phase is chapter-locked",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals([2003, 3003]));
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Version);
+        check("the Version lineup serves 1.0 without its chapter-locked phase",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals([2003, 3003]));
+        option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
+        option.Mode = nameof(WarpScheduleModeEnum.Static);
+
+        player.MissionManager.Data.SetMainMissionStatus(1020101, MissionPhaseEnum.Accept);
+        check("starting the first Xianzhou Luofu chapter also unlocks Jing Yuan and Luocha",
+            LimitedIds(player.GachaManager.ToProto()).SetEquals(firstEight));
+
+        // A later version reached opens every chapter gate of the versions before it.
+        var later = new PlayerInstance(60045) { PendingMissionEnabledOverride = true };
+        await later.InitializeAsync();
+        later.MissionManager!.Data.SetMainMissionStatus(1021201, MissionPhaseEnum.Accept);
+        check("a player who reached 1.2 gets all four 1.0 / 1.1 banners with story by chapter",
+            LimitedIds(later.GachaManager!.ToProto()).IsSupersetOf(firstEight) &&
+            WarpSchedule.GetStoryProgress(later)?.LockedPhases.Count == 0);
     }
 
     private static readonly HashSet<int> Collab = [5001, 5002, 5003, 5004, 6001, 6002, 6003, 6004];
