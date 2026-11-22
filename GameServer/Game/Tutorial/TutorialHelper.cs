@@ -3,21 +3,23 @@ using March7thHoney.Data.Excel;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Proto;
+using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Tutorial;
 
 /// <summary>
 ///     Tutorial state rules for the mission-enabled server. The client drives tutorials (UnlockTutorialCsReq when
-///     one becomes relevant, FinishTutorialCsReq when it clears); the server persists every transition and, where
-///     it cannot guarantee a tutorial's finish trigger will ever fire, refuses to let it open.
+///     one becomes relevant, FinishTutorialCsReq when it clears); the server persists every transition. With
+///     ServerOption.TutorialInputGuard on it also refuses to open a tutorial whose finish trigger it cannot guarantee.
 /// </summary>
 /// <remarks>
 ///     An open tutorial holds player input until its finish trigger fires. With the story enabled three shapes
 ///     froze players until logout: an EnterBattle-only finish (2012 → battle 20002004 never produced), a
 ///     FinishMainMission finish on a chapter never reached (3006 → 1000511), and an empty finish list without
-///     AutoFinish (4003). <see cref="CanClose" /> classifies a tutorial by its config finish conditions; an
-///     un-closable one is answered TUTORIAL_FINISH on unlock so it never grabs input, and a persisted UNLOCK that
-///     fails the check is repaired to FINISH on the next GetTutorial.
+///     AutoFinish (4003). <see cref="CanClose" /> classifies a tutorial by its config finish conditions. With the
+///     guard on, an un-closable one is answered TUTORIAL_FINISH on unlock so it never grabs input, and a persisted
+///     UNLOCK that fails the check is repaired to FINISH on the next GetTutorial. The guard is off by default so
+///     every tutorial opens as on live; turning it on and relogging releases a player a tutorial has trapped.
 /// </remarks>
 public static class TutorialHelper
 {
@@ -57,11 +59,20 @@ public static class TutorialHelper
     /// </summary>
     public static TutorialStatus Unlock(PlayerInstance player, int tutorialId)
     {
-        var status = CanClose(player, tutorialId) ? TutorialStatus.TutorialUnlock : TutorialStatus.TutorialFinish;
+        var status = MayStayOpen(player, tutorialId) ? TutorialStatus.TutorialUnlock : TutorialStatus.TutorialFinish;
         RecordTutorial(player, tutorialId, status);
         var stored = player.TutorialData?.Tutorials.GetValueOrDefault(tutorialId, status) ?? status;
         if (stored == TutorialStatus.TutorialUnlock) player.GachaManager?.OnTutorialOpened(tutorialId);
         return stored;
+    }
+
+    /// <summary>
+    ///     Whether an open tutorial may stay open: always with ServerOption.TutorialInputGuard off, otherwise only when
+    ///     <see cref="CanClose" /> holds.
+    /// </summary>
+    public static bool MayStayOpen(PlayerInstance player, int tutorialId)
+    {
+        return !ConfigManager.Config.ServerOption.TutorialInputGuard || CanClose(player, tutorialId);
     }
 
     /// <summary>Persists a guide-group status; a finished guide stays finished.</summary>

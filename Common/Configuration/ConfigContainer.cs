@@ -109,6 +109,11 @@ public class ServerOption
     // Every login returns the player to the default spawn and abandons the raid/challenge run behind the saved
     // location (skipped while a story line is active). Off keeps the saved location and resumable runs.
     public bool ResetLocationOnLogin { get; set; } = false;
+
+    // Off (default): every tutorial the client asks for opens, as on live. On: tutorials whose finish condition the
+    // server cannot guarantee are closed on arrival, and such a tutorial left open is closed at the next login, so a
+    // tutorial that holds input cannot trap the player again after relogging.
+    public bool TutorialInputGuard { get; set; } = false;
     public string Language { get; set; } = "EN";
     public string FallbackLanguage { get; set; } = "EN";
     public string DefaultPermissionRole { get; set; } = CommandRoles.User;

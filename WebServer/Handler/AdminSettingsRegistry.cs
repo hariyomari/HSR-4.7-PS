@@ -120,6 +120,7 @@ public static class AdminSettingsRegistry
         yield return Bool("ServerOption.EnableQuest", "server", () => option.EnableQuest, v => option.EnableQuest = v);
         yield return Bool("ServerOption.AutoLightSection", "server", () => option.AutoLightSection, v => option.AutoLightSection = v);
         yield return Bool("ServerOption.ResetLocationOnLogin", "server", () => option.ResetLocationOnLogin, v => option.ResetLocationOnLogin = v);
+        yield return Bool("ServerOption.TutorialInputGuard", "server", () => option.TutorialInputGuard, v => option.TutorialInputGuard = v);
         yield return Int("ServerOption.FarmingDropRate", "server", () => option.FarmingDropRate, v => option.FarmingDropRate = v, 1, 999);
         yield return Int("ServerOption.DailyResetHour", "server", () => option.DailyResetHour, v => option.DailyResetHour = v, 0, 23);
         yield return Bool("ServerOption.EnableMonthCard", "server", () => option.EnableMonthCard, v => option.EnableMonthCard = v);

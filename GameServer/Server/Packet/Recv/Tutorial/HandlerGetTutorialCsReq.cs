@@ -18,11 +18,11 @@ public class HandlerGetTutorialCsReq : PlayerHandler
         // (1xxx) are opened by the client itself and persisted from then on.
         TutorialHelper.SeedFreshAccount(player);
 
-        // Auto-repair: a persisted UNLOCK the server can never finish would hold player input forever
-        // (tutorials 2012/3006/4003 froze players until logout) - report and persist FINISH instead.
+        // Auto-repair (ServerOption.TutorialInputGuard on): a persisted UNLOCK the server can never finish would hold
+        // player input forever (tutorials 2012/3006/4003 froze players until logout) - report and persist FINISH.
         var tutorials = player.TutorialData!.Tutorials;
         foreach (var id in tutorials.Where(kv => kv.Value == TutorialStatus.TutorialUnlock).Select(kv => kv.Key).ToList())
-            if (!TutorialHelper.CanClose(player, id))
+            if (!TutorialHelper.MayStayOpen(player, id))
                 tutorials[id] = TutorialStatus.TutorialFinish;
 
         await connection.SendPacket(new PacketGetTutorialScRsp(player));

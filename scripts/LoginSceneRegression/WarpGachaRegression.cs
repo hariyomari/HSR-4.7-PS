@@ -282,14 +282,28 @@ internal static class WarpGachaRegression
         int Passes() => inventory.GetItem(101)?.Count ?? 0;
         var normal = player.GachaManager!.Data.GetPityState(GachaPityFamilyEnum.Normal);
 
-        // Right after 1000301 the tutorial's config finish (1000303) is not done yet; the tutorial still opens.
+        // Right after 1000301 the tutorial's config finish (1000303) is not done yet; the tutorial still opens, also
+        // with the input-lock guard on, because its script finishes it.
+        var server = ConfigManager.Config.ServerOption;
+        var savedGuard = server.TutorialInputGuard;
         missions.SetMainMissionStatus(1000301, MissionPhaseEnum.Finish);
         missions.SetMainMissionStatus(1000303, MissionPhaseEnum.Accept);
-        check("the warp tutorial 3002 opens right after main 1000301",
+        server.TutorialInputGuard = true;
+        check("the warp tutorial 3002 opens right after main 1000301, even with the input-lock guard on",
             TutorialHelper.Unlock(player, 3002) == TutorialStatus.TutorialUnlock &&
             player.TutorialData!.Tutorials[3002] == TutorialStatus.TutorialUnlock);
-        check("the input-lock guard still closes free-play tutorial 3006 on arrival",
-            TutorialHelper.Unlock(player, 3006) == TutorialStatus.TutorialFinish);
+        check("with the input-lock guard on, battle tutorial 2012 is closed on arrival",
+            TutorialHelper.Unlock(player, 2012) == TutorialStatus.TutorialFinish);
+
+        // Guard off (the default): every tutorial opens as on live; turning the guard on closes it at the next login.
+        server.TutorialInputGuard = false;
+        check("with the input-lock guard off, free-play tutorial 3006 opens although 1000511 is not finished",
+            TutorialHelper.Unlock(player, 3006) == TutorialStatus.TutorialUnlock &&
+            TutorialHelper.MayStayOpen(player, 3006));
+        server.TutorialInputGuard = true;
+        check("turning the input-lock guard on marks the open tutorial 3006 for closing at login, keeps 3002 open",
+            !TutorialHelper.MayStayOpen(player, 3006) && TutorialHelper.MayStayOpen(player, 3002));
+        server.TutorialInputGuard = savedGuard;
 
         // The tutorial's pull, paid with the pass from 1000301's reward.
         var startPasses = Passes();
