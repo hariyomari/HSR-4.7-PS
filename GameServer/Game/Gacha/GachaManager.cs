@@ -142,6 +142,11 @@ public class GachaManager : BasePlayerManager<GachaData>
         if (times is not (1 or 10) || (banner.GachaType == GachaTypeEnum.Newbie && times != 10))
             return BuildGachaError(bannerId, Retcode.RetGachaNumInvalid);
 
+        // The warp tutorial's Asta pull is a single Stellar Warp pull; the client has a retcode for refusing a
+        // 10-pull as that first warp.
+        if (Data.TutorialPullArmed && bannerId == StellarWarpGachaId && times != 1)
+            return BuildGachaError(bannerId, Retcode.RetGachaFirstGachaMustOne);
+
         var pityState = Data.GetPityState(GetPityFamily(banner.GachaType));
         if (banner.GachaType == GachaTypeEnum.Newbie && pityState.TotalPulls + times > NewbieGachaLimit)
             return BuildGachaError(bannerId, Retcode.RetGachaNewbieClose);

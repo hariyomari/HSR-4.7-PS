@@ -323,17 +323,25 @@ internal static class WarpGachaRegression
             TutorialHelper.Unlock(player, 3002) == TutorialStatus.TutorialFinish &&
             player.GachaManager.Data is { TutorialPullArmed: false, TutorialPullDone: true });
 
-        // A tutorial re-sent while still open (relog before the click) arms once; a 10-pull starts with Asta.
+        // A tutorial re-sent while still open (relog before the click) arms once; the armed pull must be a single.
         var relog = new PlayerInstance(60047) { PendingMissionEnabledOverride = true };
         await relog.InitializeAsync();
         relog.MissionManager!.Data.SetMainMissionStatus(1000301, MissionPhaseEnum.Finish);
         TutorialHelper.Unlock(relog, 3002);
         TutorialHelper.Unlock(relog, 3002);
-        await relog.InventoryManager!.AddItem(101, 10, false, sync: false);
-        var ten = await relog.GachaManager!.DoGacha(1001, 10);
-        check("a Stellar Warp 10-pull after the tutorial opened starts with the one Asta",
-            ten is { Retcode: 0, GachaItemList.Count: 10 } && ten.GachaItemList[0].GachaItem_.ItemId == 1009 &&
-            relog.GachaManager.Data.GetPityState(GachaPityFamilyEnum.Normal).TotalPulls == 10 &&
+        await relog.InventoryManager!.AddItem(101, 11, false, sync: false);
+        Retcode? refused = (Retcode?)(await relog.GachaManager!.DoGacha(1001, 10))?.Retcode;
+        check("a Stellar Warp 10-pull while the Asta pull is armed is refused with 3003 and charges nothing",
+            refused == Retcode.RetGachaFirstGachaMustOne &&
+            relog.InventoryManager.GetItem(101)?.Count == 11 &&
+            relog.GachaManager.Data.GetPityState(GachaPityFamilyEnum.Normal).TotalPulls == 0 &&
+            relog.GachaManager.Data is { TutorialPullArmed: true, TutorialPullDone: false });
+        var single = await relog.GachaManager.DoGacha(1001, 1);
+        var ten = await relog.GachaManager.DoGacha(1001, 10);
+        check("after the single Asta pull, Stellar Warp 10-pulls are allowed again",
+            single is { Retcode: 0, GachaItemList.Count: 1 } && single.GachaItemList[0].GachaItem_.ItemId == 1009 &&
+            ten is { Retcode: 0, GachaItemList.Count: 10 } &&
+            relog.GachaManager.Data.GetPityState(GachaPityFamilyEnum.Normal).TotalPulls == 11 &&
             relog.GachaManager.Data is { TutorialPullArmed: false, TutorialPullDone: true });
 
         // Departure Warp: permanent, 10 pulls only at 8 passes, a standard 5-star within 50, then gone.
