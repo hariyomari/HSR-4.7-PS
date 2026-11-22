@@ -429,7 +429,8 @@ public class Connection(KcpConversation conversation, IPEndPoint remote) : March
         }
 
         // No handler found
-        // 教程请求收到任何响应都会让客户端弹出本不该出现的教程界面，与 csproj 排除这三个 handler 同源。
+        // 教程请求收到任何空响应都会让客户端弹出本不该出现的教程界面。这三个请求现由 Packet/Recv/Tutorial 下的
+        // handler 处理；此分支仅在 handler 被排除或未注册时兜底，保持不回包。
         if (opcode == CmdIds.GetTutorialCsReq || opcode == CmdIds.GetTutorialGuideCsReq ||
             opcode == CmdIds.UnlockTutorialCsReq) return;
 

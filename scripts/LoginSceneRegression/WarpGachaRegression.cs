@@ -4,6 +4,7 @@ using March7thHoney.Enums;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Gacha;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.Tutorial;
 using March7thHoney.Proto;
 using March7thHoney.Util;
 
@@ -25,6 +26,7 @@ internal static class WarpGachaRegression
             await Scenarios(check);
             await StoryScenarios(check);
             await ChapterScenarios(check);
+            await PermanentScenarios(check);
         }
         finally
         {
@@ -262,6 +264,91 @@ internal static class WarpGachaRegression
         check("a player who reached 1.2 gets all four 1.0 / 1.1 banners with story by chapter",
             LimitedIds(later.GachaManager!.ToProto()).IsSupersetOf(firstEight) &&
             WarpSchedule.GetStoryProgress(later)?.LockedPhases.Count == 0);
+    }
+
+    // The live new-account flow on the permanent pools: the warp tutorial (3002) opens once main 1000301 ("A Moment
+    // of Peace") is done and its one Stellar Warp pull is Asta (1009); the Departure Warp (4001) takes 50 pulls.
+    private static async Task PermanentScenarios(Action<string, bool> check)
+    {
+        var option = ConfigManager.Config.ServerOption.Warps;
+        option.Story = false;
+        option.StoryByChapter = false;
+        option.Mode = nameof(WarpScheduleModeEnum.Static);
+
+        var player = new PlayerInstance(60046) { PendingMissionEnabledOverride = true };
+        await player.InitializeAsync();
+        var missions = player.MissionManager!.Data;
+        var inventory = player.InventoryManager!;
+        int Passes() => inventory.GetItem(101)?.Count ?? 0;
+        var normal = player.GachaManager!.Data.GetPityState(GachaPityFamilyEnum.Normal);
+
+        // Right after 1000301 the tutorial's config finish (1000303) is not done yet; the tutorial still opens.
+        missions.SetMainMissionStatus(1000301, MissionPhaseEnum.Finish);
+        missions.SetMainMissionStatus(1000303, MissionPhaseEnum.Accept);
+        check("the warp tutorial 3002 opens right after main 1000301",
+            TutorialHelper.Unlock(player, 3002) == TutorialStatus.TutorialUnlock &&
+            player.TutorialData!.Tutorials[3002] == TutorialStatus.TutorialUnlock);
+        check("the input-lock guard still closes free-play tutorial 3006 on arrival",
+            TutorialHelper.Unlock(player, 3006) == TutorialStatus.TutorialFinish);
+
+        // The tutorial's pull, paid with the pass from 1000301's reward.
+        var startPasses = Passes();
+        await inventory.AddItem(101, 1, false, sync: false);
+        var tutorialPull = await player.GachaManager.DoGacha(1001, 1);
+        check("the warp tutorial's Stellar Warp pull is Asta, new, paid with the one pass",
+            tutorialPull is { Retcode: 0, GachaItemList.Count: 1 } &&
+            tutorialPull.GachaItemList[0].GachaItem_.ItemId == 1009 && tutorialPull.GachaItemList[0].IsNew &&
+            player.AvatarManager!.GetFormalAvatar(1009) != null && Passes() == startPasses);
+        check("the tutorial pull is in the warp records and counts as a Stellar Warp 4-star",
+            player.GachaManager.Data.GachaHistory.LastOrDefault() is { GachaId: 1001, ItemId: 1009 } &&
+            normal is { TotalPulls: 1, PullsSinceFourStarOrHigher: 0, PullsSinceFiveStar: 1 });
+
+        // The tutorial finishes itself; opening it again cannot arm a second Asta.
+        TutorialHelper.RecordTutorial(player, 3002, TutorialStatus.TutorialFinish);
+        check("a finished warp tutorial stays finished and is not armed again",
+            TutorialHelper.Unlock(player, 3002) == TutorialStatus.TutorialFinish &&
+            player.GachaManager.Data is { TutorialPullArmed: false, TutorialPullDone: true });
+
+        // A tutorial re-sent while still open (relog before the click) arms once; a 10-pull starts with Asta.
+        var relog = new PlayerInstance(60047) { PendingMissionEnabledOverride = true };
+        await relog.InitializeAsync();
+        relog.MissionManager!.Data.SetMainMissionStatus(1000301, MissionPhaseEnum.Finish);
+        TutorialHelper.Unlock(relog, 3002);
+        TutorialHelper.Unlock(relog, 3002);
+        await relog.InventoryManager!.AddItem(101, 10, false, sync: false);
+        var ten = await relog.GachaManager!.DoGacha(1001, 10);
+        check("a Stellar Warp 10-pull after the tutorial opened starts with the one Asta",
+            ten is { Retcode: 0, GachaItemList.Count: 10 } && ten.GachaItemList[0].GachaItem_.ItemId == 1009 &&
+            relog.GachaManager.Data.GetPityState(GachaPityFamilyEnum.Normal).TotalPulls == 10 &&
+            relog.GachaManager.Data is { TutorialPullArmed: false, TutorialPullDone: true });
+
+        // Departure Warp: permanent, 10 pulls only at 8 passes, a standard 5-star within 50, then gone.
+        var departure = player.GachaManager.ToProto().GachaInfoList.FirstOrDefault(g => g.GachaId == 4001);
+        check("a new account is sent the Departure Warp without a time window, showing the seven standard 5-stars",
+            departure is { BeginTime: 0, EndTime: 0 } &&
+            departure.PrizeItemList.Order().SequenceEqual([1003u, 1004u, 1101u, 1104u, 1107u, 1209u, 1211u]));
+        await inventory.AddItem(101, 48, false, sync: false);
+        check("the Departure Warp refuses a single pull and charges nothing",
+            (await player.GachaManager.DoGacha(4001, 1))?.Retcode == (uint)Retcode.RetGachaNumInvalid &&
+            Passes() == startPasses + 48);
+        var results = new List<List<int>>();
+        for (var batch = 0; batch < 5; batch++)
+        {
+            var rsp = await player.GachaManager.DoGacha(4001, 10);
+            if (rsp is { Retcode: 0 })
+                results.Add(rsp.GachaItemList.Select(g => (int)g.GachaItem_.ItemId).ToList());
+        }
+
+        var gold = player.GachaManager.GetGoldAvatars();
+        check("five Departure Warp 10-pulls cost 40 passes, each with a 4-star or better, and one standard 5-star",
+            results.Count == 5 && Passes() == startPasses + 8 &&
+            results.All(batch => batch.Count == 10 && batch.Any(id => player.GachaManager.GetRarity(id) >= 4)) &&
+            results.SelectMany(b => b).Any(gold.Contains) &&
+            results.SelectMany(b => b).Where(id => player.GachaManager.GetRarity(id) == 5).All(gold.Contains));
+        check("the Departure Warp closes after 50 pulls and leaves the Stellar Warp counters alone",
+            (await player.GachaManager.DoGacha(4001, 10))?.Retcode == (uint)Retcode.RetGachaNewbieClose &&
+            Passes() == startPasses + 8 && player.GachaManager.ToProto().GachaInfoList.All(g => g.GachaId != 4001) &&
+            player.GachaManager.ToProto().GachaInfoList.Any(g => g.GachaId == 1001) && normal.TotalPulls == 1);
     }
 
     private static readonly HashSet<int> Collab = [5001, 5002, 5003, 5004, 6001, 6002, 6003, 6004];

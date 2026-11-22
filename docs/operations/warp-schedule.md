@@ -14,6 +14,13 @@ The permanent pools (`Newbie`, `Normal`) always come from `Banners.json`, in eve
 
 Switching to `Manual` while the list is empty seeds it with the banners that are running at that moment, so the switch itself changes nothing players see. Switching to `Rotation` without a start date starts the rotation today.
 
+## Permanent pools
+
+`Banners.json` ships both live permanent pools. Neither carries a time window in the banner list.
+
+- **Stellar Warp (1001, `Normal`).** Star Rail Pass (101), single or 10 pulls. The warp tutorial (3002) starts after Trailblaze Mission "A Moment of Peace" (main 1000301), which pays the one pass. Opening it arms a one-time rule: the account's next Stellar Warp pull is Asta (1009). The pull costs the pass, appears in the warp records and counts as a 4★ on the standard counters. The rule is stored per account and is never armed twice.
+- **Departure Warp (4001, `Newbie`).** Star Rail Pass (101), 10 pulls only, at 8 passes each. One of the seven standard 5★ characters comes at the latest on the 50th pull, and only 50 pulls are allowed; after that the banner is no longer sent. A 4★ or better comes in every 10 pulls. Its pity counter is separate from the Stellar Warp's. Its `rateUpItems5` (the same seven characters) is only what the banner displays.
+
 ## Collab banners
 
 The collaboration banners of the history pool (the four collab character banners and their four light cone banners, ids 5001–5004 and 6001–6004) are a group of their own, like the permanent pools. With `CollabBanners` on (the default) all of them are served in every mode, to every player, with the current rotation period as their window: they are not part of any phase lineup, the Story filter does not hide them, and a Manual list cannot hold them. With it off none are served. Collab rows in `Banners.json` are never served; the group comes from the history pool.

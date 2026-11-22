@@ -117,7 +117,8 @@ public partial class BannerConfig
         info.PrizeItemList.AddRange(displayItems.Select(id => (uint)id));
         info.ONIHOMCELJK.AddRange(RateUpItems5.Select(id => (uint)id));
 
-        if (GachaType != GachaTypeEnum.Normal)
+        // Permanent pools (Stellar Warp, Departure Warp) carry no window; the Departure Warp ends by its pull cap.
+        if (GachaType is not (GachaTypeEnum.Normal or GachaTypeEnum.Newbie))
         {
             info.BeginTime = BeginTime;
             info.EndTime = EndTime;

@@ -20,6 +20,11 @@ public class GachaData : BaseDatabaseDataHelper
     public int CharacterEventDecideItemType { get; set; } = 1;
     public Dictionary<string, GachaPityState> PityStates { get; set; } = [];
 
+    // Warp tutorial (3002): armed when the tutorial opens, spent by the next Stellar Warp pull, which is Asta.
+    // Done stays set so the tutorial cannot arm it again.
+    public bool TutorialPullArmed { get; set; }
+    public bool TutorialPullDone { get; set; }
+
     public GachaPityState GetPityState(GachaPityFamilyEnum family)
     {
         PityStates ??= [];

@@ -27,6 +27,15 @@ public static class TutorialHelper
     /// </summary>
     private static readonly int[] SeedFinishedTutorials = [4033, 4049, 4050, 4051, 4052, 4072];
 
+    /// <summary>
+    ///     Free-play tutorials whose level script finishes them itself once the player follows the guide; their
+    ///     config finish condition is not what closes them. 3002 (warp tutorial, Tutorial_3002.json) unlocks after
+    ///     main 1000301, which also unlocks the Warp feature and pays the Star Rail Pass; the script opens the
+    ///     Stellar Warp, waits for the single-pull click and ends with TutorialFinish 3002. Its config finish (main
+    ///     1000303) is the next story step and cannot be reached while the tutorial holds input.
+    /// </summary>
+    private static readonly HashSet<int> ScriptFinishedTutorials = [3002];
+
     public static void SeedFreshAccount(PlayerInstance player)
     {
         if (!player.MissionEnabled || player.TutorialData == null || player.TutorialData.Tutorials.Count > 0) return;
@@ -40,6 +49,19 @@ public static class TutorialHelper
         if (player.TutorialData.Tutorials.TryGetValue(tutorialId, out var current) &&
             current == TutorialStatus.TutorialFinish) return;
         player.TutorialData.Tutorials[tutorialId] = status;
+    }
+
+    /// <summary>
+    ///     Answers the client's UnlockTutorialCsReq: opens the tutorial (persisted UNLOCK) unless the input-lock guard
+    ///     closes it on arrival, and returns the status to report. Opening the warp tutorial arms its Asta pull.
+    /// </summary>
+    public static TutorialStatus Unlock(PlayerInstance player, int tutorialId)
+    {
+        var status = CanClose(player, tutorialId) ? TutorialStatus.TutorialUnlock : TutorialStatus.TutorialFinish;
+        RecordTutorial(player, tutorialId, status);
+        var stored = player.TutorialData?.Tutorials.GetValueOrDefault(tutorialId, status) ?? status;
+        if (stored == TutorialStatus.TutorialUnlock) player.GachaManager?.OnTutorialOpened(tutorialId);
+        return stored;
     }
 
     /// <summary>Persists a guide-group status; a finished guide stays finished.</summary>
@@ -74,6 +96,7 @@ public static class TutorialHelper
     private static bool CanClose(PlayerInstance player, TutorialDataExcel config, HashSet<int> seen)
     {
         if (!seen.Add(config.TutorialID)) return true; // cycle guard
+        if (ScriptFinishedTutorials.Contains(config.TutorialID)) return true;
 
         if (config.FinishTriggerParams.Count == 0)
             // No finish condition: only a self-closing AutoFinish tutorial is safe.

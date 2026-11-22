@@ -18,6 +18,12 @@ public class GachaManager : BasePlayerManager<GachaData>
     private const int NewbieTenPullCost = 8;
     private const int CelestialInvitationPoolSize = 7;
 
+    // Tutorial_3002.json opens the Stellar Warp (GachaID1001) and has the player make one pull; on live that pull is
+    // always Asta (AvatarConfig 1009).
+    private const int WarpTutorialId = 3002;
+    private const int StellarWarpGachaId = 1001;
+    private const int TutorialPullAvatarId = 1009;
+
     private static readonly HashSet<int> KnownBattlePassLightCones =
     [
         21028, 21029, 21030, 21031, 21032, 21033, 21034,
@@ -40,6 +46,13 @@ public class GachaManager : BasePlayerManager<GachaData>
         EnsureCharacterEventNonFeaturedPool();
     }
 
+    /// <summary>Opening the warp tutorial arms its scripted Asta pull, once per account.</summary>
+    public void OnTutorialOpened(int tutorialId)
+    {
+        if (tutorialId != WarpTutorialId || Data.TutorialPullArmed || Data.TutorialPullDone) return;
+        Data.TutorialPullArmed = true;
+        MarkDirty();
+    }
 
     public List<int> GetPurpleAvatars()
     {
@@ -126,7 +139,7 @@ public class GachaManager : BasePlayerManager<GachaData>
         var banner = WarpSchedule.GetActiveBanners(Player).Find(x => x.GachaId == bannerId);
         if (banner == null) return BuildGachaError(bannerId, Retcode.RetGachaIdNotExist);
 
-        if (times is not (1 or 10))
+        if (times is not (1 or 10) || (banner.GachaType == GachaTypeEnum.Newbie && times != 10))
             return BuildGachaError(bannerId, Retcode.RetGachaNumInvalid);
 
         var pityState = Data.GetPityState(GetPityFamily(banner.GachaType));
@@ -150,7 +163,17 @@ public class GachaManager : BasePlayerManager<GachaData>
 
         var decideItem = GetCharacterEventNonFeaturedPool();
         var items = new List<int>();
-        for (var i = 0; i < times; i++)
+        if (Data.TutorialPullArmed && bannerId == StellarWarpGachaId &&
+            GameData.ItemConfigData.ContainsKey(TutorialPullAvatarId))
+        {
+            // The warp tutorial's pull: Asta, recorded like a rolled 4-star on the Stellar Warp counters.
+            Data.TutorialPullArmed = false;
+            Data.TutorialPullDone = true;
+            Data.GetPityState(GachaPityFamilyEnum.Normal).RecordFourStar();
+            items.Add(TutorialPullAvatarId);
+        }
+
+        while (items.Count < times)
         {
             var item = banner.DoGacha(decideItem, GetGoldAvatars(), GetPurpleAvatars(), GetPurpleWeapons(),
                 GetGoldWeapons(), GetBlueWeapons(), Data);
