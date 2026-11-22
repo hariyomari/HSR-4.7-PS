@@ -13,6 +13,8 @@ namespace March7thHoney.WebServer;
 
 public class WebProgram
 {
+    private static readonly Logger HttpLogger = new("Http");
+
     public static void Main(string[] args, int port, string address)
     {
         BuildWebApp(args, port, address).Start();
@@ -91,6 +93,8 @@ public class WebProgram
                 }
 
                 await buffer.CopyToAsync(bodyStream);
+                // Path only: query strings can carry login and pay tokens.
+                HttpLogger.Debug($"{context.Request.Method} {context.Request.Path} -> {response.StatusCode}, {buffer.Length} bytes");
             }
             finally
             {
