@@ -373,7 +373,8 @@ public class GachaManager : BasePlayerManager<GachaData>
             GachaId = (uint)bannerId,
             GachaNum = (uint)times
         };
-        // Departure Warp: the client shows "Remaining Warps" as 50 minus this count (in-game test, 2026-11-22).
+        // Departure Warp: same obfuscated field as GachaInfo.newbie_pull_count (mapped in game, 2026-11-22), so
+        // inferred to carry the updated count after the pull.
         if (banner.GachaType == GachaTypeEnum.Newbie) proto.NewbiePullCount = (uint)pityState.TotalPulls;
         proto.GachaItemList.AddRange(gachaItems);
         return proto;
