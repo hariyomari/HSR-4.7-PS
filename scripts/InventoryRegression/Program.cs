@@ -232,6 +232,8 @@ var coinProduct = new RechargeConfigExcel
     NormalCharge = 30
 };
 config.ServerOption.EnableFakeRecharge = true;
+config.ServerOption.RechargeDoubleBonusResetDate = "04-26";
+player.Data.FakeTimeDate = 20260425;
 player.Data.Mcoin = 0;
 var beforeQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
 var firstCoin = await RechargeService.Purchase(player, coinProduct);
@@ -245,6 +247,28 @@ Check("Oneiric Pouch grants 2x on first purchase, clears DoubleReward, and pays 
     secondCoin == RechargeResult.Granted &&
     afterSecondQuery.ProductList.Single() is { BuyTimes: 2, DoubleReward: false } &&
     player.Data.Mcoin == 300 * 2 + 300 + 30);
+
+player.Data.FakeTimeDate = 20260426;
+var afterAnnivQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+var mcoinBeforeAnniv = player.Data.Mcoin;
+var annivCoin = await RechargeService.Purchase(player, coinProduct);
+Check("Oneiric Pouch 2x bonus resets on the configured anniversary date (04-26)",
+    afterAnnivQuery.ProductList.Single() is { BuyTimes: 0, DoubleReward: true } &&
+    annivCoin == RechargeResult.Granted &&
+    player.Data.Mcoin == mcoinBeforeAnniv + 300 * 2);
+
+config.ServerOption.RechargeDoubleBonusResetDate = "";
+player.Data.FakeTimeDate = 20270426;
+var disabledResetQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+Check("clearing RechargeDoubleBonusResetDate disables automatic annual resets",
+    disabledResetQuery.ProductList.Single() is { BuyTimes: 1, DoubleReward: false });
+
+config.ServerOption.RechargeDoubleBonusResetDate = "10-01";
+player.Data.FakeTimeDate = 20271001;
+var customResetQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+Check("a custom RechargeDoubleBonusResetDate resets on that date",
+    customResetQuery.ProductList.Single() is { BuyTimes: 0, DoubleReward: true });
+config.ServerOption.RechargeDoubleBonusResetDate = "04-26";
 
 // --- Item synthesis ----------------------------------------------------------------------------------------------
 SetBalance(0, 0);

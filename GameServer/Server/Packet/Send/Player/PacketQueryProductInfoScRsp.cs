@@ -29,6 +29,8 @@ public class PacketQueryProductInfoScRsp : BasePacket
     {
         var now = ServerTimeProvider.GetServerUnixSec(playerData);
         var shopData = playerData == null ? null : DatabaseHelper.Instance?.GetInstance<ShopData>(playerData.Uid);
+        if (shopData != null && playerData != null)
+            RechargeService.EnsureDoubleBonusWindow(shopData, playerData, playerData.Uid);
         List<Product> products = [];
         foreach (var item in config.ProductList)
         {

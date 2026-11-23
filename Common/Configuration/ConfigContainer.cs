@@ -144,6 +144,10 @@ public class ServerOption
 
     // Show the Oneiric Shard tiers and grant them instantly instead of running the real SDK payment.
     public bool EnableFakeRecharge { get; set; } = true;
+
+    // Annual MM-DD date (at DailyResetHour) when Oneiric Pouch first-time 2x bonuses reset; defaults to HSR's April 26
+    // anniversary. Empty disables automatic annual resets.
+    public string RechargeDoubleBonusResetDate { get; set; } = "04-26";
     public ServerTimeOption ServerTime { get; set; } = new();
     public WarpScheduleOption Warps { get; set; } = new();
     public ProgressionRewardsOption ProgressionRewards { get; set; } = new();
@@ -185,6 +189,30 @@ public class ServerOption
     public int ValidDailyResetHour()
     {
         return Math.Clamp(DailyResetHour, 0, 23);
+    }
+
+    public bool TryGetRechargeDoubleBonusResetDate(out int month, out int day)
+    {
+        return TryParseMonthDay(RechargeDoubleBonusResetDate, out month, out day);
+    }
+
+    /// <summary>
+    ///     Parses an annual "MM-DD" date. Leap-day "02-29" is accepted and clamps to Feb 28 in non-leap years.
+    /// </summary>
+    public static bool TryParseMonthDay(string? raw, out int month, out int day)
+    {
+        month = 0;
+        day = 0;
+        var trimmed = raw?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return false;
+        var parts = trimmed.Split('-');
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out month) ||
+            !int.TryParse(parts[1], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out day))
+            return false;
+        return month is >= 1 and <= 12 && day >= 1 && day <= DateTime.DaysInMonth(2024, month);
     }
 }
 

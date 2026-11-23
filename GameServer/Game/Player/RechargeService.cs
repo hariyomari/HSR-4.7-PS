@@ -1,8 +1,10 @@
 using March7thHoney.Data.Excel;
 using March7thHoney.Database;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Database.Player;
 using March7thHoney.Database.Shop;
 using March7thHoney.Enums.Item;
+using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Proto;
@@ -45,11 +47,42 @@ public static class RechargeService
         };
     }
 
+    /// <summary>
+    ///     Returns the yyyyMMdd reset boundary that opened the annual 2x-bonus cycle containing <paramref name="dayKey" />.
+    /// </summary>
+    public static int GetDoubleBonusResetKey(int dayKey, int resetMonth, int resetDay)
+    {
+        var year = dayKey / 10000;
+        var thisYearBoundary = year * 10000 + resetMonth * 100 + Math.Min(resetDay, DateTime.DaysInMonth(year, resetMonth));
+        if (dayKey >= thisYearBoundary) return thisYearBoundary;
+        var prevYear = year - 1;
+        return prevYear * 10000 + resetMonth * 100 + Math.Min(resetDay, DateTime.DaysInMonth(prevYear, resetMonth));
+    }
+
+    /// <summary>
+    ///     Rolls a player's Oneiric Pouch 2x bonus history when the configured annual reset date has passed.
+    /// </summary>
+    public static void EnsureDoubleBonusWindow(ShopData shopData, PlayerData? playerData, int uid)
+    {
+        if (!ConfigManager.Config.ServerOption.TryGetRechargeDoubleBonusResetDate(out var resetMonth, out var resetDay))
+            return;
+
+        var periodKey = GetDoubleBonusResetKey(DailyResetClock.Today(playerData), resetMonth, resetDay);
+        if (shopData.RechargeDoubleBonusResetKey == periodKey) return;
+
+        if (shopData.RechargeDoubleBonusResetKey != 0)
+            shopData.RechargeProductBuyTimes.Clear();
+
+        shopData.RechargeDoubleBonusResetKey = periodKey;
+        DatabaseHelper.MarkDirty(uid);
+    }
+
     private static async ValueTask<RechargeResult> GrantCoin(PlayerInstance player, RechargeConfigExcel product)
     {
         if (!ConfigManager.Config.ServerOption.EnableFakeRecharge) return RechargeResult.Disabled;
 
         var shopData = player.ShopManager?.Data ?? DatabaseHelper.Instance?.GetInstanceOrCreateNew<ShopData>(player.Uid);
+        if (shopData != null) EnsureDoubleBonusWindow(shopData, player.Data, player.Uid);
         var buyTimes = shopData?.RechargeProductBuyTimes.GetValueOrDefault(product.ProductID) ?? 0;
         var isFirstPurchase = buyTimes == 0;
         var bonus = isFirstPurchase ? product.FirstCharge : product.NormalCharge;
