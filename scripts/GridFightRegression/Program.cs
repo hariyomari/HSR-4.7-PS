@@ -2151,6 +2151,10 @@ Check("leaving a run clears its saved copy and the next run gets a new id",
 var doomedRestart = afterRestart.Session!;
 MoveToPenalizedNode(doomedRestart);
 typeof(GridFightSession).GetProperty(nameof(GridFightSession.LineupHp))!.SetValue(doomedRestart, 1u);
+// A rolled partner guard (effect 102001) would turn this loss into a clear; spend it so the partner roll cannot.
+typeof(GridFightSession).GetField("_petPalGuardUsed",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+    .SetValue(doomedRestart, true);
 var doomedRestartEntered = doomedRestart.EnterBattle();
 afterRestart.Persist();
 DatabaseHelper.Instance!.SaveUidData(PersistUid);
