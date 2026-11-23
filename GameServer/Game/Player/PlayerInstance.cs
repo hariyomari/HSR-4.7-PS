@@ -190,11 +190,12 @@ public partial class PlayerInstance(PlayerData data)
 
     private async ValueTask InitialPlayerManager()
     {
-        WireManagers();
+        DatabaseHelper.CreateBatch(WireManagers);
         await NormalizePostLoad();
     }
 
-    // Construct the managers and resolve the per-table DB data. Pure synchronous wiring.
+    // Construct the managers and components and resolve the per-table DB data. Pure synchronous wiring: it runs inside
+    // DatabaseHelper.CreateBatch, which inserts the rows a new player needs in one transaction.
     private void WireManagers()
     {
         Uid = Data.Uid;
@@ -249,16 +250,16 @@ public partial class PlayerInstance(PlayerData data)
         CalyxOverrideData = InitializeDatabase<CalyxOverrideData>();
         CalyxOverrideManager!.AttachData(CalyxOverrideData);
         FriendRecordData = InitializeDatabase<FriendRecordData>();
+
+        Components.Add(new SwitchHandComponent(this));
+        Components.Add(new FiveDimComponent(this));
+        Components.Add(new DailyActiveManager(this));
+        Components.Add(new PetManager(this));
     }
 
     // Deterministic post-load fixups + condition-gated mission/quest acceptance. Runs after WireManagers.
     private async ValueTask NormalizePostLoad()
     {
-        Components.Add(new SwitchHandComponent(this));
-        Components.Add(new FiveDimComponent(this));
-        Components.Add(new DailyActiveManager(this));
-        Components.Add(new PetManager(this));
-
         if ((int)(ServerPrefsData!.Version * 1000) != GameConstants.GameVersionInt)
         {
             ServerPrefsData.ServerPrefsDict.Clear();

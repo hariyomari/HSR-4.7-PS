@@ -34,6 +34,8 @@ public class DatabaseHelper
 
     private static bool _mysql;
     private static string _connString = "";
+    // Set while CreateBatch runs on this thread: SaveInstance queues the new rows here instead of inserting each one.
+    [ThreadStatic] private static List<BaseDatabaseDataHelper>? _batchCreated;
 
     public DatabaseHelper()
     {
@@ -182,6 +184,80 @@ public class DatabaseHelper
         return instance;
     }
 
+    /// <summary>
+    ///     Insert the rows that <paramref name="create" /> saves in one transaction after it returns. A new player creates
+    ///     dozens of rows, and one commit per row takes seconds on a disk with slow flushes. The rows are in memory as
+    ///     soon as they are saved; if <paramref name="create" /> or the insert fails they are dropped again, so the next
+    ///     attempt creates them anew.
+    /// </summary>
+    public static void CreateBatch(Action create)
+    {
+        if (_batchCreated != null) throw new InvalidOperationException("CreateBatch does not nest");
+        var created = new List<BaseDatabaseDataHelper>();
+        _batchCreated = created;
+        try
+        {
+            create();
+        }
+        catch
+        {
+            Forget(created);
+            throw;
+        }
+        finally
+        {
+            _batchCreated = null;
+        }
+
+        if (created.Count == 0) return;
+        lock (PersistenceLock)
+        {
+            try
+            {
+                using var conn = Open();
+                Exec(conn, "BEGIN");
+                try
+                {
+                    foreach (var instance in created)
+                    {
+                        // A reset or deletion since the row was queued dropped it from memory; inserting it anyway
+                        // would leave a row that the next GetInstanceOrCreateNew collides with.
+                        if (!IsCached(instance))
+                            throw new InvalidOperationException("Player data was reset or deleted");
+                        if (EntityStores.Map.TryGetValue(instance.GetType(), out var store))
+                            store.Insert(conn, instance);
+                    }
+
+                    Exec(conn, "COMMIT");
+                }
+                catch
+                {
+                    try { Exec(conn, "ROLLBACK"); }
+                    catch (Exception error) { logger.Error("Transaction rollback failed", error); }
+                    throw;
+                }
+            }
+            catch
+            {
+                Forget(created);
+                throw;
+            }
+        }
+    }
+
+    private static bool IsCached(BaseDatabaseDataHelper instance)
+    {
+        if (!UidInstanceMap.TryGetValue(instance.Uid, out var list)) return false;
+        lock (list) return list.Any(row => ReferenceEquals(row, instance));
+    }
+
+    private static void Forget(List<BaseDatabaseDataHelper> created)
+    {
+        foreach (var instance in created)
+            if (UidInstanceMap.TryGetValue(instance.Uid, out var list))
+                lock (list) list.Remove(instance);
+    }
+
     public static List<T>? GetAllInstance<T>() where T : class
     {
         return GetAllInstanceFromMap<T>();
@@ -205,7 +281,11 @@ public class DatabaseHelper
             {
                 if (IsPlayerData(instance) && list.OfType<DeletedAccountData>().Any())
                     throw new InvalidOperationException("Account has been deleted");
-                if (EntityStores.Map.TryGetValue(instance.GetType(), out var store))
+                if (_batchCreated is { } batch)
+                {
+                    batch.Add(instance);
+                }
+                else if (EntityStores.Map.TryGetValue(instance.GetType(), out var store))
                 {
                     using var conn = Open();
                     store.Insert(conn, instance);

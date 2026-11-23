@@ -445,6 +445,7 @@ Check("RogueMagic area data builds a playable run",
 
 await RogueTournRegression.Run(Check, Path.Combine(repository, "Config"));
 await ChallengeRegression.Run(Check);
+await NewPlayerBatchRegression.Run(Path.Combine(scratch, "regression.db"), Check);
 
 // Global chat: a second synthetic contact whose messages are relayed to every online player.
 var serverOption = config.ServerOption;
