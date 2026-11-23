@@ -475,6 +475,8 @@ public static partial class GameData
     #region Item Exchange
 
     public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
+    public static Dictionary<int, CityShopConfigExcel> CityShopConfigData { get; internal set; } = [];
+    public static Dictionary<int, Dictionary<int, CityShopRewardListExcel>> CityShopRewardListData { get; internal set; } = [];
     public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopRewardExcel> RollShopRewardData { get; private set; } = [];
     public static Dictionary<int, ItemComposeConfigExcel> ItemComposeConfigData { get; private set; } = [];

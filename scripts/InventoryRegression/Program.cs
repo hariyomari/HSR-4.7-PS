@@ -43,12 +43,14 @@ void Check(string name, bool pass)
 }
 
 // --- Synthetic tables ------------------------------------------------------------------------------------------
-const int Hcoin = 1, Scoin = 2, Mcoin = 3, Starlight = 252, AvatarCardId = 1001, AvatarEidolonId = 11001,
+const int Hcoin = 1, Scoin = 2, Mcoin = 3, Hertareum = 120000, Starlight = 252, AvatarCardId = 1001, AvatarEidolonId = 11001,
     AvatarHeadIconId = 201001, Material = 900001, OtherMaterial = 900002, Output = 900003, Resin = 236,
     WishfulResin = 237, GiftPack = 900004, RewardMaterial = 900005, Relic = 61011, OtherRelic = 61012,
     NormalCompose = 1, SpecialCompose = 2, EmptyCompose = 3, RelicCompose = 4,
     Shop = 1, MaterialGoods = 1, EmbersShop = 102, EmbersPassGoods = 102001, EmbersCreditGoods = 102002,
-    StarlightAvatarGoods = 101001, StarlightShop = 101;
+    StarlightAvatarGoods = 101001, StarlightShop = 101,
+    NpcShop = 301, DailyGoods = 301001, WeeklyGoods = 301002,
+    CityShop = 401, CityShopGoods = 401001;
 void Item(int id, ItemMainTypeEnum type, ItemSubTypeEnum subType = ItemSubTypeEnum.Unknown) =>
     GameData.ItemConfigData[id] = new ItemConfigExcel
     {
@@ -57,7 +59,7 @@ void Item(int id, ItemMainTypeEnum type, ItemSubTypeEnum subType = ItemSubTypeEn
 Item(Hcoin, ItemMainTypeEnum.Virtual);
 Item(Scoin, ItemMainTypeEnum.Virtual);
 Item(Mcoin, ItemMainTypeEnum.Virtual);
-foreach (var id in new[] { Starlight, AvatarEidolonId, Material, OtherMaterial, Output, Resin, WishfulResin, RewardMaterial })
+foreach (var id in new[] { Hertareum, Starlight, AvatarEidolonId, Material, OtherMaterial, Output, Resin, WishfulResin, RewardMaterial })
     Item(id, ItemMainTypeEnum.Material);
 Item(AvatarCardId, ItemMainTypeEnum.AvatarCard);
 Item(AvatarHeadIconId, ItemMainTypeEnum.Usable, ItemSubTypeEnum.HeadIcon);
@@ -104,11 +106,24 @@ GameData.ItemComposeConfigData[RelicCompose] = new ItemComposeConfigExcel
 };
 var goods = new ShopGoodsConfigExcel { GoodsID = MaterialGoods, ShopID = Shop, ItemID = Output, ItemCount = 1, CostList = { [Hcoin] = 160 } };
 GameData.ShopConfigData[Shop] = new ShopConfigExcel { ShopID = Shop, ShopType = 1, Goods = [goods] };
-var embersPass = new ShopGoodsConfigExcel { GoodsID = EmbersPassGoods, ShopID = EmbersShop, ItemID = Output, ItemCount = 1, CostList = { [Hcoin] = 90 } };
-var embersCredits = new ShopGoodsConfigExcel { GoodsID = EmbersCreditGoods, ShopID = EmbersShop, ItemID = Scoin, ItemCount = 10000, CostList = { [Hcoin] = 10 } };
+var embersPass = new ShopGoodsConfigExcel { GoodsID = EmbersPassGoods, ShopID = EmbersShop, ItemID = Output, ItemCount = 1, LimitTimes = 5, RefreshType = "MONTH", CostList = { [Hcoin] = 90 } };
+var embersCredits = new ShopGoodsConfigExcel { GoodsID = EmbersCreditGoods, ShopID = EmbersShop, ItemID = Scoin, ItemCount = 10000, RefreshType = "MONTH", CostList = { [Hcoin] = 10 } };
 GameData.ShopConfigData[EmbersShop] = new ShopConfigExcel { ShopID = EmbersShop, ShopType = 2, Goods = [embersPass, embersCredits] };
 var starlightAvatar = new ShopGoodsConfigExcel { GoodsID = StarlightAvatarGoods, ShopID = StarlightShop, ItemID = AvatarCardId, ItemCount = 1, CostList = { [Hcoin] = 140 } };
 GameData.ShopConfigData[StarlightShop] = new ShopConfigExcel { ShopID = StarlightShop, ShopType = 2, Goods = [starlightAvatar] };
+var dailyGoods = new ShopGoodsConfigExcel { GoodsID = DailyGoods, ShopID = NpcShop, ItemID = Output, ItemCount = 1, LimitTimes = 3, RefreshType = "DAILY", CostList = { [Hcoin] = 10 } };
+var weeklyGoods = new ShopGoodsConfigExcel { GoodsID = WeeklyGoods, ShopID = NpcShop, ItemID = Output, ItemCount = 1, LimitTimes = 3, RefreshType = "WEEK", CostList = { [Hcoin] = 10 } };
+GameData.ShopConfigData[NpcShop] = new ShopConfigExcel { ShopID = NpcShop, ShopType = 3, Goods = [dailyGoods, weeklyGoods] };
+var cityGoods = new ShopGoodsConfigExcel { GoodsID = CityShopGoods, ShopID = CityShop, ItemID = Output, ItemCount = 1, CostList = { [Hertareum] = 10 } };
+GameData.ShopConfigData[CityShop] = new ShopConfigExcel { ShopID = CityShop, ShopType = 4, Goods = [cityGoods] };
+GameData.CityShopConfigData[CityShop] = new CityShopConfigExcel { ShopID = CityShop, RewardListGroupID = CityShop, ItemID = Hertareum, MaxLevel = 4, WorldID = 101 };
+GameData.CityShopRewardListData[CityShop] = new()
+{
+    [1] = new CityShopRewardListExcel { GroupID = CityShop, Level = 1, ItemNeed = 10, TotalItem = 10 },
+    [2] = new CityShopRewardListExcel { GroupID = CityShop, Level = 2, RewardID = 1, ItemNeed = 80, TotalItem = 90 },
+    [3] = new CityShopRewardListExcel { GroupID = CityShop, Level = 3, RewardID = 1, ItemNeed = 150, TotalItem = 240 },
+    [4] = new CityShopRewardListExcel { GroupID = CityShop, Level = 4, RewardID = 1, ItemNeed = 0, TotalItem = 390 }
+};
 
 // Only the managers under test are wired: PlayerInstance.InitializeAsync needs the full resource tables.
 var player = new PlayerInstance(70001) { Uid = 70001 };
@@ -165,16 +180,16 @@ Check("buying more than the balance covers is rejected", retcode == Retcode.RetI
 Check("an affordable purchase is charged in full", retcode == Retcode.RetSucc && buyTimes == 6 && Owned(Output) == 6 &&
                                                    player.Data.Hcoin == 40);
 
-// Cumulative buy times across repeated purchases, monthly reset rollover, and ItemCount > 1 stacks.
+// Cumulative buy times across repeated purchases, LimitTimes enforcement, monthly reset rollover, and ItemCount > 1 stacks.
 SetBalance(1000, 0);
 (retcode, bought, buyTimes) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 2);
 var (ret2, _, buyTimes2) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 3);
-var (retFail, _, buyTimesAfterFail) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 99);
+var (retLimit, _, buyTimesAfterLimit) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 1);
 var embersProto = player.ShopManager.BuildShopList(2).Single(s => s.ShopId == EmbersShop);
 var embersPassProto = embersProto.GoodsList.Single(g => g.GoodsId == EmbersPassGoods);
-Check("monthly shop buy times accumulate across purchases and survive failed buys",
+Check("monthly shop buy times accumulate, enforce LimitTimes, and survive rejected buys",
     retcode == Retcode.RetSucc && buyTimes == 2 && ret2 == Retcode.RetSucc && buyTimes2 == 5 &&
-    retFail == Retcode.RetItemNotEnough && buyTimesAfterFail == 5 && embersPassProto.BuyTimes == 5 &&
+    retLimit == Retcode.RetBuyTimesLimit && buyTimesAfterLimit == 5 && embersPassProto.BuyTimes == 5 &&
     embersProto.BeginTime > 0 && embersProto.EndTime > embersProto.BeginTime &&
     embersProto.EndTime < uint.MaxValue);
 
@@ -183,12 +198,47 @@ Check("stacked shop goods multiply count by ItemCount",
     retcode == Retcode.RetSucc && buyTimes == 2 && player.Data.Scoin == 20000 &&
     bought.Single() is { ItemId: Scoin, Count: 20000 });
 
+// Daily (2026-11-22 Sun -> 2026-11-23 Mon) and Weekly (Monday reset) rollovers.
+SetBalance(1000, 0);
+await player.ShopManager.BuyItem(NpcShop, DailyGoods, 2);
+await player.ShopManager.BuyItem(NpcShop, WeeklyGoods, 2);
+player.Data.FakeTimeDate = 20261123; // Monday: resets both DAILY and WEEK, keeps MONTH
+Check("Monday rollover resets DAILY and WEEK goods while preserving MONTH goods",
+    player.ShopManager.GetGoodsBuyTimes(DailyGoods) == 0 &&
+    player.ShopManager.GetGoodsBuyTimes(WeeklyGoods) == 0 &&
+    player.ShopManager.GetGoodsBuyTimes(EmbersPassGoods) == 5);
+await player.ShopManager.BuyItem(NpcShop, DailyGoods, 1);
+await player.ShopManager.BuyItem(NpcShop, WeeklyGoods, 1);
+player.Data.FakeTimeDate = 20261124; // Tuesday: resets DAILY only, keeps WEEK and MONTH
+Check("mid-week rollover resets DAILY goods while preserving WEEK and MONTH goods",
+    player.ShopManager.GetGoodsBuyTimes(DailyGoods) == 0 &&
+    player.ShopManager.GetGoodsBuyTimes(WeeklyGoods) == 1 &&
+    player.ShopManager.GetGoodsBuyTimes(EmbersPassGoods) == 5);
+
 player.Data.FakeTimeDate = 20261201;
 var afterRollover = player.ShopManager.BuildShopList(2).Single(s => s.ShopId == EmbersShop);
 Check("monthly rollover resets Embers Exchange counts while keeping permanent shop counts",
     afterRollover.GoodsList.Single(g => g.GoodsId == EmbersPassGoods).BuyTimes == 0 &&
     afterRollover.GoodsList.Single(g => g.GoodsId == EmbersCreditGoods).BuyTimes == 0 &&
     player.ShopManager.GetGoodsBuyTimes(MaterialGoods) == 6);
+
+// World / City Shop spending exp, multi-level up, and reward claims.
+SetBalance(0, 0, (Hertareum, 300));
+await player.ShopManager.BuyItem(CityShop, CityShopGoods, 1); // 10 Hertareum -> Level 2, Exp 0
+var cityProto1 = player.ShopManager.BuildShopList(4).Single(s => s.ShopId == CityShop);
+var (tooHighRet, _) = await player.ShopManager.TakeCityShopReward(CityShop, 3);
+var (lv2Ret, lv2Rewards) = await player.ShopManager.TakeCityShopReward(CityShop, 2);
+var (lv2DupRet, _) = await player.ShopManager.TakeCityShopReward(CityShop, 2);
+var cityProto2 = player.ShopManager.BuildShopList(4).Single(s => s.ShopId == CityShop);
+await player.ShopManager.BuyItem(CityShop, CityShopGoods, 23); // +230 (240 total) -> Level 4, Exp 0
+var cityProto3 = player.ShopManager.BuildShopList(4).Single(s => s.ShopId == CityShop);
+Check("city shop spending levels up, validates level/duplicate claims, and updates bitmask",
+    cityProto1 is { CityLevel: 2, CityExp: 0, CityTakenLevelReward: 0 } &&
+    tooHighRet == Retcode.RetCityLevelNotMeet &&
+    lv2Ret == Retcode.RetSucc && lv2Rewards.Single() is { ItemId: RewardMaterial, Count: 5 } &&
+    lv2DupRet == Retcode.RetCityLevelRewardTaken &&
+    cityProto2.CityTakenLevelReward == (1UL << 2) &&
+    cityProto3 is { CityLevel: 4, CityExp: 0 });
 
 // AvatarCard shop purchases: new unlock, duplicate eidolon, and E6 starlight conversion.
 SetBalance(1000, 0);

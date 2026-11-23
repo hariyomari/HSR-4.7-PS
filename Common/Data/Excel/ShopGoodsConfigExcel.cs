@@ -15,6 +15,10 @@ public partial class ShopGoodsConfigExcel : ExcelResource
     public List<int> CurrencyList { get; set; } = [];
     public List<int> CurrencyCostList { get; set; } = [];
 
+    // Appended after the existing members so an older Resource.bin still deserializes (with default 0 / "").
+    public int LimitTimes { get; set; }
+    public string RefreshType { get; set; } = "";
+
     [JsonIgnore] public Dictionary<int, int> CostList { get; set; } = [];
 
     public override int GetId()
