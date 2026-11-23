@@ -1491,10 +1491,24 @@ if (!catalog.IsSeasonOne)
             System.Reflection.BindingFlags.Instance)!.SetValue(pam, 2000u);
         var pamFirstCost = pam.TrailblazeGoods[^1].Cost;
         var pamFirstBuy = pam.BuyTrailblazeGood((uint)pam.TrailblazeGoods.Count - 1).Success;
-        var pamDiff = pamRun.BuildSeasonTwoFollowUpSync()?.ResultList.SelectMany(result => result.UpdateDynamicList)
-            .Select(data => data.GameDataItemInfo?.ONKMJAGNECC).LastOrDefault(info => info != null);
+        var pamSync = pamRun.BuildSeasonTwoFollowUpSync()?.ResultList.SelectMany(result => result.UpdateDynamicList)
+            .LastOrDefault(data => data.GameDataItemInfo?.ONKMJAGNECC != null);
+        var pamDiff = pamSync?.GameDataItemInfo?.ONKMJAGNECC;
         Check("S2 帕姆王: a Trailblaze purchase counts its cost and syncs the modifier",
             pamFirstBuy && pam.TrailblazeCostedCoin == pamFirstCost && pamDiff?.IANFMIJBKAF == pamFirstCost);
+        // Pin the retail tag on the server-produced update, not just the generated C# property.
+        using var pamWire = new CodedInputStream(pamSync?.ToByteArray() ?? []);
+        var hasRetailItemTag = false;
+        var hasBetaItemTag = false;
+        for (uint tag; (tag = pamWire.ReadTag()) != 0;)
+        {
+            var field = WireFormat.GetTagFieldNumber(tag);
+            hasRetailItemTag |= field == 1978 && WireFormat.GetTagWireType(tag) == WireFormat.WireType.LengthDelimited;
+            hasBetaItemTag |= field == 1384;
+            pamWire.SkipLastField();
+        }
+        Check("a GridFight item update uses retail field 1978, not beta field 1384",
+            hasRetailItemTag && !hasBetaItemTag);
         GridFightSyncUpdateResultScNotify? pamUnlock = null;
         for (var buy = 0; buy < 1000 && pamUnlock == null; buy++)
         {
