@@ -82,7 +82,7 @@ internal static class SnapshotChecks
                    new { username = "snapshot-clone" }))
             check("cloning onto a taken username fails without creating an account",
                 response.StatusCode == HttpStatusCode.BadRequest && AccountCount() == accounts);
-        // An account of its own: the shared fixture account (10002) gains a save from the order checks.
+        // An account of its own: the MUIP status checks seed a save for the shared fixture account (10002).
         AccountHelper.CreateAccount("snapshot-empty", "snapshot-empty@example.invalid", "empty-password-1", EmptyUid, null);
         accounts = AccountCount();
         using (var response = await client.PostAsJsonAsync($"/admin/api/accounts/{EmptyUid}/clone", new { }))
