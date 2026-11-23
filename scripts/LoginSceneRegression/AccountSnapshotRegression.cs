@@ -1,4 +1,6 @@
 using March7thHoney.Database;
+using March7thHoney.Database.Avatar;
+using March7thHoney.Database.Quests;
 using March7thHoney.Database.Generated;
 using March7thHoney.Database.Player;
 using March7thHoney.Enums.Mission;
@@ -53,9 +55,13 @@ internal static class AccountSnapshotRegression
         using var connection = new SqliteConnection(
             $"Data Source={Path.GetFullPath(Path.Combine(config.Path.DatabasePath, config.Database.DatabaseName))}");
         connection.Open();
-        var players = EntityStores.Map[typeof(PlayerData)].LoadAll(connection).Cast<PlayerData>()
-            .ToDictionary(player => player.Uid);
-        check("after a reload from SQLite the source keeps its credits and the clone has its own",
-            players[sourceUid].Scoin == credits && players[cloneUid].Scoin == credits + 777);
+        T Stored<T>(int uid) where T : BaseDatabaseDataHelper =>
+            EntityStores.Map[typeof(T)].LoadAll(connection).Cast<T>().Single(row => row.Uid == uid);
+        check("after a reload from SQLite the source keeps its credits, roster and missions; the clone has its own",
+            Stored<PlayerData>(sourceUid).Scoin == credits && Stored<PlayerData>(cloneUid).Scoin == credits + 777 &&
+            Stored<AvatarData>(sourceUid).FormalAvatars.All(avatar => avatar.BaseAvatarId != 1002) &&
+            Stored<AvatarData>(cloneUid).FormalAvatars.Any(avatar => avatar.BaseAvatarId == 1002) &&
+            Stored<MissionData>(sourceUid).GetMainMissionStatus(1000201) == MissionPhaseEnum.None &&
+            Stored<MissionData>(cloneUid).GetMainMissionStatus(1000201) == MissionPhaseEnum.Accept);
     }
 }

@@ -20,6 +20,8 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- -
 
 打开 `http://127.0.0.1:21000/admin/index.html`，使用测试密钥 `local-web-regression-only` 登录，完成后按 Ctrl+C 停止。此模式只启动回环地址上的测试后台；配置及存库操作不用于验证。跃迁页面载入仓库中的 `Banners.history.json` 与 `WarpItemNames.json`，并为卡池引用的物品补充占位行，因此可以查看带名称的卡池、按名称搜索和切换剧情筛选。
 
+账号页的「按剧情进度创建」「跳转剧情进度」需要游戏数据，可追加 `--with-resources`（`-- --serve --with-resources`）：只读加载 `Config/Resource.bin`，剧情回放写入本次的临时数据库，快照写入临时数据库目录下的 `Snapshots/`。不加该参数时剧情目录为空、创建会返回 400。
+
 ## 凭据撤销与 MUIP 生命周期
 
 安全回归还检查：
@@ -48,6 +50,13 @@ dotnet run --project scripts/WebServerRegression/WebServerRegression.csproj -- -
 - 联动卡池：`CollabBanners` 开启时 `/admin/api/warps` 的 `collab_banners` 为 true，`collab` 恰为 5001–5004、6001–6004 且均在进行中，`scheduled` 不含它们；通过设置接口关闭后 `collab_banners` 为 false，`collab` 仍列出这 8 个卡池但都不在进行中。手动列表包含联动卡池 5001 时返回 400，原列表对象不变。检查后恢复原设置。
 
 结束时恢复 `ServerOption.Warps` 默认值、原卡池配置并移除临时物品；`Config.json` 只写入临时目录。
+
+## 账号克隆、存档快照与剧情进度
+
+行为说明见 [剧情进度测试账号](../operations/story-checkpoints.md)。
+
+- `SnapshotChecks.cs`：克隆得到新账号与请求的凭据，存档字段与昵称正确，不与源账号共享任何对象，不复制好友；修改克隆的货币与任务后，源账号在内存与直接读取的 SQLite 中都不变。克隆不存在的账号为 404，用户名冲突或源账号无存档时为 400 且不新增账号。快照按名称生成 id（重名追加 `-2`）、记录元数据并写入数据库目录下的 `Snapshots/`；列表、生成测试账号（自动生成密码可登录）、恢复到已有账号（内存与 SQLite 均替换，账号保留）均可用。`..%2F..`、`a.b` 等非法 id 及路径穿越返回 400，缺失快照 404；损坏的快照文件为 400 且不留下账号；未知表被忽略；无法反序列化的列为 400 且目标存档不变；删除后文件消失，重复删除 404。
+- `StoryChecks.cs`（合成的两条主线，本回归不加载资源缓存）：未登录 401；剧情目录按版本与门槛顺序列出主线、章节、楼层和子任务，只列出任务存在的预设；未知主线、不属于该主线的子任务、未知停止位置/性别/预设均为 400 且不新增账号；缺少资源导致回放失败时不留下账号，对已有账号则恢复原存档；不存在的账号 404。真实剧情的成功回放（含 HTTP 接口）在登录与场景回归中验证。
 
 ## 进度奖励设置
 
