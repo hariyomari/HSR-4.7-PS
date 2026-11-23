@@ -19,17 +19,14 @@ public static partial class AdminRoutes
     private static readonly Logger GridFightLogger = new("AdminGridFight");
     private static GridFightNameTable? _gridFightNames;
 
-    private static void MapGridFightRoutes(IEndpointRouteBuilder app)
+    private static void MapGridFightRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/gridfight/catalog", GetGridFightCatalog);
-        app.MapGet("/admin/api/gridfight/{uid:int}", GetGridFightStatus);
+        api.MapGet("/gridfight/catalog", GetGridFightCatalog);
+        api.MapGet("/gridfight/{uid:int}", GetGridFightStatus);
     }
 
-    private static IResult GetGridFightStatus(HttpContext ctx, int uid)
+    private static IResult GetGridFightStatus(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var player = Listener.GetActiveConnection(uid)?.Player;
         if (player == null)
             return Success(new GridFightStatusData(uid, false, "", null));
@@ -89,11 +86,8 @@ public static partial class AdminRoutes
             roles, traits, equipments, consumables);
     }
 
-    private static IResult GetGridFightCatalog(HttpContext ctx)
+    private static IResult GetGridFightCatalog()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var season = GridFightSeasonScope.CurrentSeason;
         var roles = GameData.GridFightRoleBasicInfoData.Values
             .Where(role => role.SeasonID == season && !role.IsFakeAvatar)
@@ -135,7 +129,7 @@ public static partial class AdminRoutes
         }
         catch (Exception ex)
         {
-            GridFightLogger.Warn($"Failed to read {path}: {ex.Message}");
+            GridFightLogger.Debug($"Failed to read {path}: {ex.Message}");
         }
 
         return _gridFightNames = empty;

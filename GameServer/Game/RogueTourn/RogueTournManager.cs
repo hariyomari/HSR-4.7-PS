@@ -7,24 +7,20 @@ using March7thHoney.Enums.Scene;
 using March7thHoney.Enums.TournRogue;
 using March7thHoney.GameServer.Game.Battle;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
-using March7thHoney.GameServer.Server.Packet.Send.RogueTourn;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 using March7thHoney.Util;
-using MemoryPack;
 
 namespace March7thHoney.GameServer.Game.RogueTourn;
 
 public partial class RogueTournManager : BasePlayerManager
 {
-    // The rogue lobby floor; the Divergent Universe entrance lives there too.
-    public const int RogueLobbyEntranceId = 801120102;
-
     // RogueTournConstCommon RogueTourn_Level_MapEntrance: the DU map entrance a settled run returns to.
-    public const int TournMapEntranceId = 1034102;
+    private const int TournMapEntranceId = 1034102;
 
     // Official StartScRsp ships the tourn lineup at mp 5.
     private const int TournLineupMp = 5;
@@ -59,26 +55,13 @@ public partial class RogueTournManager : BasePlayerManager
 
     public void Save()
     {
-        Data.RunInstance = RunInstance == null
-            ? null
-            : Convert.ToBase64String(MemoryPackSerializer.Serialize(RunInstance));
+        Data.RunInstance = RogueRunBlob.Serialize(RunInstance);
         DatabaseHelper.MarkDirty(Player.Uid);
     }
 
     private void ResurrectRun()
     {
-        if (string.IsNullOrEmpty(Data.RunInstance)) return;
-
-        RogueTournRunData? run;
-        try
-        {
-            run = MemoryPackSerializer.Deserialize<RogueTournRunData>(Convert.FromBase64String(Data.RunInstance));
-        }
-        catch
-        {
-            // Incompatible/corrupt blob — drop it rather than crash the manager.
-            run = null;
-        }
+        if (!RogueRunBlob.TryLoad<RogueTournRunData>(Data.RunInstance, out var run)) return;
 
         if (run == null || run.Status != RogueTournStates.RunDoing)
         {
@@ -396,6 +379,29 @@ public partial class RogueTournManager : BasePlayerManager
         if (hadRun) await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.RogueFinishCnt);
     }
 
+    /// <summary>Leaves the run and returns to the rogue lobby; false when the lobby scene fails.</summary>
+    public async ValueTask<bool> LeaveRunToLobby()
+    {
+        await LeaveRun();
+        var (success, _) = await Player.TryEnterScene(RogueLobby.EntranceId, 0, false);
+        return success;
+    }
+
+    /// <summary>
+    ///     Drops a settled run and its lineup, then returns to the Divergent Universe map (the lobby when the map is
+    ///     absent); the scene-change notify precedes the new scene. False when that scene fails.
+    /// </summary>
+    public async ValueTask<bool> LeaveSettledRun()
+    {
+        await LeaveRun();
+        await Player.SendPacket(new PacketSyncServerSceneChangeNotify());
+        var entrance = GameData.MapEntranceData.ContainsKey(TournMapEntranceId)
+            ? TournMapEntranceId
+            : RogueLobby.EntranceId;
+        var (success, _) = await Player.TryEnterScene(entrance, 0, false);
+        return success;
+    }
+
     /// <summary>Drops the live run (the /du reset escape hatch). Account progress stays.</summary>
     public async ValueTask<bool> ResetRun()
     {
@@ -407,27 +413,14 @@ public partial class RogueTournManager : BasePlayerManager
     private async ValueTask ClearRun()
     {
         RunInstance = null;
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, false);
+        await RogueExtraLineup.Release(Player);
         Save();
     }
 
-    private async ValueTask<bool> ActivateTournLineup(List<int> avatarIds)
+    private ValueTask<bool> ActivateTournLineup(List<int> avatarIds)
     {
-        var lineupManager = Player.LineupManager!;
-        lineupManager.SetExtraLineup(ExtraLineupType.LineupTournRogue, avatarIds);
-        var lineup = lineupManager.GetExtraLineup(ExtraLineupType.LineupTournRogue);
-        if (lineup == null || lineup.BaseAvatars?.Count == 0) return false;
-
-        lineup.Mp = TournLineupMp;
-        foreach (var avatarId in avatarIds)
-        {
-            var avatar = Player.AvatarManager!.GetFormalAvatar(avatarId);
-            avatar?.SetCurHp(10000, true);
-            avatar?.SetCurSp(5000, true);
-        }
-
-        await lineupManager.SetExtraLineup(ExtraLineupType.LineupTournRogue, false);
-        return true;
+        return RogueExtraLineup.Activate(Player, ExtraLineupType.LineupTournRogue, avatarIds,
+            new RogueLineupStart(TournLineupMp, RogueExtraLineup.HalfSp, RogueLineupRefill.RequestedFormalAvatars));
     }
 
     /// <summary>
@@ -440,9 +433,9 @@ public partial class RogueTournManager : BasePlayerManager
         await Player.SendPacket(new PacketExtraLineupDestroyNotify(ExtraLineupType.LineupTournRogue));
         if (RunInstance != null)
             foreach (var id in RunInstance.Modifiers)
-                await Player.SendPacket(new PacketRogueTourn(CmdIds.RogueModifierAddNotify,
+                await Player.SendPacket(BasePacket.Create(CmdIds.RogueModifierAddNotify,
                     new RogueModifierAddNotify { Modifier = RogueTournProtoBuilder.BuildModifierRow(id, false, false, 0) }));
-        await Player.SendPacket(new PacketRogueTourn(CmdIds.SyncTurnFoodNotify, new SyncTurnFoodNotify()));
+        await Player.SendPacket(BasePacket.Create(CmdIds.SyncTurnFoodNotify, new SyncTurnFoodNotify()));
     }
 
     #endregion
@@ -622,7 +615,7 @@ public partial class RogueTournManager : BasePlayerManager
         OpenBuffDraft(run);
         Save();
 
-        await Player.SendPacket(new PacketRogueTourn(CmdIds.CommonRogueVirtualItemInfoScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.CommonRogueVirtualItemInfoScNotify,
             RogueTournProtoBuilder.BuildVirtualItemNotify(run)));
         await SendPendingNotify();
         await SendLevelNotify();
@@ -642,14 +635,14 @@ public partial class RogueTournManager : BasePlayerManager
     public async ValueTask SendLevelNotify(bool withRoom = true)
     {
         if (RunInstance == null) return;
-        await Player.SendPacket(new PacketRogueTourn(CmdIds.RogueTournLevelInfoUpdateScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.RogueTournLevelInfoUpdateScNotify,
             RogueTournProtoBuilder.BuildLevelNotify(RunInstance, withRoom)));
     }
 
     public async ValueTask SendPendingNotify()
     {
         if (RunInstance?.Pending == null) return;
-        await Player.SendPacket(new PacketRogueTourn(CmdIds.SyncRogueCommonPendingActionScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.SyncRogueCommonPendingActionScNotify,
             RogueTournProtoBuilder.BuildPendingNotify(RunInstance)));
     }
 
@@ -658,7 +651,7 @@ public partial class RogueTournManager : BasePlayerManager
         if (RunInstance == null) return;
         var notify = RogueTournProtoBuilder.BuildRoomRegistrationNotify(RunInstance);
         if (notify != null)
-            await Player.SendPacket(new PacketRogueTourn(CmdIds.SyncRogueCommonActionResultScNotify, notify));
+            await Player.SendPacket(BasePacket.Create(CmdIds.SyncRogueCommonActionResultScNotify, notify));
     }
 
     public async ValueTask SendRoomCardZone()
@@ -666,7 +659,7 @@ public partial class RogueTournManager : BasePlayerManager
         if (RunInstance == null) return;
         var notify = RogueTournProtoBuilder.BuildRoomCardZoneNotify(RunInstance);
         if (notify != null)
-            await Player.SendPacket(new PacketRogueTourn(CmdIds.RogueTournPersonaRoomCardZoneUpdateScNotify, notify));
+            await Player.SendPacket(BasePacket.Create(CmdIds.RogueTournPersonaRoomCardZoneUpdateScNotify, notify));
     }
 
     // Blessing grants attach to the buff holder first, then every row goes out as its own result notify.
@@ -674,10 +667,10 @@ public partial class RogueTournManager : BasePlayerManager
     {
         if (results.Count == 0) return;
         foreach (var notify in RogueTournProtoBuilder.BuildBuffGrantNotifies(results))
-            await Player.SendPacket(new PacketRogueTourn(CmdIds.SyncEntityBuffChangeListScNotify, notify));
+            await Player.SendPacket(BasePacket.Create(CmdIds.SyncEntityBuffChangeListScNotify, notify));
         foreach (var result in results)
             if (RogueTournProtoBuilder.BuildActionResult(result) is { } notify)
-                await Player.SendPacket(new PacketRogueTourn(CmdIds.SyncRogueCommonActionResultScNotify, notify));
+                await Player.SendPacket(BasePacket.Create(CmdIds.SyncRogueCommonActionResultScNotify, notify));
     }
 
     #endregion

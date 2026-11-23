@@ -1,9 +1,8 @@
 namespace March7thHoney.WebServer.Pages;
 
 /// <summary>
-///     UI strings for the admin console, keyed by language tag. The page picks the language from the
-///     server setting (CHS/CHT -> zh-CN) unless the operator chose one explicitly; missing keys fall back to
-///     English and then to the key itself so a forgotten translation never breaks the page.
+///     Admin UI strings. Explicit language choice overrides the server setting (CHS/CHT -> zh-CN).
+///     Missing translations fall back to English, then the key.
 /// </summary>
 public static class AdminPageI18n
 {
@@ -236,7 +235,6 @@ public static class AdminPageI18n
         "overview.no_password": "未设密码",
         "overview.roles": "角色",
         "overview.server": "服务器",
-        "overview.public_mode": "公共模式",
         "overview.name": "名称",
         "overview.gateway": "网关",
         "overview.database": "数据库",
@@ -725,7 +723,6 @@ public static class AdminPageI18n
         "settings.pending": "{count} 项未保存",
         "settings.discard": "放弃修改",
         "settings.save_all": "保存修改",
-        "settings.public_mode_notice": "服务器运行在公共模式，修改只在内存中生效，不会写入 Config.json。",
         "settings.restart_notice": "部分已保存的设置需要重启服务器后才会生效。",
         "settings.restart_badge": "需重启",
         "settings.secret_configured": "已设置（留空保持不变）",
@@ -770,6 +767,7 @@ public static class AdminPageI18n
         "settings.field.ServerOption.DailyResetHour": "每日刷新时刻",
         "settings.hint.ServerOption.DailyResetHour": "0-23，服务器本地时区的整点；每日实训在此时刻刷新任务、活跃度与奖励档位。",
         "settings.field.ServerOption.EnableMonthCard": "启用月卡",
+        "settings.hint.ServerOption.EnableMonthCard": "在充值商店上架列车补给凭证，购买后生效 30 天，剩余天数最多累计 180 天。",
         "settings.field.ServerOption.EnableFakeRecharge": "模拟充值",
         "settings.hint.ServerOption.EnableFakeRecharge": "在商店显示古老梦华档位并直接发放。",
         "settings.field.ServerOption.AutoCreateUser": "自动创建账号",
@@ -816,7 +814,7 @@ public static class AdminPageI18n
         "settings.field.AntiAbuse.EmailRateLimitBlockSeconds": "邮件：封锁秒数",
         "settings.field.Email.Enabled": "启用邮件发送",
         "settings.field.Email.PublicBaseUrl": "邮件链接基地址",
-        "settings.hint.Email.PublicBaseUrl": "留空则使用请求的地址，例如 https://sr.example.com",
+        "settings.hint.Email.PublicBaseUrl": "发送邮件时必填，邮件中的链接只使用此地址，例如 https://sr.example.com",
         "settings.field.Email.LogoUrl": "邮件 Logo 地址",
         "settings.field.Email.Smtp.Host": "SMTP 主机",
         "settings.field.Email.Smtp.Port": "SMTP 端口",
@@ -862,6 +860,7 @@ public static class AdminPageI18n
         "settings.field.LogOption.DisableLogDetailPacket": "隐藏数据包详情",
         "settings.field.LogOption.SavePersonalDebugFile": "按玩家保存调试文件",
         "settings.field.LogOption.LogResourceCacheLoading": "记录资源缓存加载",
+        "settings.field.LogOption.ShowDebugInConsole": "调试日志输出到控制台",
         "settings.field.Warps.Mode": "卡池来源",
         "settings.hint.Warps.Mode": "Static：按 Banners.json 原样提供；Rotation：每个周期一个历史阶段（Version 阵容下为一个版本）；Manual：跃迁页面中挑选的列表。",
         "settings.field.Warps.RotationDays": "轮换周期（天）",
@@ -1347,7 +1346,6 @@ public static class AdminPageI18n
         "overview.no_password": "No password",
         "overview.roles": "Roles",
         "overview.server": "Server",
-        "overview.public_mode": "Public mode",
         "overview.name": "Name",
         "overview.gateway": "Gateway",
         "overview.database": "Database",
@@ -1836,7 +1834,6 @@ public static class AdminPageI18n
         "settings.pending": "{count} unsaved",
         "settings.discard": "Discard",
         "settings.save_all": "Save changes",
-        "settings.public_mode_notice": "The server runs in public mode: changes apply in memory only and are not written to Config.json.",
         "settings.restart_notice": "Some saved settings only take effect after a server restart.",
         "settings.restart_badge": "Restart",
         "settings.secret_configured": "Configured (leave blank to keep)",
@@ -1881,6 +1878,7 @@ public static class AdminPageI18n
         "settings.field.ServerOption.DailyResetHour": "Daily reset hour",
         "settings.hint.ServerOption.DailyResetHour": "0-23, hour in the server's local time zone at which daily training rolls new quests and clears points and claimed tiers.",
         "settings.field.ServerOption.EnableMonthCard": "Enable supply pass",
+        "settings.hint.ServerOption.EnableMonthCard": "List the Express Supply Pass in the recharge shop; each purchase adds 30 days, up to 180 days left.",
         "settings.field.ServerOption.EnableFakeRecharge": "Fake recharge",
         "settings.hint.ServerOption.EnableFakeRecharge": "Show Oneiric Shard tiers in the shop and grant them instantly.",
         "settings.field.ServerOption.AutoCreateUser": "Auto-create accounts",
@@ -1927,7 +1925,7 @@ public static class AdminPageI18n
         "settings.field.AntiAbuse.EmailRateLimitBlockSeconds": "Email: block (seconds)",
         "settings.field.Email.Enabled": "Email sending enabled",
         "settings.field.Email.PublicBaseUrl": "Public base URL for links",
-        "settings.hint.Email.PublicBaseUrl": "Leave empty to use the request address, e.g. https://sr.example.com",
+        "settings.hint.Email.PublicBaseUrl": "Required to send email; links in emails only use this address, e.g. https://sr.example.com",
         "settings.field.Email.LogoUrl": "Email logo URL",
         "settings.field.Email.Smtp.Host": "SMTP host",
         "settings.field.Email.Smtp.Port": "SMTP port",
@@ -1973,6 +1971,7 @@ public static class AdminPageI18n
         "settings.field.LogOption.DisableLogDetailPacket": "Hide packet details",
         "settings.field.LogOption.SavePersonalDebugFile": "Per-player debug files",
         "settings.field.LogOption.LogResourceCacheLoading": "Log resource cache loading",
+        "settings.field.LogOption.ShowDebugInConsole": "Print debug logs to the console",
         "settings.field.Warps.Mode": "Banner source",
         "settings.hint.Warps.Mode": "Static: Banners.json as written; Rotation: one history phase per period (one version with the Version lineup); Manual: the list picked on the Warps page.",
         "settings.field.Warps.RotationDays": "Rotation period (days)",

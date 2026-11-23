@@ -1,10 +1,8 @@
 namespace March7thHoney.WebServer.Pages;
 
 /// <summary>
-///     Client script for the player self-service console. The core (state, i18n, HTTP, command model, UI
-///     primitives) lives here; each tab is a partial next to it and is concatenated into the same closure, so
-///     the tabs can use these helpers directly. Nothing is templated at render time — runtime configuration
-///     arrives through <c>window.M7_CONSOLE_CONFIG</c>.
+///     Shared console helpers; tab partials are concatenated into the same closure.
+///     Runtime configuration comes from <c>window.M7_CONSOLE_CONFIG</c>, not render-time templating.
 /// </summary>
 public static partial class PlayerConsoleScripts
 {

@@ -9,7 +9,7 @@ public class HandlerTakeOffRelicCsReq : Handler<TakeOffRelicCsReq>
     protected override async Task OnHandle(Connection connection, PlayerInstance player, TakeOffRelicCsReq req)
     {
         foreach (var param in req.RelicTypeList)
-            await player.InventoryManager!.UnequipRelic((int)req.AvatarId, (int)param);
+            await player.AvatarManager!.UnequipRelic((int)req.AvatarId, (int)param);
         await connection.SendPacket(CmdIds.TakeOffRelicScRsp);
     }
 }

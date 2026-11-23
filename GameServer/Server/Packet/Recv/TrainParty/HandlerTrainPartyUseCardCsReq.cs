@@ -13,8 +13,7 @@ public class HandlerTrainPartyUseCardCsReq : Handler
         var manager = connection.Player!.TrainPartyManager!;
         var ret = manager.UseCard(req.FGIHKKKOGJD);
 
-        var rsp = new BasePacket(CmdIds.TrainPartyUseCardScRsp);
-        rsp.SetData(new TrainPartyUseCardScRsp
+        var rsp = BasePacket.Create(CmdIds.TrainPartyUseCardScRsp, new TrainPartyUseCardScRsp
         {
             FGIHKKKOGJD = req.FGIHKKKOGJD,
             Retcode = ret

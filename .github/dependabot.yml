@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Versions are managed centrally in Directory.Packages.props.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # The protocol build refuses any protoc other than 33.1, and the runtime moves with the tools.
+      # The pair is upgraded by hand, together with the version Proto/Build/GenerateProtobuf.targets expects.
+      - dependency-name: Google.Protobuf
+      - dependency-name: Google.Protobuf.Tools
+      # The source generators must not reference a compiler newer than the one in the oldest
+      # supported SDK, or that SDK refuses to load them (CS9057).
+      - dependency-name: Microsoft.CodeAnalysis.CSharp
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # One pull request for all actions instead of one for each.
+    groups:
+      actions:
+        patterns: ["*"]

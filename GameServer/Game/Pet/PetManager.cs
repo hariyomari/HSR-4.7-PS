@@ -8,28 +8,35 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.Pet;
 
 /// <summary>
-///     4.6 盲盒宠物（移植自 yuukisr_go c4f5979 / 24e7083）。
+///     Blind box pets (盲盒宠物) of 4.6, ported from yuukisr_go c4f5979 / 24e7083.
 ///     <para>
-///         宠物物品仍作为材料堆叠在背包里（/giveall、奖励等发放路径不变），但官服从不把宠物物品放进背包同步，
-///         客户端的宠物页完全由 <c>GetPetDataScRsp</c> 的实例列表构建。所以这里按材料数量对账出实例：多出来的
-///         份数追加实例，少掉的份数删掉实例并清理编队引用。实例 id 持久化在 <see cref="PlayerPetData" />。
+///         Pet items still stack in the inventory as materials (grant paths such as /giveall and rewards are
+///         unchanged), but the official server never puts pet items into the inventory sync, and the client builds its
+///         pet page entirely from the instance list in <c>GetPetDataScRsp</c>. Instances are therefore reconciled
+///         against the material counts: surplus copies append instances, missing copies remove instances and clear
+///         their lineup references. Instance ids are persisted in <see cref="PlayerPetData" />.
 ///     </para>
 ///     <para>
-///         只有盲盒宠物（4.6 新增，251501 起）会成为实例；一代召唤宠物（PetConfig 的 251001–251005，
-///         ItemSubType NormalPet）进 pet_list 会让客户端 BlindBoxPetRepository 抛 ArgumentException，
-///         整个宠物模块初始化失败。
+///         Only blind box pets (new in 4.6, from 251501 on) become instances. A first-generation summoned pet
+///         (251001–251005 in PetConfig, ItemSubType NormalPet) in pet_list makes the client's BlindBoxPetRepository
+///         throw ArgumentException, and the whole pet module fails to initialize.
 ///     </para>
 /// </summary>
 public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
 {
-    /// <summary>官服抓包编队带 slot 1..3，BlindBoxPetType 里在用的类型也是 3 槽。BlindBox* 表未进缓存，先写死。</summary>
+    /// <summary>
+    ///     Lineups in official captures carry slots 1..3, and the types in use in BlindBoxPetType also have 3 slots.
+    ///     The BlindBox* tables are not in the resource cache, so the value is hard-coded for now.
+    /// </summary>
     public const int MaxBlindBoxLineupSlots = 3;
 
-    // 官服枚举值（yuukisr_go design_pet_system.md §4.5）：有宠物的账号 cur_pet.ref_type=3、编队 source=2，新号都是 0。
+    // Official enum values (yuukisr_go design_pet_system.md §4.5): an account with pets has cur_pet.ref_type=3 and
+    // lineup source=2; a new account has 0 for both.
     public const int CurPetRefTypeBlindBox = (int)EOGNOEJHAGN.Lcfkgcjchbo;
     public const HENPKNCKGGI LineupSourceSet = HENPKNCKGGI.Oalpdgkgpbj;
 
-    // 宠物 unique id 取高位，和官服的大数 id 同一量级，同时保证不会和其他小整数 id 混淆。
+    // Pet unique ids are taken from the high range: the same magnitude as the official server's large ids, and
+    // impossible to confuse with other small integer ids.
     private const ulong UniqueIdBase = 1UL << 62;
 
     public PlayerPetData Data { get; } = DatabaseHelper.Instance!.GetInstanceOrCreateNew<PlayerPetData>(player.Uid);
@@ -37,8 +44,9 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
     private void MarkDirty() => DatabaseHelper.MarkDirty(Player.Uid);
 
     /// <summary>
-    ///     盲盒宠物物品。缓存里的 ItemSubType 枚举没有 BlindBoxPet（解析为 Unknown），所以按排除法判断：
-    ///     主类型为 Pet，且既不是 NormalPet 子类型，也不是 PetConfig 里一代宠物的物品。
+    ///     Whether the item is a blind box pet. The ItemSubType enum in the cache has no BlindBoxPet (it parses as
+    ///     Unknown), so the check works by exclusion: the main type is Pet, and the item is neither of the NormalPet
+    ///     subtype nor the item of a first-generation pet in PetConfig.
     /// </summary>
     public static bool IsBlindBoxPetItem(int itemId)
     {
@@ -49,7 +57,8 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
     }
 
     /// <summary>
-    ///     按背包里的盲盒宠物材料对账实例与编队，返回本次新建的实例。已有实例保持原有顺序与 id。
+    ///     Reconciles the instances and the lineup against the blind box pet materials in the inventory and returns the
+    ///     instances created by this call. Existing instances keep their order and ids.
     /// </summary>
     public List<PetInstanceData> Reconcile()
     {
@@ -99,8 +108,10 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
     }
 
     /// <summary>
-    ///     背包里的宠物材料变化后调用：对账，并按官服抽盒流程给每只新宠物推一条 PetDataChangeScNotify{add_pet}，
-    ///     客户端据此把新实例加入宠物页。删除方向官服没有抓包证据，不推送，下一次 GetPetData 自然同步。
+    ///     Called after the pet materials in the inventory change: reconciles and, following the official box-opening
+    ///     flow, pushes PetDataChangeScNotify with one add_pet entry per new pet, from which the client adds the new
+    ///     instances to its pet page. There is no capture evidence of how the official server reports removals, so
+    ///     nothing is pushed for them; the next GetPetData brings the client back in sync.
     /// </summary>
     public async ValueTask OnPetItemsChanged()
     {
@@ -114,7 +125,9 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
     }
 
     /// <summary>
-    ///     替换盲盒宠物编队。实例必须已拥有且不重复，槽位不超过 3 个、槽号不重复且不大于 3；不合法时不做任何修改。
+    ///     Replaces the blind box pet lineup. Every instance must be owned and listed once; at most 3 slots are
+    ///     allowed, with slot numbers unique and no greater than 3. An invalid request is rejected without replacing
+    ///     the lineup.
     /// </summary>
     public bool SetBlindBoxLineup(IEnumerable<EPFJLNKPEPK> slots)
     {
@@ -137,7 +150,10 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
         return true;
     }
 
-    /// <summary>召唤：记录请求的召唤方式，一代宠物 id 同时写回旧的 PlayerData.Pet。返回回包用的 cur_pet。</summary>
+    /// <summary>
+    ///     Summon: records the summon mode from the request; a first-generation pet id is also written back to the
+    ///     legacy PlayerData.Pet. Returns the cur_pet for the response.
+    /// </summary>
     public EHDNPMEKPCA Summon(SummonPetCsReq req)
     {
         Data.CurPetRefType = (int)req.LLGIIPALELD;
@@ -160,7 +176,7 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
         return cur;
     }
 
-    /// <summary>收回：官服回包带一个空的 cur_pet。</summary>
+    /// <summary>Recall: the official response carries an empty cur_pet.</summary>
     public void Recall()
     {
         Data.CurPetRefType = 0;
@@ -173,7 +189,7 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
         Reconcile();
         var proto = new GetPetDataScRsp
         {
-            // 两个子消息官服总是带上，即使为空（新号抓包）。
+            // The official server always includes both sub-messages, even when empty (capture of a new account).
             PLKBLNMOOPH = new EHDNPMEKPCA
             {
                 LLGIIPALELD = (EOGNOEJHAGN)(Data.CurPetRefType >= 0
@@ -182,15 +198,19 @@ public class PetManager(PlayerInstance player) : BasePlayerComponent(player)
                         ? CurPetRefTypeBlindBox
                         : 0)
             },
-            // 编队来源：官服有编队时为 2，没有时为 0。
+            // Lineup source: the official server sends 2 when a lineup exists and 0 when there is none.
             LCFKGCJCHBO = ToLineupProto(Data.Lineup.Count > 0 ? LineupSourceSet : HENPKNCKGGI.Cdcciofmcgn)
         };
-        // unlocked_pet_id 是一代宠物的旧字段，4.6 有宠物的官服账号抓包里不带，这里也不发。
+        // unlocked_pet_id is a legacy field for first-generation pets. Captures of official 4.6 accounts that own pets
+        // do not carry it, so it is not sent here either.
         proto.MPJNPINHCJL.AddRange(Data.Instances.Select(ToInstanceProto));
         return proto;
     }
 
-    /// <summary>设置编队的回包与通知原样回显请求里的来源枚举（官服请求不带，回显也不带）。</summary>
+    /// <summary>
+    ///     The set-lineup response and notify echo the source enum from the request unchanged (official requests do not
+    ///     carry it, so neither does the echo).
+    /// </summary>
     public CMBGLKEMOGF ToLineupProto(HENPKNCKGGI sourceType)
     {
         var proto = new CMBGLKEMOGF { CGBJOAJEMKN = sourceType };

@@ -11,8 +11,7 @@ public class HandlerTrainPartySetBadgeAutoFillCsReq : Handler
         var req = TrainPartySetBadgeAutoFillCsReq.Parser.ParseFrom(data);
         var ret = connection.Player!.TrainPartyManager!.SetBadgeAutoFill(req.PELJACANAFH);
 
-        var rsp = new BasePacket(CmdIds.TrainPartySetBadgeAutoFillScRsp);
-        rsp.SetData(new TrainPartySetBadgeAutoFillScRsp
+        var rsp = BasePacket.Create(CmdIds.TrainPartySetBadgeAutoFillScRsp, new TrainPartySetBadgeAutoFillScRsp
         {
             PELJACANAFH = req.PELJACANAFH,
             Retcode = ret

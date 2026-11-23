@@ -91,7 +91,6 @@ public static class Extensions
 
     public static void WriteConvID(this BinaryWriter bw, long convId)
     {
-        //bw.Write(convId);
         bw.Write((int)(convId >> 32));
         bw.Write((int)(convId & 0xFFFFFFFF));
     }

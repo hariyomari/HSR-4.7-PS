@@ -11,8 +11,7 @@ public class HandlerTrainPartyLeaveCsReq : Handler
         // Leaving aborts any active board run.
         connection.Player!.TrainPartyManager!.ResetGameplay();
 
-        var rsp = new BasePacket(CmdIds.TrainPartyLeaveScRsp);
-        rsp.SetData(new DBGHCHPONOH { Retcode = 0 });
+        var rsp = BasePacket.Create(CmdIds.TrainPartyLeaveScRsp, new DBGHCHPONOH { Retcode = 0 });
         await connection.SendPacket(rsp);
     }
 }

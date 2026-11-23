@@ -1,0 +1,14 @@
+# Text is stored with LF in the repository. Working-tree line endings follow each
+# contributor's Git configuration, except for the file types pinned below.
+* text=auto
+
+# Scripts whose interpreter needs the same line ending on every platform.
+*.sh       text eol=lf
+*.command  text eol=lf
+*.bat      text eol=crlf
+
+# Binary assets.
+*.zip   binary
+*.ico   binary
+*.bin   binary
+*.ec2b  binary

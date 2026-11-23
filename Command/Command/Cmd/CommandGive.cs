@@ -1,4 +1,5 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Avatar;
 using March7thHoney.Internationalization;
 
 namespace March7thHoney.Command.Command.Cmd;

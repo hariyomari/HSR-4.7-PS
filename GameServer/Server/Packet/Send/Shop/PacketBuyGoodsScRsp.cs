@@ -6,12 +6,14 @@ namespace March7thHoney.GameServer.Server.Packet.Send.Shop;
 
 public class PacketBuyGoodsScRsp : BasePacket
 {
-    public PacketBuyGoodsScRsp(BuyGoodsCsReq req, List<ItemData> items) : base(CmdIds.BuyGoodsScRsp)
+    public PacketBuyGoodsScRsp(BuyGoodsCsReq req, List<ItemData> items, Retcode retcode = Retcode.RetSucc)
+        : base(CmdIds.BuyGoodsScRsp)
     {
         var proto = new BuyGoodsScRsp
         {
+            Retcode = (uint)retcode,
             ShopId = req.ShopId,
-            GoodsBuyTimes = req.GoodsNum,
+            GoodsBuyTimes = retcode == Retcode.RetSucc ? req.GoodsNum : 0,
             GoodsId = req.GoodsId,
             ReturnItemList = new ItemList
             {

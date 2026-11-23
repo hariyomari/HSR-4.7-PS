@@ -4,7 +4,6 @@ using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.GridFight;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
-using static March7thHoney.GameServer.Server.Packet.Recv.GridFight.GridFightPacketFactory;
 
 namespace March7thHoney.GameServer.Server.Packet.Recv.GridFight;
 
@@ -26,7 +25,7 @@ public abstract class GridFightHandler<TReq> : Handler<TReq> where TReq : IMessa
             if (player.GridFightManager?.BuildSeasonTwoFollowUpSync() is { } followUp)
                 await connection.SendPacket(new PacketGridFightSyncUpdateResultScNotify(followUp));
             if (player.GridFightManager?.BuildInterestDisplayRefresh(previousSession, previousInterestCap) is { } refresh)
-                await connection.SendPacket(CreatePacket(CmdIds.GridFightGetDataScRsp, refresh));
+                await connection.SendPacket(BasePacket.Create(CmdIds.GridFightGetDataScRsp, refresh));
         }
         finally
         {
@@ -54,7 +53,7 @@ public sealed class HandlerGridFightTraitUpdateCsReq : GridFightHandler<GridFigh
         var session = manager.Session;
         var sync = session == null ? null : Handle(manager, session, request);
         if (sync != null) await connection.SendPacket(new PacketGridFightSyncUpdateResultScNotify(sync));
-        await connection.SendPacket(CreatePacket(CmdIds.GridFightTraitUpdateScRsp, new GridFightTraitUpdateScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.GridFightTraitUpdateScRsp, new GridFightTraitUpdateScRsp
         {
             Retcode = sync != null ? 0 : (uint)Retcode.RetFail,
         }));
@@ -71,7 +70,7 @@ public sealed class HandlerGridFightTraitUpdateCsReq : GridFightHandler<GridFigh
         {
             case GridFightTraitUpdateCsReq.NEBNJDMFELOOneofCase.GDAMHENIIDJ:
             {
-                // 黑市主理人: buy a slot or refresh the rotating goods.
+                // Jade's shop (黑市主理人): buy a slot or refresh the rotating goods.
                 if (request.GDAMHENIIDJ.AHAIBDAJAIB)
                 {
                     if (!session.RefreshJadeGoods(out var goldChanged)) return null;
@@ -107,7 +106,7 @@ public sealed class HandlerGridFightTraitUpdateCsReq : GridFightHandler<GridFigh
             case GridFightTraitUpdateCsReq.NEBNJDMFELOOneofCase.IFDICIIOHHI
                 when request.IFDICIIOHHI.HCDIBHEDDEC != null:
             {
-                // 欢愉: drag equipment onto Aha. (Aha consumables, HJJPILGEFKK, are not implemented.)
+                // Elation (欢愉): drag equipment onto Aha. (Aha consumables, HJJPILGEFKK, are not implemented.)
                 var dress = session.DressElationEquipment(request.IFDICIIOHHI.HCDIBHEDDEC.AMIFDFAHMDM, out var consumed);
                 return dress.Success
                     ? manager.BuildSeasonTwoSelectionSync(traitId, effectId, 0, dress, removedEquipment: consumed)
@@ -120,8 +119,8 @@ public sealed class HandlerGridFightTraitUpdateCsReq : GridFightHandler<GridFigh
 }
 
 /// <summary>
-///     The client asks to enter a 幕后茶歇 node (8559, sent from Lua). The bonfire pending action is pushed on node
-///     entry already; resend it here. Proto/4.7 has no matching response command, so none is sent.
+///     The client asks to enter a bonfire (幕后茶歇) node (8559, sent from Lua). The bonfire pending action is pushed on
+///     node entry already; resend it here. The 4.7 protocol has no matching response command, so none is sent.
 /// </summary>
 [Opcode(CmdIds.GridFightEnterBonfireCsReq)]
 public sealed class HandlerGridFightEnterBonfireCsReq : GridFightHandler<GridFightEnterBonfireCsReq>
@@ -154,7 +153,7 @@ public sealed class HandlerGridFightSpotLightEnterCsReq : GridFightHandler<NLMAA
         var settled = open ? null : session?.ResolveStaleSpotLightNode();
         if (open || settled != null)
             await connection.SendPacket(new PacketGridFightSyncUpdateResultScNotify(manager.BuildSpotLightSync(settled, 0)));
-        await connection.SendPacket(CreatePacket(CmdIds.GridFightSpotLightEnterScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GridFightSpotLightEnterScRsp,
             new GridFightSpotLightEnterScRsp { Retcode = open || settled != null ? 0 : (uint)Retcode.RetFail }));
     }
 }
@@ -170,7 +169,7 @@ public sealed class HandlerGridFightSpotLightReplaceCsReq : GridFightHandler<LLI
         if (success)
             await connection.SendPacket(new PacketGridFightSyncUpdateResultScNotify(
                 manager.BuildSpotLightSync(new GridFightSpotLightChanges { CountersChanged = true }, 0)));
-        await connection.SendPacket(CreatePacket(CmdIds.GridFightSpotLightReplaceScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GridFightSpotLightReplaceScRsp,
             new GridFightSpotLightReplaceScRsp { Retcode = success ? 0 : (uint)Retcode.RetFail }));
     }
 }
@@ -184,6 +183,6 @@ public sealed class HandlerGridFightUpdateSpotLightTrackCsReq : GridFightHandler
         PlayerInstance player,
         GridFightUpdateSpotLightTrackCsReq request)
     {
-        return connection.SendPacket(CreatePacket(CmdIds.OCNEDLGLLEA, new OCNEDLGLLEA()));
+        return connection.SendPacket(BasePacket.Create(CmdIds.OCNEDLGLLEA, new OCNEDLGLLEA()));
     }
 }

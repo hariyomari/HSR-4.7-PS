@@ -7,8 +7,10 @@ using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Battle;
 using March7thHoney.GameServer.Game.GridFight.Battle;
+using March7thHoney.GameServer.Game.GridFight.Persistence;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.GridFight;
+using March7thHoney.Internationalization;
 using March7thHoney.Proto;
 using March7thHoney.Util;
 
@@ -81,7 +83,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         catch (Exception e)
         {
             // Keep the previous blob: a failed capture must never break the request that triggered it.
-            Logger.Error($"Saving the GridFight run of uid {Player.Uid} failed", e);
+            Logger.Error(I18NManager.Translate("Server.Log.GridFightSaveFailed", Player.Uid.ToString()), e);
         }
     }
 
@@ -103,7 +105,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         catch (Exception e)
         {
             // A blob that no longer fits this build or resource cache is dropped instead of crashing the login.
-            Logger.Warn($"Dropping the saved GridFight run of uid {Player.Uid}: {e.Message}");
+            Logger.Warn(I18NManager.Translate("Server.Log.GridFightRunDropped", Player.Uid.ToString(), e.Message));
             Session = null;
             _data.RunInstance = null;
             DatabaseHelper.MarkDirty(Player.Uid);
@@ -120,7 +122,7 @@ public sealed partial class GridFightManager : BasePlayerManager
             // so the run is closed here like EndBattle would after its settle notify.
             if (settlement.Success && (settlement.Defeated || !settlement.RouteAdvanced))
             {
-                Logger.Info($"The saved GridFight run of uid {Player.Uid} ended with its interrupted battle.");
+                Logger.Debug($"The saved GridFight run of uid {Player.Uid} ended with its interrupted battle.");
                 ClearSession(settled: true);
             }
             Persist();
@@ -182,8 +184,8 @@ public sealed partial class GridFightManager : BasePlayerManager
         handbook.EquipInfo.GridFightItemList.Add(GridFightSeasonScope.Equipment(Catalog.CurrentSeason)
             .Select(row => row.ID)
             .Order());
-        // 主角光环图鉴: the only 4.7 handbook addition with two id lists (seen/unlocked, like augments and portals);
-        // the single-list LLBMKOILIDN/ODKODPBCDKD remain unidentified (likely the PetPal pages).
+        // Spotlight handbook (主角光环图鉴): the only 4.7 handbook addition with two id lists (seen/unlocked, like
+        // augments and portals); the single-list LLBMKOILIDN/ODKODPBCDKD remain unidentified (likely the PetPal pages).
         if (Catalog.CurrentSeason >= 2)
         {
             var spotLightIds = GridFightSeasonTwoTables.SpotLights.Select(row => row.Id).Order().ToList();
@@ -200,9 +202,9 @@ public sealed partial class GridFightManager : BasePlayerManager
         var permanentTalent = new GridFightTalentInfo();
         permanentTalent.TalentIdList.Add(GameData.GridFightTalentData.Keys.Order());
         var permanentInfo = new GridFightPermanentGameInfo { Talent = permanentTalent };
-        // 4.7 clients gate the season entry on the per-stage tutorial progress (FBJMBJKMAJA, keyed by tutorial
-        // division) and the last finished tutorial stage (ENECKKGPKHI, same identity as
-        // GridFightLastTutorialFinishScNotify); tutorial_completion alone keeps showing "finish the tutorial first".
+        // Season entry requires FBJMBJKMAJA progress per tutorial division, not tutorial_completion alone.
+        // 4.8 dropped the last completed stage (ENECKKGPKHI) and GridFightLastTutorialFinishScNotify.
+        // Leave the new bool PMFHAPIFFPO unset; its meaning is unknown.
         foreach (var (divisionId, completion, tutorialTask) in Catalog.CompletedTutorialStages)
             permanentInfo.FBJMBJKMAJA[divisionId] = new GLHCHCJMFGA
             {
@@ -210,7 +212,6 @@ public sealed partial class GridFightManager : BasePlayerManager
                 GDAKCOICIDA = completion,
                 MPJPLKKJNGE = tutorialTask,
             };
-        permanentInfo.ENECKKGPKHI = Catalog.CompletedTutorialStages.Select(stage => stage.DivisionId).DefaultIfEmpty().Max();
 
         return new GridFightSystemInfo
         {
@@ -981,8 +982,9 @@ public sealed partial class GridFightManager : BasePlayerManager
                     MaxLevel = Catalog.MaxPlayerLevel,
                 },
             });
-        // 财富宝钻 raises the team size (1583 -> GridFightPlayer.UpdateMaxRoleNum) and unlocks one more back cell
-        // (833 -> UpdateMaxBackRoleNum); without both the client keeps the old cap until a level-up and never shows the cell.
+        // A Wealth Diamond (财富宝钻) raises the team size (1583 -> GridFightPlayer.UpdateMaxRoleNum) and unlocks one more
+        // back cell (833 -> UpdateMaxBackRoleNum); without both the client keeps the old cap until a level-up and never
+        // shows the cell.
         var addsCrown = application.AddedEquipments.Any(equipment =>
             equipment.EquipmentId == GridFightSession.WealthDiamondEquipmentId);
         if (application.PlayerLevelChanged || addsCrown)
@@ -1308,7 +1310,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         AppendPepePortalInitialResults(notify);
         AppendJoyContractInitialResults(notify);
         AppendDotContractInitialResults(notify);
-        AppendP0PortalInitialResults(notify);
+        AppendPortalInitialResults(notify);
         AppendAugmentEffectResults(notify, session.TakePortalOpeningEffects());
 
         var portalResult = new GridFightSyncResultData
@@ -1516,7 +1518,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         foreach (var itemReward in Session.TakeInvestmentSelectionRewards())
             AppendInvestmentItemReward(notify, itemReward);
         AppendSpecialInvestmentSelectionResults(notify, augmentId);
-        AppendP0InvestmentSelectionResults(notify, augmentId);
+        AppendInvestmentSelectionResults(notify, augmentId);
         AppendAugmentEffectResults(notify, Session.TakeAugmentSelectionEffects());
         AppendOwlbertArrivals(notify);
         AppendEconomyEffects(notify);
@@ -1561,7 +1563,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         foreach (var bonusId in Session.TakeForesightBonusAugments())
         {
             AppendSpecialInvestmentSelectionResults(notify, bonusId);
-            AppendP0InvestmentSelectionResults(notify, bonusId);
+            AppendInvestmentSelectionResults(notify, bonusId);
             var bonusResult = new GridFightSyncResultData { UpdateSource = GridFightUpdateSrcType.KgridFightSrcAugment };
             bonusResult.EffectParamList.Add(augmentId);
             bonusResult.UpdateDynamicList.Add(new GridFightSyncData
@@ -1814,7 +1816,7 @@ public sealed partial class GridFightManager : BasePlayerManager
         }
         if (retreated)
         {
-            // 撤退 leaves Currency Wars altogether: right after BATTLE_END_QUIT the client sends
+            // Retreating (撤退) leaves Currency Wars altogether: right after BATTLE_END_QUIT the client sends
             // GridFightQuitLeaveGamePlayCsReq and walks back to the overworld (2026-10-06 log), and it reloads the run
             // through GetData when it comes back. The battle still counts as lost (no free replay), but its settle
             // page, the route sync and the settle notify must not reach a client that is leaving: they blacked it out.
@@ -2373,10 +2375,9 @@ public sealed partial class GridFightManager : BasePlayerManager
         return info;
     }
 
-    // From 4.6.51 the client builds its stage nodes (GridFightStageRoute.SyncRouteNodes) only from these synced
-    // nodes; without them the current node is null, the stage line reads 0-0 and the preparation page cannot
-    // start a battle. Field identities follow GridFightStageNode._RefreshCachedFields: param 2 stage, 7 penalty
-    // rule, 8 augment flag (== 1), 12 basic gold, 14 node type; 4 (spotlight) and 11 (bonfire) are season-two only.
+    // Since 4.6.51, GridFightStageRoute.SyncRouteNodes requires server nodes to show the stage and allow battle.
+    // GridFightStageNode._RefreshCachedFields: params 2 stage, 7 penalty rule, 8 augment (=1), 12 gold, 14 type;
+    // 4 spotlight and 11 bonfire are season-two only.
     private static BCCIJHPLJOJ BuildRouteNode(GridFightRouteNode node, GridFightSession session)
     {
         var param = new OHMDHKGAEMM
@@ -2388,10 +2389,10 @@ public sealed partial class GridFightManager : BasePlayerManager
             NodeType = (uint)node.NodeType,
         };
         param.ParamList.Add(node.Parameters);
-        // 主角光环: param 4 marks the nodes whose spotlight selection is still due (and numbers the locked slots);
-        // while the current node has it, the battle button asks for the selection instead of starting the battle.
+        // Spotlight (主角光环): param 4 marks the nodes whose spotlight selection is still due (and numbers the locked
+        // slots); while the current node has it, the battle button asks for the selection instead of starting the battle.
         if (session.IsSpotLightNodePending(node.ChapterId, node.SectionId)) param.HPNNLMBHOPF = true;
-        // 幕后茶歇: param 11 marks the node, 15 lists its event, 3 shows the partner on it; the Hex display
+        // Bonfire (幕后茶歇): param 11 marks the node, 15 lists its event, 3 shows the partner on it; the Hex display
         // (param 8 == 1) would win over the bonfire one.
         if (session.FindBonfireNode(node.ChapterId, node.SectionId) is { } bonfire)
         {

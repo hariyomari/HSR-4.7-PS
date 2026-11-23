@@ -3,8 +3,6 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>March7thHoney.Program</RootNamespace>
     <AssemblyName>March7thHoney</AssemblyName>
     <ApplicationIcon>March7thHoney.ico</ApplicationIcon>
@@ -20,23 +18,6 @@
     <!-- First goal is a runnable native binary; don't fail on trim/AOT warnings yet. -->
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <IlcTreatWarningsAsErrors>false</IlcTreatWarningsAsErrors>
-
-    <!--
-      Anti-reverse hardening: strip the readable name/metadata tables NativeAOT
-      otherwise embeds. StackTraceSupport=false drops per-method name strings
-      (the biggest source of a symbol map); UseSystemResourceKeys replaces BCL
-      exception messages with short keys; the rest remove reflection/diagnostic
-      metadata we don't use. Tradeoff: exception logs lose readable stack traces.
-    -->
-    <StackTraceSupport>false</StackTraceSupport>
-    <UseSystemResourceKeys>true</UseSystemResourceKeys>
-    <DebuggerSupport>false</DebuggerSupport>
-    <EventSourceSupport>false</EventSourceSupport>
-    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
-    <NullabilityInfoContextSupport>false</NullabilityInfoContextSupport>
-    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
-    <!-- Fold identical method bodies: smaller image, fewer distinct call targets. -->
-    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
   </PropertyGroup>
 
   <!-- Keep reflection-heavy libraries whole so trimming doesn't break them at runtime. -->
@@ -44,7 +25,7 @@
     <TrimmerRootAssembly Include="Newtonsoft.Json" />
     <TrimmerRootAssembly Include="System.Management" />
     <TrimmerRootAssembly Include="MailKit" />
-    <TrimmerRootAssembly Include="MimeKit" />
+    <TrimmerRootAssembly Include="MimeKit.Core" />
     <TrimmerRootAssembly Include="BouncyCastle.Cryptography" />
     <TrimmerRootAssembly Include="Spectre.Console" />
     <!-- Custom JSON configs (Banners, ActivityConfig, VideoKeys, room gen...) are read via Newtonsoft reflection. -->
@@ -60,13 +41,30 @@
 	  <Content Include="March7thHoney.ico" />
   </ItemGroup>
 
+  <!--
+    A publish carries the configuration defaults tracked in Config/: the server reads Config/ relative to its
+    working directory, and without Config/Security/LoginRsaPrivateKey.pem it rejects every encrypted login.
+    The key pair is the one the CyreneLauncher proxy and its hook DLL encrypt with by default; a public server
+    replaces it. Runtime data (Config.json, Database/, Logs/) and the untracked resource cache are not copied.
+  -->
+  <ItemGroup>
+    <ServerConfigDefault Include="..\Config\ClientSecretKey.ec2b;..\Config\RogueMagicRoomGen.json" TargetFolder="Config" />
+    <ServerConfigDefault Include="..\Config\Custom\*.json" TargetFolder="Config\Custom" />
+    <ServerConfigDefault Include="..\Config\Json\*.json" TargetFolder="Config\Json" />
+    <ServerConfigDefault Include="..\Config\Languages\*.json" TargetFolder="Config\Languages" />
+    <ServerConfigDefault Include="..\Config\Security\*.pem" TargetFolder="Config\Security" />
+    <None Include="@(ServerConfigDefault)"
+          Link="%(TargetFolder)\%(Filename)%(Extension)"
+          CopyToOutputDirectory="Never"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <AssemblyMetadata Include="BuildUtc" Value="$([System.DateTime]::UtcNow.ToString(&quot;yyyy-MM-ddTHH:mm:ssZ&quot;))" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.33.1" />
-    <PackageReference Include="Google.Protobuf.Tools" Version="3.33.1" />
+    <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
   <ItemGroup>

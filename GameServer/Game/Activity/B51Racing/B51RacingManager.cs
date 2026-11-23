@@ -1,4 +1,5 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Activity;
 using March7thHoney.Data.Excel;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Proto;
@@ -137,7 +138,7 @@ public sealed partial class B51RacingManager : BasePlayerManager
             do { sessionID = unchecked((uint)Interlocked.Increment(ref _nextSessionId)); } while (sessionID == 0);
             _driverId = request.DriverId;
             _race = new RaceSession(sessionID, request.MatchId, request.TrackId, _driverId, _car.Clone()) { EnteredRaid = _raidScene != null };
-            Logger.Info($"Start match={request.MatchId} track={request.TrackId} session={sessionID}");
+            Logger.Debug($"Start match={request.MatchId} track={request.TrackId} session={sessionID}");
             return new B51RacingChallengeStartMatchScRsp { DriverId = _driverId, SessionId = sessionID };
         }
     }
@@ -158,7 +159,7 @@ public sealed partial class B51RacingManager : BasePlayerManager
                 (!_bestTimes.TryGetValue(request.TrackId, out var best) || request.FinishTimeMs < best))
                 _bestTimes[request.TrackId] = request.FinishTimeMs;
             response.BestTimeMs = _bestTimes.GetValueOrDefault(request.TrackId);
-            Logger.Info($"End match={request.MatchId} track={request.TrackId} session={request.SessionId} result={request.ResultType} time={request.FinishTimeMs} best={response.BestTimeMs}");
+            Logger.Debug($"End match={request.MatchId} track={request.TrackId} session={request.SessionId} result={request.ResultType} time={request.FinishTimeMs} best={response.BestTimeMs}");
             _race = null;
             return response;
         }

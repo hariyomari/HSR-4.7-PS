@@ -63,11 +63,8 @@ public class ChallengeTierceInstance : BaseChallengeInstance
         if (CurStageIndex == 0) return PreConfig.ChallengeMonsters1;
         if (CurStageIndex == 1) return PreConfig.ChallengeMonsters2;
 
-        // Node 3 reads from Tierce config. Some Tierce entries (e.g. AS 30185 → MazeGroupID=6)
-        // declare a group that the actual floor doesn't expose — the boss spot lives in a
-        // different group on disk. Fallback: scan the floor for any group containing the
-        // configured monster spot (by ConfigList[0]) and remap the dictionary key. This stays
-        // version-agnostic since the lookup is driven entirely by the Excel ConfigList.
+        // Some Tierce groups are absent from the floor (e.g. AS 30185, group 6). For node 3,
+        // find the actual group by the first configured monster spot rather than a version-specific ID.
         var declared = Config.MazeGroupID;
         var floor = ActiveScene?.FloorInfo ?? Player.SceneInstance?.FloorInfo;
         if (floor != null && Config.ChallengeMonsters.TryGetValue(declared, out var monsters)
@@ -118,17 +115,13 @@ public class ChallengeTierceInstance : BaseChallengeInstance
             // PF Tierce uses a per-node turn limit (PreConfig.ChallengeCountDown comes from
             // ChallengeStoryMazeExtra.TurnLimit) and the FantasticStory score container.
             battle.RoundLimit = PreConfig.ChallengeCountDown;
-            battle.AddBattleTarget(1, 10003, GetTotalScore());
-            if (PreConfig.StoryExcel?.BattleTargetID != null)
-                foreach (var id in PreConfig.StoryExcel.BattleTargetID)
-                    battle.AddBattleTarget(5, id, GetTotalScore());
+            ChallengeScoreTargets.AddStoryTargets(battle, PreConfig.StoryExcel?.BattleTargetID ?? [], GetTotalScore());
         }
         else if (IsBossMode)
         {
-            // AS Tierce: same recipe as ChallengeBossInstance.OnBattleStart — no round limit
-            // (fight runs until all bosses are down) and a fixed pair of type-1 score targets.
-            battle.AddBattleTarget(1, 90004, 0);
-            battle.AddBattleTarget(1, 90005, 0);
+            // AS Tierce: no round limit (the fight runs until all bosses are down) and the Apocalyptic Shadow
+            // score header pair.
+            ChallengeScoreTargets.AddBossTargets(battle);
         }
         else
         {
@@ -274,7 +267,8 @@ public class ChallengeTierceInstance : BaseChallengeInstance
         }
         else
         {
-            // 末关通关: 保活实例(对齐单关重打)供「重新挑战」用, 清理交给 Leave()/重开内部
+            // Final node cleared: keep the instance alive, as a single-stage replay does, so the retry button
+            // (重新挑战) can use it; cleanup is left to Leave() and to the restart itself.
             IsPassed = true;
             await Player.SendPacket(PacketChallengeTierceSyncNotify.ForAllStage(this));
             await Player.SendPacket(PacketChallengeTierceSyncNotify.ForMedal((uint)PreConfig.GroupID));

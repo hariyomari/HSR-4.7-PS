@@ -1,19 +1,76 @@
-# 账号安全回归
+# Account security regression
 
-测试项目：[`scripts/AuthRegression/`](../../scripts/AuthRegression/)
+English | [简体中文](auth-regression.zh-CN.md)
+
+`AuthRegression` checks account registration, login, administrator authentication, bans, tokens and account deletion against a throwaway database. Run it after changing anything in accounts, authentication, bans, tokens, deletion or database concurrency.
+
+Project: [`scripts/AuthRegression/`](../../scripts/AuthRegression/)
+
+## How to run
+
+From the repository root:
 
 ```powershell
 dotnet run --project scripts/AuthRegression/AuthRegression.csproj
 ```
 
-使用全新的临时 SQLite 数据库和测试配置，不读取项目 `Config.json` 或实际玩家数据库。覆盖旧表迁移、注册与登录绕过、并发注册、管理员鉴权、IP 归一化与转发头、独立封锁、令牌撤销、批量删除、事务回滚、断开会话、延迟写入、存库与删除并发、重载后的封锁和删除记录，分离部署的玩家 IP 检查，以及网站游戏账号接口（开关与密钥、代理转发后的来源地址、不区分大小写的用户名唯一、并发创建、改密吊销令牌、封禁/解封、关闭注册后的外部注册跳转）。
-
-预期最终输出 `Auth regression failures: 0`。模拟游戏会话没有真实 KCP 传输，断开测试会产生预期的发送失败日志。
-
-封禁回归还覆盖：账号封禁仅影响自身 UID；共享 PC 设备或公网 IP 的其他账号仍可通过密码登录、令牌验证、Combo 换票与注册；被封禁 UID 更换设备仍被拒绝；独立设备 / IP 规则继续拦截，包括省略设备 ID 的历史设备检查；公共占位指纹及旧哈希被过滤；拒绝日志能区分账号封禁与独立规则，且不包含密码、令牌或原始设备值。这些检查使用合成账号与临时数据库，不替代 PC / Android 客户端实机验证。
+To check the admin pages in a browser, add `--serve`:
 
 ```powershell
 dotnet run --project scripts/AuthRegression/AuthRegression.csproj -- --serve
 ```
 
-先执行回归，通过后在 `http://127.0.0.1:21001/admin/index.html` 启动隔离的后台测试夹具，使用测试密钥 `local-auth-regression-only` 登录。夹具带有超过一页的合成账号与 IP/设备记录，所有记录均可丢弃。完成后 Ctrl+C 停止。不要将此测试实例暴露到外网。
+This runs the regression first. When it passes, it starts an isolated admin fixture at `http://127.0.0.1:21001/admin/index.html`; sign in with the test key `local-auth-regression-only`. The fixture holds more than one page of synthetic accounts and IP/device records, all disposable. Stop it with Ctrl+C when you are done, and never expose this instance outside the local machine.
+
+## Prerequisites
+
+None beyond the .NET SDK. The regression creates a fresh temporary SQLite database and its own test configuration; it does not read the project's `Config.json` or any real player database.
+
+## What it covers
+
+### Accounts and login
+
+- Migration of old tables.
+- Registration and login bypass attempts; concurrent registration.
+- Administrator authentication.
+- IP normalization and forwarded headers; player IP checks in split deployments.
+
+### Bans, tokens and deletion
+
+- Independent device/IP blocks, token revocation, batch deletion and transaction rollback.
+- Disconnecting sessions, deferred writes, and concurrent save and delete.
+- Ban and deletion records after a reload.
+
+### Account bans
+
+- An account ban affects only that UID. Other accounts sharing the same PC device or public IP can still log in with a password, verify a token, exchange a Combo ticket and register.
+- A banned UID is still rejected after switching device.
+- Independent device/IP rules keep blocking, including the historical-device check when the device ID is omitted.
+- Public placeholder fingerprints and their old hashes are filtered out.
+- Rejection logs distinguish an account ban from an independent rule and contain no password, token or raw device value.
+
+### Account email links
+
+- Password reset emails are refused while `Email.PublicBaseUrl` is empty or not an absolute http(s) URL.
+- With it set, the reset link uses that address even when the request carries a forged `Host` header.
+
+### Website game-account API
+
+- On/off switch and secret key; the source address after proxy forwarding.
+- Case-insensitive unique user names; concurrent creation.
+- A password change revokes tokens; ban and unban.
+- With registration closed, the external registration redirect.
+
+## Expected result
+
+The run ends with:
+
+```text
+Auth regression failures: 0
+```
+
+The simulated game sessions have no real KCP transport, so the disconnect tests log expected send failures.
+
+## Known gaps
+
+- All checks use synthetic accounts and a temporary database. They do not replace testing with a real PC or Android client.

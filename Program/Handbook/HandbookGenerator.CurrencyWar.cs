@@ -10,10 +10,8 @@ using Newtonsoft.Json.Linq;
 
 namespace March7thHoney.Program.Handbook;
 
-// Currency War (GridFight) sections. From 4.6.51 the tables keep season 1 and season 2 rows side by side, and
-// season-2 roles reuse the avatar names of season 1, so every line carries its own season tag: the launcher
-// searches the handbook line by line. Names of traits, portals, augments, partners and divisions are not part of
-// the cached models, so they are read from the resource tree's Excel JSON next to the TextMap.
+// Since 4.6.51, tag each row by season so launcher searches distinguish reused avatar names.
+// Resolve names missing from the cache against the Excel JSON next to the TextMap.
 public static partial class HandbookGenerator
 {
     private static readonly Regex RichTextTag = new("<[^>]+>", RegexOptions.Compiled);

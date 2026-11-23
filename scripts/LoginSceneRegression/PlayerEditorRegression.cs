@@ -70,7 +70,7 @@ internal static class PlayerEditorRegression
             using var response = await client.PutAsJsonAsync(basePath + "/profile", Profile("Edited", 40, 123456, 3, genderVersion, gender));
             var loaded = await Load();
             var heroSlots = loaded.LineupManager!.Data.Lineups.Values.SelectMany(lineup => lineup.BaseAvatars ?? [])
-                .Where(slot => slot.SpecialAvatarId == 0 && AvatarManager.IsHeroPath(slot.BaseAvatarId))
+                .Where(slot => slot.SpecialAvatarId == 0 && TrailblazerAvatar.IsPath(slot.BaseAvatarId))
                 .Select(slot => slot.BaseAvatarId).ToList();
             var teamView = (await Data(await client.GetAsync(basePath + "/lineups")))!["lineups"]!.AsArray()
                 .SelectMany(lineup => lineup!["slots"]!.AsArray()).Select(slot => slot!["base_avatar_id"]!.GetValue<int>()).ToList();

@@ -2,6 +2,7 @@ using March7thHoney.Data;
 using March7thHoney.Data.Config.Scene;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
@@ -34,7 +35,7 @@ public class RogueEntityLoader(SceneInstance scene, PlayerInstance player) : Sce
         var firstLoad = !Scene.IsLoaded;
         var roomExcel = player.RogueManager?.GetActiveRoomExcel(Scene.EntryId);
         if (firstLoad && roomExcel != null)
-            Scene.LeaveEntryId = RogueManager.RogueEntranceId;
+            Scene.LeaveEntryId = RogueLobby.EntranceId;
 
         await base.LoadEntity();
 

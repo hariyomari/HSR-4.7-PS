@@ -1,6 +1,7 @@
 # Gameplay Development Progress Tree
 
-[EN](gameplay-implementation.md) | [简中](gameplay-implementation.zh-CN.md) | [繁中](gameplay-implementation.zh-TW.md) | [JP](gameplay-implementation.ja-JP.md)
+English | [简体中文](gameplay-implementation.zh-CN.md)
+
 [Multilingual Name Mapping](gameplay-name-map.md)
 
 Legend:

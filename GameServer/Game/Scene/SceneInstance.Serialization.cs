@@ -77,7 +77,8 @@ public partial class SceneInstance
                ?? 0;
     }
 
-    // 客户端不会自己套用资源里的楼层存档默认值, 缺省即 0, 关卡图会走错分支
+    // The client does not apply the floor saved-value defaults from the resources by itself: a value that is not sent
+    // is 0, and the level graph then takes the wrong branch.
     private IEnumerable<(string Name, int DefaultValue)> ResolveFloorSavedValueDefaults()
     {
         var dimension = FloorInfo?.DimensionList.Find(x => x.ID == ResolveDimensionId());
@@ -177,11 +178,8 @@ public partial class SceneInstance
             sceneInfo.LeaderEntityId = (uint)LeaderEntityId;
         }
 
-        // 4.3 client refuses SummonUnit entities inside Challenge-type scenes
-        // (ChallengePeak / Challenge endgame) — it stops processing
-        // EnterSceneByServerScNotify and the player gets stuck at the loading
-        // step. ExtraMpCount (e.g. Phainon's +3 max sp) is a separate ability
-        // action on LineupData, so skipping dispatch here does not affect it.
+        // The 4.3 client hangs loading Challenge scenes if EnterSceneByServerScNotify includes summons.
+        // ExtraMpCount (e.g. Phainon's +3 max SP) is applied separately through LineupData.
         if (Excel.PlaneType != PlaneTypeEnum.Challenge)
             foreach (var summonUnit in SummonUnit.Values) playerGroupInfo.EntityList.Add(summonUnit.ToProto());
 

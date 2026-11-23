@@ -12,17 +12,28 @@ namespace March7thHoney.Database.Player;
 [DbTable("Player")]
 public class PlayerData : BaseDatabaseDataHelper
 {
+    // New-player defaults: the female Destruction Trailblazer (8002), her head icon, and the starter phone,
+    // chat, card, music and Pam cosmetics.
+    public const int DefaultBasicType = 8002;
+    public const int DefaultHeadIcon = 208002;
+    public const int DefaultPhoneTheme = 221000;
+    public const int DefaultChatBubble = 220000;
+    public const int DefaultPersonalCard = 253000;
+    public const int DefaultPhoneCase = 254000;
+    public const int DefaultBgm = 210007;
+    public const int DefaultPamSkin = 252000;
+
     public string? Name { get; set; } = "";
     public string? Signature { get; set; } = "";
     public int Birthday { get; set; } = 0;
-    public int CurBasicType { get; set; } = 8002;
-    public int HeadIcon { get; set; } = 208002;
-    public int PhoneTheme { get; set; } = 221000;
-    public int ChatBubble { get; set; } = 220000;
-    public int PersonalCard { get; set; } = 253000;
-    public int PhoneCase { get; set; } = 254000;
-    public int CurrentBgm { get; set; } = 210007;
-    public int CurrentPamSkin { get; set; } = 252000;
+    public int CurBasicType { get; set; } = DefaultBasicType;
+    public int HeadIcon { get; set; } = DefaultHeadIcon;
+    public int PhoneTheme { get; set; } = DefaultPhoneTheme;
+    public int ChatBubble { get; set; } = DefaultChatBubble;
+    public int PersonalCard { get; set; } = DefaultPersonalCard;
+    public int PhoneCase { get; set; } = DefaultPhoneCase;
+    public int CurrentBgm { get; set; } = DefaultBgm;
+    public int CurrentPamSkin { get; set; } = DefaultPamSkin;
     // Recorded when a gender is chosen but not read for client visibility: older builds set it on every story-mode
     // login, so the pending gender prompt is derived from mission progress instead (AvatarManager.IsHeroGenderPending).
     public bool IsGenderSet { get; set; } = false;
@@ -41,7 +52,7 @@ public class PlayerData : BaseDatabaseDataHelper
     public int Pet { get; set; } = 0;
     public int CurMusicLevel { get; set; }
 
-    public int Stamina { get; set; } = 300;
+    public int Stamina { get; set; } = GameConstants.MAX_STAMINA;
     public double StaminaReserve { get; set; } = 0;
     public long NextStaminaRecover { get; set; } = 0;
 
@@ -105,7 +116,7 @@ public class PlayerData : BaseDatabaseDataHelper
     public PlayerSimpleInfo ToSimpleProto(FriendOnlineStatus status)
     {
         if (!GameData.ChatBubbleConfigData.ContainsKey(ChatBubble)) // to avoid npe
-            ChatBubble = 220000;
+            ChatBubble = DefaultChatBubble;
 
         var info = new PlayerSimpleInfo
         {
@@ -119,7 +130,7 @@ public class PlayerData : BaseDatabaseDataHelper
             LastActiveTime = LastActiveTime,
             ChatBubbleId = (uint)ChatBubble,
             PersonalCard = (uint)PersonalCard,
-            HeadFrameInfo = HeadFrame.ToProto(),
+            HeadFrameInfo = ToPublicHeadFrameProto(),
             Gender = (uint)CurrentGender
         };
 
@@ -175,7 +186,7 @@ public class PlayerData : BaseDatabaseDataHelper
             Uid = (uint)Uid,
             WorldLevel = (uint)WorldLevel,
             RecordInfo = new PlayerRecordInfo(),
-            HeadFrameInfo = HeadFrame.ToProto()
+            HeadFrameInfo = ToPublicHeadFrameProto()
         };
 
         var avatarInfo = DatabaseHelper.Instance!.GetInstance<AvatarData>(Uid);
@@ -226,6 +237,15 @@ public class PlayerData : BaseDatabaseDataHelper
         return info;
     }
 
+    /// <summary>
+    ///     The head frame other players see: an empty one when the player hides it. The client's
+    ///     PlayerBoardInfo.CreateByPlayerDetailInfo decides whether to show a frame from HeadFrameInfo.IsValid alone
+    ///     (item ID non-zero and not expired). The player's own profile card always receives the real head frame and
+    ///     shows it according to the local setting.
+    /// </summary>
+    public HeadFrameInfo ToPublicHeadFrameProto() =>
+        PrivacySettings.HideHeadFrame ? new HeadFrameInfo() : HeadFrame.ToProto();
+
     public CJLCPMDGIBO ToPlayerOutfitProto() =>
         new() { EAKOLIJOEPA = { PlayerOutfitList.Select(x => (uint)x) } };
 }
@@ -233,6 +253,14 @@ public class PlayerData : BaseDatabaseDataHelper
 [MemoryPackable]
 public partial class PlayerHeadFrameInfo
 {
+    /// <summary>
+    ///     Head frame expiry (timestamp in seconds) used in place of "valid for the current season" when the server has
+    ///     no season end time: 2099-12-31 12:00:00 UTC. The client displays the value as a timestamp
+    ///     ("限时头像框在#1前有效"), and xLua only accepts integers up to 2^53: long.MaxValue makes HeadIconModifyPanel
+    ///     throw "beyond double int limits", and the whole page fails to switch.
+    /// </summary>
+    public const long NoSeasonExpireTime = 4102401600;
+
     public long HeadFrameExpireTime { get; set; }
     public uint HeadFrameId { get; set; }
 
@@ -240,7 +268,8 @@ public partial class PlayerHeadFrameInfo
     {
         return new HeadFrameInfo
         {
-            HeadFrameExpireTime = HeadFrameExpireTime,
+            // Older saves stored long.MaxValue; clamp it into the range the client can represent before sending.
+            HeadFrameExpireTime = Math.Min(HeadFrameExpireTime, NoSeasonExpireTime),
             HeadFrameItemId = HeadFrameId
         };
     }
@@ -255,13 +284,20 @@ public partial class PrivacySettingsPb
     public bool DisplayBattleRecord { get; set; } = true;
     public bool DisplayCollection { get; set; } = true;
 
+    // Hides the head frame (shown by default). The client's PlayerSettingData.IsDisplayHeadFrame is the negation of
+    // this value: login reads it from PlayerSettingInfo.BOMGNMDOGLM, and a toggle sends the UpdatePlayerSetting oneof
+    // BOMGNMDOGLM (fields 10 and 1514 in the 4.7 protocol). New members may only be appended at the end (MemoryPack).
+    public bool HideHeadFrame { get; set; }
+
     public PlayerSettingInfo ToSettingProto()
     {
         return new PlayerSettingInfo
         {
-            // TODO 4.3: PlayerSettingInfo 字段在 4.3 重排，DisplayActiveState/RecentlyState/BattleRecord 暂未映射
+            // TODO: DisplayActiveState, DisplayRecentlyState and DisplayBattleRecord are not sent. Their fields
+            // have not been identified since 4.3 renumbered PlayerSettingInfo.
             GNFDDPEMMFN = DisplayChallengeLineup,
-            FDHEPCKLCAM = DisplayCollection
+            FDHEPCKLCAM = DisplayCollection,
+            BOMGNMDOGLM = HideHeadFrame
         };
     }
 }

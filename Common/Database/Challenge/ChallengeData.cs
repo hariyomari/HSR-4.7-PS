@@ -20,7 +20,8 @@ public class ChallengeData : BaseDatabaseDataHelper
     public Dictionary<int, ChallengePeakBossLevelData> PeakBossLevelDatas { get; set; } = new();
     public int CurrentPeakGroupId { get; set; }
 
-    // 王棋难度按 peakGroupId 持久化, 跨登录记忆玩家选择的普通/绝境
+    // King boss (王棋) difficulty, persisted per peakGroupId so the player's choice of normal or hard mode (绝境)
+    // survives a relogin.
     public Dictionary<int, bool> PeakBossHardByGroup { get; set; } = new();
 
     public string? TierceInstance { get; set; }
@@ -64,11 +65,13 @@ public partial class ChallengePeakLevelData
     public uint PeakStar { get; set; }
     public List<uint> BaseAvatarList { get; set; } = [];
     public List<uint> FinishedTargetList { get; set; } = [];
-    // 以下为最佳战绩, 与上方"上一次编队"BaseAvatarList 分开, 只在刷新纪录时写
+    // The members below hold the best record. They are separate from BaseAvatarList above, which is the lineup used
+    // last, and are written only when the record is beaten.
     public bool HasRecord { get; set; }
     public List<uint> RecordAvatarList { get; set; } = [];
 
-    // 占位: 旧 blob 已写入该成员位, 删掉会让 MemoryPack 拒绝反序列化
+    // Placeholder: old blobs already contain this member slot, and MemoryPack refuses to deserialize them if it is
+    // removed.
     public bool ReservedSlot { get; set; }
 }
 
@@ -82,12 +85,14 @@ public partial class ChallengePeakBossLevelData
     public uint PeakStar { get; set; }
     public List<uint> BaseAvatarList { get; set; } = [];
     public List<uint> FinishedTargetList { get; set; } = [];
-    // 以下为最佳战绩, 与上方"上一次编队+特性"BaseAvatarList/BuffId 分开, 不跨难度镜像
+    // The members below hold the best record. They are separate from BaseAvatarList / BuffId above, which are the
+    // lineup and buff used last, and are not mirrored to the other difficulty.
     public bool HasRecord { get; set; }
     public List<uint> RecordAvatarList { get; set; } = [];
     public uint RecordBuffId { get; set; }
 
-    // 占位: 旧 blob 已写入该成员位, 删掉会让 MemoryPack 拒绝反序列化
+    // Placeholder: old blobs already contain this member slot, and MemoryPack refuses to deserialize them if it is
+    // removed.
     public bool ReservedSlot { get; set; }
 }
 

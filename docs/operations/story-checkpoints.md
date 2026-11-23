@@ -1,5 +1,7 @@
 # Story checkpoints, account clones and save snapshots
 
+English | [简体中文](story-checkpoints.zh-CN.md)
+
 The admin console (Accounts panel) can build a test account that stands at any point of the Trailblaze story. It can also copy an account's whole save to a new account, or keep the save as a named snapshot. All of these replace **gameplay data only**: the account row (username, password, role, tokens, email, bans) is never copied or overwritten.
 
 ## Account clone

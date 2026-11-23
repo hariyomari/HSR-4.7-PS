@@ -24,7 +24,7 @@ public sealed record GridFightFateDivinerEnhanceResult(
 }
 
 /// <summary>
-/// Trait 3002 命运卜者. Capture: Black Swan gets an immediate first divination,
+/// Trait 3002, Fate Diviner (命运卜者). Capture: Black Swan gets an immediate first divination,
 /// then another one after every two battles in which she is in an active (1..13) slot.
 /// </summary>
 public sealed partial class GridFightSession

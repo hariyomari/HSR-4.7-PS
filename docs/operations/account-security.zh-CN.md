@@ -1,5 +1,9 @@
 # 账号清理与设备 / IP 封锁
 
+[English](account-security.md) | 简体中文
+
+本指南面向需要批量删除账号、封锁设备或 IP，或者在反向代理后、以 Dispatch 与 GameServer 分离方式部署服务器的管理员，同时说明升级后的认证行为以及这些功能背后的管理接口。
+
 后台入口为 `/admin/index.html`，使用管理密钥登录。
 
 ## 批量删除
@@ -39,6 +43,23 @@ IP 封锁会影响同一公网出口的其他玩家。设备 ID 由客户端提�
 - 无密码账号不能再由首次登录者自行设置密码，需要管理员设置。自动建号也不能跳过已启用的邮箱验证要求；要求验证邮箱时，应通过正式注册页面提交真实邮箱。
 - 普通机型、设备名称、应用 ID 不再被当作唯一设备标识。
 - 数据库启动时自动补充新增字段和表，无需手工迁移。更新程序后重启生效。
+- 玩家控制台（`/player/*`、`/console/*`）、`/sr-tools` 与 `/sr-tools-export` 通过同一个共享校验器检查 UID 和密码。没有密码的账号被拒绝；处于登录限流封锁或 IP / 设备封锁中的客户端在检查密码之前即被拒绝；每次错误密码都计入登录限流；被封禁的账号被拒绝。
+- `/sr-tools-export` 改为 `POST`，使用 JSON 请求体 `{"username":"<uid>","password":"<password>"}`。旧的 `GET ?uid=&password=` 形式返回 405，密码不再出现在 URL、代理日志或浏览器历史中。用 `GET` 下载导出数据的脚本或工具需要相应更新。
+
+### 防滥用限制
+
+`ServerOption.Auth.AntiAbuse` 下的开关（`RateLimitEnabled`、`LimitRegistrationPerIdentity`、`LoginRateLimitEnabled`、`EmailRateLimitEnabled`；`RequireRegistrationIdentity` 原本就是关闭的）默认关闭，自建服务器的玩家注册和登录不受限流。公开服务器在 `Config.json` 或后台 **设置 → antiabuse** 中打开需要的开关；次数、时间窗口和封锁时长保持原值。
+
+- **已有安装保留原值。** `Config.json` 会在启动时写回，因此旧版本生成的文件中这些开关仍是打开的。
+- **回退：** 把开关重新设为 `true` 即可，没有其他依赖。
+
+### DefaultPermissions
+
+`ServerOption.DefaultPermissions` 会在角色权限之上授予每个账号。其内置默认值现为空；以前为 `["*"]`，使每个注册玩家都成为管理员（包括 `command.account` 与 `command.others`）。
+
+- **已有部署保留原值。** 启动时会读取并回写 `Config.json`，因此旧版本生成的文件仍包含 `"DefaultPermissions": ["*"]`，仍授予全部权限。启动时以及在后台修改该值时，若其中包含 `*` 或内置 User 角色没有的任何权限（例如 `command.*`、`command.account`、`command.others`），服务器会输出警告日志。
+- **迁移：** 先备份 `Config.json`，将其设为 `"DefaultPermissions": []`（或只保留低风险权限），并通过 `PermissionRoles` / 账号角色为管理者授予权限。重启生效，或在后台访问控制页面修改后立即生效。
+- **回滚：** 恢复备份或重新设为 `"DefaultPermissions": ["*"]` 即恢复旧行为，启动警告也会重新出现。将程序回退到旧版本不会改变已有的 `Config.json`；由新版本首次生成的文件在旧程序下仍保持 `[]`。
 
 ## 反向代理与分离部署
 
@@ -62,4 +83,4 @@ Dispatch 与 GameServer 分开运行时，两端必须设置一致且非空的 `
 
 封锁已有哈希时，以 `identity_key` 替换 `value`，两者不能同时提供。API 同样验证类型、地址格式和时长；重复封锁同一规范化标识会更新该规则。
 
-隔离回归测试及浏览器测试夹具见 [账号安全回归](../testing/auth-regression.md)。
+隔离回归测试及浏览器测试夹具见 [账号安全回归](../testing/auth-regression.zh-CN.md)。

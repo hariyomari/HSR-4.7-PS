@@ -1,5 +1,7 @@
 # Player editor
 
+English | [简体中文](player-editor.zh-CN.md)
+
 The admin console's **Player editor** page (`/admin/index.html#/editor/<uid>`, sidebar group *Players*) edits one account's gameplay save section by section: profile and currencies, characters, inventory, teams, story and world, and the raw save tables. The Accounts page links to it from the profile and *Player data* tabs. Test-account creation stays on the Accounts page.
 
 ## How a change is applied

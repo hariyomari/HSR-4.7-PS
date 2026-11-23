@@ -1,4 +1,5 @@
 using March7thHoney.Data;
+using March7thHoney.Internationalization;
 using March7thHoney.Util;
 using MemoryPack;
 using Newtonsoft.Json;
@@ -51,19 +52,17 @@ public partial class MainMissionScheduleExcel : ExcelResource
 
     private static void TryLoadFromDisk()
     {
-        var file = ConfigManager.Config.Path.ExcelOutputDirs
-            .Select(dir => Path.Combine(ConfigManager.Config.Path.ResourcePath, dir, "MainMissionSchedule.json"))
-            .FirstOrDefault(File.Exists);
+        var file = ResourcePaths.FindExcel("MainMissionSchedule.json");
         if (file == null) return;
 
         try
         {
-            var rows = JsonConvert.DeserializeObject<List<MainMissionScheduleExcel>>(File.ReadAllText(file));
+            var rows = JsonConvert.DeserializeObject<List<MainMissionScheduleExcel>>(File.ReadAllText(file.FullName));
             foreach (var row in rows ?? []) row.Loaded();
         }
         catch (Exception ex)
         {
-            Logger.Warn("MainMissionSchedule.json could not be loaded; event quests follow their gates only.", ex);
+            Logger.Warn(I18NManager.Translate("Server.Log.MissionScheduleUnavailable"), ex);
         }
     }
 

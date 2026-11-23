@@ -14,7 +14,7 @@ public class HandlerSetMultipleAvatarPathsCsReq : Handler<SetMultipleAvatarPaths
             // Any variant is accepted; Trailblazer ids are normalized to the player's gender inside, and paths the
             // player's character does not own a base for are ignored.
             var avatarId = (int)targetAvatarType;
-            await player.ChangeAvatarPathType(avatarId, (MultiPathAvatarTypeEnum)avatarId);
+            await player.AvatarManager!.ChangePathType(avatarId, (MultiPathAvatarTypeEnum)avatarId);
         }
 
         await connection.SendPacket(CmdIds.SetMultipleAvatarPathsScRsp);

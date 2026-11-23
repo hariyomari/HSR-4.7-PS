@@ -400,8 +400,8 @@ public class GachaManager : BasePlayerManager<GachaData>
             proto.GachaInfoList.Add(banner.ToInfo(GetCharacterEventNonFeaturedPool(), GetGoldAvatars(), newbiePulls));
         }
 
-        // TODO 4.3: 4.2 的角色活动 decide-item / featured pool 下发结构 (NMBAAOBBJMI / OEIEJHBCOOM)
-        // 在 4.3 GetGachaInfoScRsp 重排后无对应字段，暂不下发自选池信息。
+        // TODO: the items chosen for a character event banner are not sent. GetGachaInfoScRsp lost their
+        // fields when 4.3 renumbered it and they have not been identified in the current protocol.
 
         return proto;
     }

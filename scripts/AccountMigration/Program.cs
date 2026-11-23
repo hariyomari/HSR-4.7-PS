@@ -4,7 +4,7 @@
 //   dotnet AccountMigration.dll --validate <db>
 //   dotnet AccountMigration.dll --check-password <salt> <hash> <iterations> <password>
 //
-// Rules (see docs/operations/account-migration.zh-CN.md):
+// Rules (see docs/operations/account-migration.md):
 // - Banned accounts are skipped; AuthAttempt / IdentityBlock / DeletedAccount rows are not copied.
 // - New uid = old uid + the source's offset; on a clash the account moves to a free uid from 30000 up.
 // - A username already taken (case-insensitive) gets "_<source>" appended; a duplicate email is

@@ -228,7 +228,8 @@ public sealed partial class GridFightSession
     private const int OfficialInitialRoleCount = 4;
     private const uint OfficialInitialOrbId = 203;
     private const uint OfficialInitialConsumableId = 350101;
-    private const uint OfficialInitialTalentId = 1081;
+    // Talent 1081 carries both the opening-round reward and the post-battle healing.
+    private const uint OfficialInitialTalentId = GridFightResourceCatalog.PostBattleHealingTalentId;
     private const uint OfficialInitialTalentEffectId = 36;
     private const uint MortenaxBladeRoleId = 1507;
     private const uint MortenaxBladeTraitEffectParamValue = 106;
@@ -582,7 +583,7 @@ public sealed partial class GridFightSession
         OnForesightInvestmentSelected(augmentId);
         if (!ActiveInvestmentIds.Contains(augmentId)) ActiveInvestmentIds.Add(augmentId);
         PrepareInvestmentSelectionReward(augmentId);
-        OnP0InvestmentSelected(augmentId);
+        OnRewardInvestmentSelected(augmentId);
         ApplyAugmentSelectionEffects(augmentId);
         OnPortalInvestmentSelected();
         InvestmentOffer = [];
@@ -1299,7 +1300,7 @@ public sealed partial class GridFightSession
                     else if (GameData.GridFightForgeData.TryGetValue(reward.ItemId, out var hireForge) &&
                              hireForge.FuncType == GridFightForgeFuncTypeEnum.Role)
                     {
-                        // 聘用书 (99992-99996, FuncType Role, params [cost, star]). Its 4-pick prompt
+                        // Hiring book (聘用书, 99992-99996, FuncType Role, params [cost, star]). Its 4-pick prompt
                         // (GridFightForgeRoleActionInfo) has unconfirmed fields and no capture, so the book is
                         // redeemed on receipt for a random role of that cost and star instead of a choice.
                         var hireCost = hireForge.ParamList.ElementAtOrDefault(0);
@@ -1456,7 +1457,7 @@ public sealed partial class GridFightSession
     {
         if (Phase != GridFightSessionPhase.Preparing || HasBlockingPendingSelection) return GridFightSessionChange.Failed;
         var role = Roles.FirstOrDefault(candidate => candidate.UniqueId == uniqueId);
-        // The summoned 丹恒•腾荒 cannot be sold (the client refuses locally as well).
+        // The summoned Dan Heng • Permansor Terrae (丹恒•腾荒) cannot be sold (the client refuses locally as well).
         if (role == null || IsPopulationFreeRole(role)) return GridFightSessionChange.Failed;
         AddGold(_catalog.GetSellPrice(role.RoleId, role.Star));
         DestroyDiceFilledOnRole(role);
@@ -1537,7 +1538,7 @@ public sealed partial class GridFightSession
             return GridFightSessionChange.Failed;
         if (CountPopulationRoles(rolePositions.Select(pair => (pair.Key, pair.Value))) > MaxActiveRoles)
             return GridFightSessionChange.Failed;
-        // TwoInOneSubBlockConstrait: the summoned 丹恒•腾荒 only moves inside the back area.
+        // TwoInOneSubBlockConstrait: the summoned Dan Heng • Permansor Terrae only moves inside the back area.
         if (updates.Any(update => update.UniqueId == _danHengSubUniqueId && _danHengSubUniqueId != 0 &&
                                   !IsBackPosition(update.Position)))
             return GridFightSessionChange.Failed;
@@ -2029,7 +2030,7 @@ public sealed partial class GridFightSession
     private List<GridFightRoleMergeStep> MergeRoles(uint roleId)
     {
         var steps = new List<GridFightRoleMergeStep>();
-        // The 3/4/5-cost Aha tiers have no stars; extra copies become growth (AbsorbAhaCopies) instead.
+        // The Aha tiers below 7-cost have no stars; extra copies become growth (AbsorbAhaCopies) instead.
         if (IsSeasonTwoRules && IsAhaRole(roleId) && roleId != AhaSevenCostRoleId) return steps;
         var switchGroup = _catalog.RoleSwitchGroups.FirstOrDefault(group => group.RoleIdList.Contains(roleId));
         var mergeRoleIds = switchGroup?.RoleIdList.ToHashSet() ?? [roleId];
@@ -2043,12 +2044,9 @@ public sealed partial class GridFightSession
                     GameData.GridFightRoleStarData.ContainsKey(starRoleId << 4 | (grouping.Key + 1)));
             if (group == null) return steps;
 
-            // Official GridFight merge packets do not anchor the upgrade on the newly acquired
-            // third copy. The upgraded role keeps the state of an existing deployed copy: its
-            // board position is preserved and equipment remains attached to the upgraded entity.
-            // Prefer foreground -> background -> bench, then an equipped copy, then the oldest
-            // entity. This also keeps chained 1->2->3 star merges on the deployed copy whenever
-            // one participates in the next merge.
+            // Official merges retain an existing deployed copy's position and gear, not the third copy's.
+            // Prefer foreground, background, then bench; prefer gear and then age within a position.
+            // This keeps chained 1→2→3-star upgrades on the deployed copy when it participates.
             var candidates = group.ToList();
             var retained = candidates
                 .OrderBy(GetMergePositionPriority)
@@ -2114,10 +2112,8 @@ public sealed partial class GridFightSession
     {
         if (!acquisition.Success) return acquisition;
 
-        // Restricted roles are only filtered from shop/crystal/supply sources. Once any other
-        // source successfully grants one (GM, investment, portal, equipment effect, etc.), the
-        // role is temporarily unlocked for the rest of this GridFight run. Shop/supply/orb paths
-        // also pass through here, but they can only reach it after the role was already unlocked.
+        // Grants outside shop/crystal/supply unlock restricted roles for the run. Those three sources
+        // also reach this path, but only for roles already unlocked.
         foreach (var role in acquisition.AcquiredRoles)
             UnlockRestrictedRoleForRun(role.RoleId);
 

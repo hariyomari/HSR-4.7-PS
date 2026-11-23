@@ -92,7 +92,8 @@ public partial class SwitchHandInfo
     public uint State { get; set; } = 101;
     public byte[] ByteValue { get; set; } = [];
 
-    // TODO 4.3: GODHDEIPDJL 在 4.3 中已消失或更名，SwitchHand 暂时移除
+    // TODO: the conversion to its protobuf message was removed with the 4.3 protocol, where that message
+    // disappeared or was renamed; its current counterpart has not been identified.
 }
 
 [MemoryPackable]

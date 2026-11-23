@@ -430,8 +430,7 @@ public class CommandMission : ICommand
         return GameData.MainMissionData.ContainsKey(missionId);
     }
 
-    // Gate for the subcommands that read or edit real mission state. It checks the PLAYER's switch, not
-    // the server config, so everything works again once /mission start has turned the system on for them.
+    // Check the player's override, not just server config: /mission start can enable missions per player.
     private static async ValueTask<bool> RequireMissionSystem(CommandArg arg)
     {
         if (arg.Target?.Player?.MissionEnabled == true) return true;
@@ -439,8 +438,6 @@ public class CommandMission : ICommand
         return false;
     }
 
-    // Moves the player to the floor the mission takes place on, so "start over from mission X" actually
-    // puts them where X happens instead of leaving them wherever they were standing.
     private static async ValueTask TeleportToMission(CommandArg arg, int missionId)
     {
         var player = arg.Target!.Player!;
@@ -448,8 +445,7 @@ public class CommandMission : ICommand
         var entrance = MissionManager.FindEntranceForFloor(floorId);
         if (entrance != null) await player.EnterScene(entrance.ID, 0, true);
 
-        // EnterScene's return value only reports whether the entry changed, so verify against the floor
-        // the player actually ended up on — being there already is a success, not a failure.
+        // EnterScene reports entry changes; check the floor because already being there is also success.
         if (entrance == null || player.Data.FloorId != floorId)
         {
             await arg.SendMsg(I18NManager.Translate("Game.Command.Mission.NoTeleportTarget", missionId.ToString()));

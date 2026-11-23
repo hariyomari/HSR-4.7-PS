@@ -1,7 +1,6 @@
 using March7thHoney.Enums.RogueMagic;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.RogueMagic;
-using March7thHoney.GameServer.Server.Packet.Send.RogueMagic;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
@@ -16,7 +15,7 @@ public sealed class HandlerRogueMagicQueryCsReq : PlayerHandler
         var rsp = new RogueMagicQueryScRsp { LFLCDNGALME = RogueMagicProtoBuilder.BuildQueryInfo() };
         var run = player.RogueMagicManager!.RunInstance;
         if (run != null) rsp.PHGJIJELKDB = RogueMagicProtoBuilder.BuildCurInfo(run);
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicQueryScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicQueryScRsp, rsp));
     }
 }
 
@@ -37,14 +36,14 @@ public sealed class HandlerRogueMagicStartCsReq : Handler<RogueMagicStartCsReq>
 
         if (ret != Retcode.RetSucc || run == null)
         {
-            await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicStartScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicStartScRsp,
                 new RogueMagicStartScRsp { Retcode = (uint)ret }));
             return;
         }
 
         await manager.SendLevelNotify();
         await manager.SendPendingNotify();
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicStartScRsp, new RogueMagicStartScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicStartScRsp, new RogueMagicStartScRsp
         {
             IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player),
             PHGJIJELKDB = RogueMagicProtoBuilder.BuildCurInfo(run)
@@ -66,7 +65,7 @@ public sealed class HandlerRogueMagicEnterCsReq : PlayerHandler
                 PHGJIJELKDB = RogueMagicProtoBuilder.BuildCurInfo(run),
                 IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player)
             };
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicEnterScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicEnterScRsp, rsp));
     }
 }
 
@@ -83,13 +82,13 @@ public sealed class HandlerRogueMagicEnterRoomCsReq : Handler<RogueMagicEnterRoo
             ret = Retcode.RetFail;
         if (ret != Retcode.RetSucc)
         {
-            await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicEnterRoomScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicEnterRoomScRsp,
                 new RogueMagicEnterRoomScRsp { Retcode = (uint)ret }));
             return;
         }
 
         await manager.SendLevelNotify([roomIndex, roomIndex + 1]);
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicEnterRoomScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicEnterRoomScRsp,
             new RogueMagicEnterRoomScRsp { IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player) }));
         await connection.SendPacket(new PacketEnterSceneByServerScNotify(player.SceneInstance!));
     }
@@ -106,13 +105,13 @@ public sealed class HandlerRogueMagicEnterLayerCsReq : Handler<RogueMagicEnterLa
             ret = Retcode.RetFail;
         if (ret != Retcode.RetSucc)
         {
-            await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicEnterLayerScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicEnterLayerScRsp,
                 new RogueMagicEnterLayerScRsp { Retcode = (uint)ret }));
             return;
         }
 
         await manager.SendLevelNotify();
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicEnterLayerScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicEnterLayerScRsp,
             new RogueMagicEnterLayerScRsp { IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player) }));
     }
 }
@@ -123,18 +122,15 @@ public sealed class HandlerRogueMagicLeaveCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await player.RogueMagicManager!.LeaveRun();
-
-        var (success, _) = await player.TryEnterScene(RogueMagicManager.RogueLobbyEntranceId, 0, false);
-        if (!success)
+        if (!await player.RogueMagicManager!.LeaveRunToLobby())
         {
-            await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicLeaveScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicLeaveScRsp,
                 new RogueMagicLeaveScRsp { Retcode = (uint)Retcode.RetFail }));
             return;
         }
 
         await connection.SendPacket(new PacketSyncServerSceneChangeNotify());
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicLeaveScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicLeaveScRsp,
             new RogueMagicLeaveScRsp { IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player) }));
     }
 }
@@ -149,7 +145,7 @@ public sealed class HandlerRogueMagicSettleCsReq : PlayerHandler
         var run = manager.RunInstance;
         if (run == null)
         {
-            await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicSettleScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicSettleScRsp,
                 new RogueMagicSettleScRsp { Retcode = (uint)Retcode.RetRogueStatusNotMatch }));
             return;
         }
@@ -161,10 +157,9 @@ public sealed class HandlerRogueMagicSettleCsReq : PlayerHandler
             BNLLEJPCIGD = new NOAKCDKAAFB()
         };
 
-        await manager.LeaveRun();
-        await player.TryEnterScene(RogueMagicManager.RogueLobbyEntranceId, 0, false);
+        await manager.LeaveRunToLobby();
         await connection.SendPacket(new PacketSyncServerSceneChangeNotify());
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicSettleScRsp, new RogueMagicSettleScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicSettleScRsp, new RogueMagicSettleScRsp
         {
             IDCMACCPCBH = RogueMagicProtoBuilder.BuildEnterInfo(player),
             BFLLJJBHLDF = finish
@@ -179,6 +174,6 @@ public sealed class HandlerRogueMagicGetMiscRealTimeDataCsReq : PlayerHandler
     {
         var rsp = new RogueMagicGetMiscRealTimeDataScRsp();
         RogueMagicProtoBuilder.FillMiscRealTimeData(rsp);
-        await connection.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicGetMiscRealTimeDataScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueMagicGetMiscRealTimeDataScRsp, rsp));
     }
 }

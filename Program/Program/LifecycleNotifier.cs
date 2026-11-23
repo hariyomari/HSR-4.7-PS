@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using March7thHoney.Configuration;
+using March7thHoney.Internationalization;
 using March7thHoney.Util;
 
 namespace March7thHoney.Program.Program;
@@ -26,7 +27,7 @@ internal static class LifecycleNotifier
         }
         catch (Exception)
         {
-            Logger.Warn("Lifecycle notification failed: event=started, code=unexpected");
+            Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", "started", "unexpected"));
         }
     }
 
@@ -43,20 +44,20 @@ internal static class LifecycleNotifier
         }
         catch (Exception)
         {
-            Logger.Warn("Lifecycle notification failed: event=maintenance, code=unexpected");
+            Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", "maintenance", "unexpected"));
         }
     }
 
     private static bool TryGetConfig(out LifecycleNotificationConfig config)
     {
         config = ConfigManager.Config.LifecycleNotification!;
-        if (!OperatingSystem.IsLinux() || ConfigManager.IsPublicMode || config is not { Enabled: true })
+        if (!OperatingSystem.IsLinux() || config is not { Enabled: true })
             return false;
         if (config.ControlApiPort is < 1 or > 65535 ||
             config.ControlApiToken is not { Length: >= 32 } ||
             string.IsNullOrWhiteSpace(config.ControlApiToken))
         {
-            Logger.Warn("Lifecycle notification configuration is invalid; notification skipped");
+            Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyConfigInvalid"));
             return false;
         }
         return true;
@@ -89,14 +90,14 @@ internal static class LifecycleNotifier
                     timeout.Token);
                 if (response.IsSuccessStatusCode)
                 {
-                    Logger.Info($"Lifecycle notification sent: event={eventName}, attempt={attempt}");
+                    Logger.Debug($"Lifecycle notification sent: event={eventName}, attempt={attempt}");
                     return;
                 }
 
                 var status = response.StatusCode;
                 if (!ShouldRetry(status) || attempt == MaxAttempts)
                 {
-                    Logger.Warn($"Lifecycle notification failed: event={eventName}, status={(int)status}");
+                    Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", eventName, $"HTTP {(int)status}"));
                     return;
                 }
             }
@@ -104,7 +105,7 @@ internal static class LifecycleNotifier
             {
                 if (attempt == MaxAttempts)
                 {
-                    Logger.Warn($"Lifecycle notification failed: event={eventName}, code=timeout");
+                    Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", eventName, "timeout"));
                     return;
                 }
             }
@@ -112,13 +113,13 @@ internal static class LifecycleNotifier
             {
                 if (attempt == MaxAttempts)
                 {
-                    Logger.Warn($"Lifecycle notification failed: event={eventName}, code=request_failed");
+                    Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", eventName, "request_failed"));
                     return;
                 }
             }
             catch (Exception)
             {
-                Logger.Warn($"Lifecycle notification failed: event={eventName}, code=unexpected");
+                Logger.Warn(I18NManager.Translate("Server.Log.LifecycleNotifyFailed", eventName, "unexpected"));
                 return;
             }
 

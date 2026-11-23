@@ -1,3 +1,4 @@
+using March7thHoney.Internationalization;
 using March7thHoney.Util;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,7 +29,7 @@ public static class LoginCryptoHelper
         var privatePem = LoadPrivateKey();
         if (string.IsNullOrWhiteSpace(privatePem))
         {
-            Logger.Warn($"RSA login requires a private key. Expected file: {PrivateKeyPath}");
+            Logger.Warn(I18NManager.Translate("Server.Log.RsaPrivateKeyMissing", PrivateKeyPath));
             return (string.Empty, string.Empty, true);
         }
 
@@ -45,7 +46,7 @@ public static class LoginCryptoHelper
         }
         catch (Exception ex) when (ex is CryptographicException or ArgumentException)
         {
-            Logger.Warn("RSA login private key could not be loaded; rejecting encrypted login.");
+            Logger.Warn(I18NManager.Translate("Server.Log.RsaPrivateKeyInvalid"));
             return (string.Empty, string.Empty, true);
         }
     }
@@ -83,7 +84,7 @@ public static class LoginCryptoHelper
             }
         }
 
-        Logger.Warn($"RSA login decrypt failed for all supported paddings; rejecting login. len={raw.Length}");
+        Logger.Debug($"RSA login decrypt failed for all supported paddings; rejecting login. len={raw.Length}");
         return new DecryptResult(string.Empty, false);
     }
 

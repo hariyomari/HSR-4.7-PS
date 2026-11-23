@@ -10,7 +10,7 @@ public class PacketPetDataChangeScNotify : BasePacket
         SetData(notify);
     }
 
-    /// <summary>编队变化：change_list 里一条 blind_box_lineup（DFNCMMIMKHG）。</summary>
+    /// <summary>Lineup change: a single blind_box_lineup (DFNCMMIMKHG) entry in change_list.</summary>
     public PacketPetDataChangeScNotify(CMBGLKEMOGF lineup) : base(CmdIds.PetDataChangeScNotify)
     {
         var proto = new PetDataChangeScNotify();

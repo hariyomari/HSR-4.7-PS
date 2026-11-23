@@ -1,8 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>March7thHoney.WebServer</RootNamespace>
     <OutputType>Library</OutputType>
     <AssemblyName>WebServer</AssemblyName>
@@ -10,14 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.33.1" />
-    <PackageReference Include="MailKit" Version="4.16.0" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="MailKit" />
     <!-- Override MimeKit's transitive minimum with the patched .NET 10 PKCS package. -->
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    <PackageReference Include="Spectre.Console" Version="0.54.0" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
-    <PackageReference Include="System.Management" Version="10.0.0" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" />
+    <PackageReference Include="System.Management" />
   </ItemGroup>
 
   <ItemGroup>

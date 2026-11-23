@@ -1,3 +1,4 @@
+using March7thHoney.GameServer.Server.Packet.Send.Chat;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 
@@ -32,15 +33,13 @@ public class HandlerSendMsgCsReq : Handler<SendMsgCsReq>
             return;
         }
 
-        foreach (var targetUid in req.TargetList)
+        var retcode = msgType switch
         {
-            if (msgType == MsgType.CustomText)
-                await player.FriendManager!.SendMessage(player.Uid, (int)targetUid, text);
-            else if (msgType == MsgType.Emoji)
-                await player.FriendManager!.SendMessage(player.Uid, (int)targetUid, null,
-                    (int)extraId);
-        }
+            MsgType.CustomText => await player.FriendManager!.SendMessage(req.TargetList, text),
+            MsgType.Emoji => await player.FriendManager!.SendMessage(req.TargetList, null, (int)extraId),
+            _ => Retcode.RetSucc
+        };
 
-        await connection.SendPacket(CmdIds.SendMsgScRsp);
+        await connection.SendPacket(new PacketSendMsgScRsp(retcode));
     }
 }

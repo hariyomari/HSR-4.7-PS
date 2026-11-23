@@ -13,9 +13,10 @@ using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Game.Mission.FinishAction;
 using March7thHoney.GameServer.Game.Mission.FinishType;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.GameServer.Game.Progression;
-using March7thHoney.GameServer.Game.Task;
+using March7thHoney.GameServer.Game.LevelTasks;
 using March7thHoney.GameServer.Server.Packet.Send.HeartDial;
 using March7thHoney.GameServer.Server.Packet.Send.Mission;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
@@ -73,14 +74,9 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
 
         Data.SetMainMissionStatus(missionId, MissionPhaseEnum.Accept);
 
-        // A "Gap" row with no MissionInfo wiring is a display-only transition entry (e.g. the
-        // Trailblaze chain 1054400/1054402/1054403 and the beat missions 1054407/1054408/1054409):
-        // it has no start subs and no finish gate, so FinishSubMission can never close it and every
-        // successor whose TakeParam is MultiSequence on it stalls forever. Auto-finish it on accept
-        // so the chain cascades the way the official server advances it — FinishMainMission re-runs
-        // AcceptMainMissionByCondition, which picks up the next stage in the same pass.
-        // Deliberately restricted to Gap: a Main-type mission with a missing MissionInfo is playable
-        // content (or a resource-dump gap) and must never be silently skipped.
+        // Unwired Gap rows have no start subs or finish gate (e.g. 1054400/1054402/1054403 and 1054407/1054408/1054409).
+        // Finish on accept so MultiSequence successors can advance in the same pass, as on the official server.
+        // Never skip Main rows: missing MissionInfo can mean an incomplete resource dump.
         if (mission.IsDisplayOnlyGap)
         {
             await FinishMainMission(missionId);
@@ -92,7 +88,7 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             list.Add(await AcceptSubMission(i, sendPacket));
         if (missionId == 1000400)
         {
-            await Player.AddAvatar(1003);
+            await Player.AvatarManager!.AddAvatar(1003);
             await Player.LineupManager!.AddAvatarToCurTeam(1003);
         }
 
@@ -294,12 +290,12 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
         if (report.Changed) MarkDirty();
 
         if (report.Resumed.Count > 0 || report.Closed.Count > 0)
-            Logger.Info($"Repaired stalled mission state for uid {Player.Uid}: " +
+            Logger.Debug($"Repaired stalled mission state for uid {Player.Uid}: " +
                         $"resumed [{string.Join(", ", report.Resumed)}], closed [{string.Join(", ", report.Closed)}]" +
                         (report.RetrackedTo > 0 ? $", tracking -> {report.RetrackedTo}" : ""));
 
         if (report.Stalled.Count > 0)
-            Logger.Warn($"uid {Player.Uid} has {report.Stalled.Count} accepted main mission(s) with no " +
+            Logger.Debug($"uid {Player.Uid} has {report.Stalled.Count} accepted main mission(s) with no " +
                         $"runnable sub-mission left: [{string.Join(", ", report.Stalled)}]. Their sub-mission " +
                         "graph is missing or their gate is unreachable, so they block every successor - " +
                         "restore the graph (Config/Custom/MissionInfoOverride.json or a resource rebuild), " +
@@ -316,12 +312,8 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
     {
         var gate = main.MissionInfo.FinishSubMissionList;
 
-        // Neither sub-missions nor a finish gate: there is no objective to run and no condition that
-        // could ever close it. Besides the display-only Gap rows, the 4.5.0 tree has eight Branch rows in
-        // that shape (4010146, 4010241-4010246, 4011800). Closing them skips nothing, because there is
-        // nothing there. Deliberately limited to Branch/Gap: on a Main-type row - and on Unknown, which
-        // is what a Resource.bin predating the Type column restores to - an empty graph means a truncated
-        // dump, and auto-closing that would silently eat playable content.
+        // Only empty Branch/Gap rows have nothing to run (4.5.0 examples: 4010146, 4010241–4010246, 4011800).
+        // For Main or Unknown (including caches predating Type), an empty graph can mean an incomplete dump.
         var empty = main.MissionInfo.SubMissionList.Count == 0 && gate.Count == 0 &&
                     main.Type is MainMissionTypeEnum.Branch or MainMissionTypeEnum.Gap;
 
@@ -389,7 +381,7 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
         if (Data.GetSubMissionStatus(missionId) != MissionPhaseEnum.None) return null; // already accepted
 
         Data.SetSubMissionStatus(missionId, MissionPhaseEnum.Accept);
-        if (missionId == 403000222) await RefreshRogueGalleryProps();
+        if (missionId == SceneCompatRules.RogueGalleryUnlockSubMission) await RefreshRogueGalleryProps();
 
         var sync = new MissionSync();
         MissionSyncBuilder.NoteAcceptedSub(sync, missionId);
@@ -606,7 +598,6 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
     {
         if (missionId == 101140201)
         {
-            // Player.ChangeAvatarPathType(8001, Enums.Avatar.MultiPathAvatarTypeEnum.Knight);
             var list = Player.LineupManager!.GetCurLineup()!.BaseAvatars!
                 .Select(x => x.SpecialAvatarId > 0 ? x.SpecialAvatarId : x.BaseAvatarId).ToList();
             // The Preservation trial takes the Trailblazer's slot. When the story's trial lineup already fields it
@@ -658,13 +649,13 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             if (res != null) itemList.Add(res);
         }
 
-        var hCoin = await Player.InventoryManager!.AddItem(1, reward?.Hcoin ?? 0, false);
+        var hCoin = await Player.InventoryManager!.AddItem((int)VirtualItemEnum.Hcoin, reward?.Hcoin ?? 0, false);
         if (hCoin != null) itemList.Add(hCoin);
 
         foreach (var i in mainMission.SubRewardList)
         {
             GameData.RewardDataData.TryGetValue(i, out var rewardDataExcel);
-            var hCoin2 = await Player.InventoryManager!.AddItem(1, rewardDataExcel?.Hcoin ?? 0, false); // hcoin
+            var hCoin2 = await Player.InventoryManager!.AddItem((int)VirtualItemEnum.Hcoin, rewardDataExcel?.Hcoin ?? 0, false); // hcoin
             if (hCoin2 != null) itemList.Add(hCoin2);
             foreach (var item in rewardDataExcel?.GetItems() ?? []) // items
             {
@@ -1376,10 +1367,8 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             else
                 missionInfo.UnfinishedMainMissionIdList.Add((uint)mainId);
 
-        // Activity-bound main missions: for each ContentPackage whose entrance lives on the
-        // floor the player is loading, surface its main missions as "unfinished" so the client
-        // treats the activity entry (map icons, in-scene activity NPCs) as live. We keep the
-        // regular Mission system untouched - this only affects scene-mission serialization.
+        // Report activities on this floor as unfinished so map icons and entrance NPCs stay active.
+        // This changes the scene snapshot, not mission state.
         if (floorId != 0)
             foreach (var pkg in GameData.ContentPackageConfigData.Values)
             {
@@ -1391,11 +1380,33 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
                     var mid = (uint)missionId;
                     if (missionInfo.FinishedMainMissionIdList.Contains(mid)) continue;
                     if (missionInfo.UnfinishedMainMissionIdList.Contains(mid)) continue;
+
+                    // Scene snapshots overwrite MainMissionData.IsFinish. Keep finishes already sent in
+                    // GetMissionStatusScRsp so the activity button enters the activity instead of replaying a finished guide.
+                    // Hold open only missions the client has not asked about.
+                    if (_mainMissionsReportedFinished.Contains(missionId) &&
+                        GetMainMissionStatus(missionId) == MissionPhaseEnum.Finish)
+                    {
+                        missionInfo.FinishedMainMissionIdList.Add(mid);
+                        continue;
+                    }
+
                     missionInfo.UnfinishedMainMissionIdList.Add(mid);
                 }
             }
 
+        AddStandingEntranceMissions(missionInfo, floorId, subIds);
+
         return missionInfo;
+    }
+
+    // Main missions this session's GetMissionStatusScRsp reported as finished. Not persisted: the client
+    // asks again after every login.
+    private readonly HashSet<int> _mainMissionsReportedFinished = [];
+
+    public void NoteMainMissionsReportedFinished(IEnumerable<uint> mainMissionIds)
+    {
+        foreach (var id in mainMissionIds) _mainMissionsReportedFinished.Add((int)id);
     }
 
     #endregion

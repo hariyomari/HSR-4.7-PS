@@ -13,6 +13,9 @@ def main():
         project.mkdir()
         shutil.copy2(source / 'Proto.csproj', project / 'Proto.csproj')
         shutil.copytree(source / 'Build', project / 'Build')
+        # The project takes its SDK, shared defaults and package versions from the repository root.
+        for name in ('global.json', 'Directory.Build.props', 'Directory.Packages.props'):
+            shutil.copy2(source.parent / name, Path(directory) / name)
         # Keep this test scoped to the active version; never alter the real checkout.
         import xml.etree.ElementTree as ET
         version = ET.parse(source / 'Proto.csproj').findtext('.//ActiveProtocolVersion')
@@ -24,7 +27,8 @@ def main():
                    '-p:Configuration=Release', '-v:minimal', '-m:1']
 
         def generate(*args):
-            result = subprocess.run(command + list(args), cwd=project, text=True,
+            # dotnet writes UTF-8 whatever the console code page is; the locale default breaks on localized output.
+            result = subprocess.run(command + list(args), cwd=project, encoding='utf-8', errors='replace',
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             if result.returncode:
                 raise RuntimeError(result.stdout)

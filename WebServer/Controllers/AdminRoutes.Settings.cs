@@ -1,32 +1,27 @@
 using March7thHoney.Util;
-using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
-    private static void MapSettingsRoutes(IEndpointRouteBuilder app)
+    private static void MapSettingsRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/settings", GetSettings);
-        app.MapPut("/admin/api/settings", UpdateSettings);
+        api.MapGet("/settings", GetSettings);
+        api.MapPut("/settings", UpdateSettings);
     }
 
-    private static IResult GetSettings(HttpContext ctx)
+    private static IResult GetSettings()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
-        return Success(new SettingsData(AdminSettingsRegistry.Snapshot(), ConfigManager.IsPublicMode));
+        return Success(new SettingsData(AdminSettingsRegistry.Snapshot()));
     }
 
-    private static IResult UpdateSettings(HttpContext ctx, AdminSettingsRequest? request)
+    private static IResult UpdateSettings(AdminSettingsRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminSettingsRequest();
         if (request.values == null || request.values.Count == 0)
             return Error("Nothing to save");

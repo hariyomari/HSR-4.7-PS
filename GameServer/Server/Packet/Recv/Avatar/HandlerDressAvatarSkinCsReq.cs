@@ -9,7 +9,7 @@ public class HandlerDressAvatarSkinCsReq : Handler<DressAvatarSkinCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, DressAvatarSkinCsReq req)
     {
-        var retcode = await player.ChangeAvatarSkin((int)req.AvatarId, (int)req.SkinId);
+        var retcode = await player.AvatarManager!.ChangeSkin((int)req.AvatarId, (int)req.SkinId);
         await connection.SendPacket(new PacketDressAvatarSkinScRsp(retcode));
     }
 }

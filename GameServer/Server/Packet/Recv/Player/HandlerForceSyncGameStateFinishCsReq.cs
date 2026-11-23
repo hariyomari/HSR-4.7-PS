@@ -10,8 +10,7 @@ public class HandlerForceSyncGameStateFinishCSReq : Handler
     {
         _ = PlayerForceSyncGameStateFinishCsReq.Parser.ParseFrom(data);
 
-        var packet = new BasePacket((ushort)CmdIds.PlayerForceSyncGameStateFinishScRsp);
-        packet.SetData(new PlayerForceSyncGameStateFinishScRsp());
+        var packet = BasePacket.Create(CmdIds.PlayerForceSyncGameStateFinishScRsp, new PlayerForceSyncGameStateFinishScRsp());
         await connection.SendPacket(packet);
     }
 }

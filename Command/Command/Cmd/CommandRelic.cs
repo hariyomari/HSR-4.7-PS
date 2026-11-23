@@ -5,6 +5,9 @@ namespace March7thHoney.Command.Command.Cmd;
 [CommandInfo("relic", "Game.Command.Relic.Desc", "Game.Command.Relic.Usage", permission: CommandPermissions.Relic)]
 public class CommandRelic : ICommand
 {
+    // Each unit allocates and persists a separate relic, so the count is bounded per command.
+    public const int MaxAmount = 100;
+
     [CommandDefault]
     public async ValueTask GiveRelic(CommandArg arg)
     {
@@ -26,7 +29,8 @@ public class CommandRelic : ICommand
         arg.CharacterArgs.TryGetValue("l", out var levelStr);
         str ??= "1";
         levelStr ??= "0";
-        if (!int.TryParse(str, out var amount) || !int.TryParse(levelStr, out var level))
+        if (!int.TryParse(arg.BasicArgs[0], out var relicId) || !int.TryParse(str, out var amount) ||
+            !int.TryParse(levelStr, out var level) || amount is < 1 or > MaxAmount)
         {
             await arg.SendMsg(I18NManager.Translate("Game.Command.Notice.InvalidArguments"));
             return;
@@ -37,7 +41,12 @@ public class CommandRelic : ICommand
         var mainAffixId = 0;
         if (!arg.BasicArgs[1].Contains(':'))
         {
-            mainAffixId = int.Parse(arg.BasicArgs[1]);
+            if (!int.TryParse(arg.BasicArgs[1], out mainAffixId))
+            {
+                await arg.SendMsg(I18NManager.Translate("Game.Command.Notice.InvalidArguments"));
+                return;
+            }
+
             startIndex++;
         }
 
@@ -59,7 +68,7 @@ public class CommandRelic : ICommand
         for (var i = 0; i < amount; i++)
         {
             var (ret, _) = await player.InventoryManager!.HandleRelic(
-                int.Parse(arg.BasicArgs[0]), ++player.InventoryManager!.Data.NextUniqueId,
+                relicId, ++player.InventoryManager!.Data.NextUniqueId,
                 level, mainAffixId, subAffixes);
 
             switch (ret)

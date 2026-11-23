@@ -9,7 +9,8 @@ public sealed partial class GridFightSession
     public const uint BlueSeaPortalId = 113;
     public const uint JoyContractPortalId = 1201;
     private const uint BlueSeaBonusGold = 6;
-    private const uint JoyContractInitialSilverWolfRoleId = 15061;
+    // The Joy Contract opens with the 3-cost Silver Wolf.
+    private const uint JoyContractInitialSilverWolfRoleId = GridFightSpecialFeatures.SilverWolfThreeCostRoleId;
     private const uint JoyContractTrailblazerRoleId = 8009;
     private const uint JoyContractSparxieRoleId = 1501;
     private const string JoyContractSavedValueKey = "Portal1201_SavedValue01";
@@ -60,7 +61,7 @@ public sealed partial class GridFightSession
         InitializeDotContractPortal();
         InitializeRotationHeroPortal();
         InitializeConceptStockPortal();
-        InitializeP0PortalRewards();
+        InitializePortalRewards();
         MaterializeInitialRoles();
         ApplyPortalOpeningEffects();
 

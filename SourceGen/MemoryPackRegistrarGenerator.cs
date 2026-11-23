@@ -1,104 +1,76 @@
-using System.Collections.Generic;
+using System;
 using System.Linq;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace March7thHoney.SourceGen;
 
 /// <summary>
-///     Emits a [ModuleInitializer] that eagerly registers a MemoryPack formatter for every concrete
-///     [MemoryPackable] type in the assembly.
-///     <para>
-///         Under NativeAOT, MemoryPack's <c>DictionaryFormatter&lt;TKey,TValue&gt;</c> (and friends) ask
-///         <c>MemoryPackFormatterProvider</c> for the leaf value-type formatter at deserialize time. MemoryPack's
-///         generated <c>GameDataSnapshot.RegisterFormatter()</c> registers the collection *wrappers* but not the
-///         leaf value types — those self-register only via their own static constructor, which never fires when the
-///         provider is queried generically. The provider then falls back to reflection-based formatter creation,
-///         which throws under AOT (`Dynamic code generation`) — it only "worked" under JIT because the reflection
-///         fallback succeeds there. Registering every value type up front removes that fallback entirely.
-///     </para>
+///     Registers assembly-visible, non-generic <c>[MemoryPackable]</c> types at module initialization.
+///     Running their static constructors prevents collection deserialization from using MemoryPack's
+///     reflection fallback, which fails under NativeAOT.
 /// </summary>
 [Generator]
 public sealed class MemoryPackRegistrarGenerator : IIncrementalGenerator
 {
+    private const string MemoryPackableAttribute = "MemoryPack.MemoryPackableAttribute";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var types = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => node is TypeDeclarationSyntax tds && tds.AttributeLists.Count > 0,
+        var types = context.SyntaxProvider.ForAttributeWithMetadataName(
+                MemoryPackableAttribute,
+                static (node, _) => node is TypeDeclarationSyntax,
                 static (ctx, _) =>
                 {
-                    if (ctx.SemanticModel.GetDeclaredSymbol(ctx.Node) is not INamedTypeSymbol sym) return null;
-                    // RunClassConstructor needs a closed, named class/struct (incl. abstract Union bases).
-                    if (sym.IsGenericType || sym.IsStatic) return null;
-                    if (sym.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return null;
-                    // ...and one the registrar can actually name. Private/protected-nested types are
-                    // unreachable from the aggregator (and, being direct Serialize<T> roots, already
-                    // self-register via their static ctor on the generic call).
-                    if (!IsAssemblyVisible(sym)) return null;
-                    return HasMemoryPackable(sym)
-                        ? sym.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                        : null;
+                    var type = (INamedTypeSymbol)ctx.TargetSymbol;
+                    // Include abstract union bases, but skip types the registrar cannot name.
+                    // Inaccessible nested types register themselves when serialized directly.
+                    if (type.IsGenericType || type.IsStatic) return null;
+                    if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return null;
+                    return IsVisibleInAssembly(type) ? type.FullName() : null;
                 })
-            .Where(static x => x != null)
-            .Select(static (x, _) => x!)
-            .Collect();
+            .Where(static name => name != null)
+            .Select(static (name, _) => name!)
+            .Collect()
+            .Select(static (names, _) => names.Distinct().OrderBy(n => n, StringComparer.Ordinal).ToEquatableArray())
+            .WithTrackingName(Symbols.ModelStep);
 
-        context.RegisterSourceOutput(types, static (spc, items) =>
+        context.RegisterSourceOutput(types, static (output, types) =>
         {
-            if (items.IsDefaultOrEmpty) return;
-            spc.AddSource("MemoryPackRegistrar.g.cs", Emit(items));
+            if (types.Count == 0) return;
+
+            var code = new CodeWriter();
+            code.Line("using System.Runtime.CompilerServices;");
+            code.Line();
+            code.Line("namespace March7thHoney.Data.Generated;");
+            code.Line();
+            code.Line("internal static class MemoryPackRegistrar");
+            using (code.Block())
+            {
+                code.Line("private static bool _done;");
+                code.Line();
+                code.Line("[ModuleInitializer]");
+                code.Line("internal static void RegisterAll()");
+                using (code.Block())
+                {
+                    code.Line("if (_done) return;");
+                    code.Line("_done = true;");
+                    foreach (var type in types)
+                        code.Line($"RuntimeHelpers.RunClassConstructor(typeof({type}).TypeHandle);");
+                }
+            }
+
+            output.AddSource("MemoryPackRegistrar.g.cs", code.ToString());
         });
     }
 
-    private static bool HasMemoryPackable(INamedTypeSymbol sym)
+    /// <summary>Public, internal or protected internal at every level of nesting.</summary>
+    private static bool IsVisibleInAssembly(INamedTypeSymbol type)
     {
-        return sym.GetAttributes().Any(a => a.AttributeClass?.Name is "MemoryPackableAttribute" or "MemoryPackable");
-    }
-
-    // True when the type (and every containing type) is reachable from a sibling internal class in the
-    // same assembly — i.e. public / internal / protected-internal at every nesting level.
-    private static bool IsAssemblyVisible(INamedTypeSymbol sym)
-    {
-        for (var t = sym; t != null; t = t.ContainingType)
-            switch (t.DeclaredAccessibility)
-            {
-                case Accessibility.Public:
-                case Accessibility.Internal:
-                case Accessibility.ProtectedOrInternal:
-                    break;
-                default:
-                    return false;
-            }
-
+        for (var current = type; current != null; current = current.ContainingType)
+            if (current.DeclaredAccessibility is not
+                (Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal))
+                return false;
         return true;
-    }
-
-    private static string Emit(IEnumerable<string> fqns)
-    {
-        var list = fqns.Distinct().OrderBy(x => x, System.StringComparer.Ordinal).ToList();
-        var sb = new StringBuilder();
-        sb.AppendLine("// <auto-generated/>");
-        sb.AppendLine("#nullable enable");
-        sb.AppendLine("using System.Runtime.CompilerServices;");
-        sb.AppendLine();
-        sb.AppendLine("namespace March7thHoney.Data.Generated;");
-        sb.AppendLine();
-        sb.AppendLine("internal static class MemoryPackRegistrar");
-        sb.AppendLine("{");
-        sb.AppendLine("    private static bool _done;");
-        sb.AppendLine();
-        sb.AppendLine("    [ModuleInitializer]");
-        sb.AppendLine("    internal static void RegisterAll()");
-        sb.AppendLine("    {");
-        sb.AppendLine("        if (_done) return;");
-        sb.AppendLine("        _done = true;");
-        // Run each type's static constructor: it self-registers via Register<T>() (regular types) or a
-        // custom Union formatter (abstract bases). RunClassConstructor is idempotent and AOT-safe.
-        foreach (var fqn in list)
-            sb.AppendLine($"        RuntimeHelpers.RunClassConstructor(typeof({fqn}).TypeHandle);");
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-        return sb.ToString();
     }
 }

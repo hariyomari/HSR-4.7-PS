@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using March7thHoney.Data;
+using March7thHoney.Data.Avatar;
 using March7thHoney.Data.Excel;
 using March7thHoney.Database;
 using March7thHoney.Database.Friend;
@@ -22,202 +23,6 @@ namespace March7thHoney.GameServer.Game.Inventory;
 
 public partial class InventoryManager
 {
-    #region Equip
-
-    public async ValueTask EquipAvatar(int avatarId, int equipmentUniqueId)
-    {
-        var itemData = Data.EquipmentItems.Find(x => x.UniqueId == equipmentUniqueId);
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(avatarId);
-        if (itemData == null || avatarData == null) return;
-        var oldItem = Data.EquipmentItems.Find(x => x.UniqueId == avatarData.PathInfos[avatarId].EquipId);
-        if (itemData.EquipAvatar > 0) // already be dressed
-        {
-            var equipAvatarId = itemData.EquipAvatar;
-            var equipAvatar = Player.AvatarManager.GetFormalAvatar(equipAvatarId);
-            if (equipAvatar != null && oldItem != null)
-            {
-                // switch
-                equipAvatar.PathInfos[equipAvatarId].EquipId = oldItem.UniqueId;
-                oldItem.EquipAvatar = equipAvatar.AvatarId;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(equipAvatar), new ItemSyncData(oldItem)));
-            }
-            else if (equipAvatar != null && oldItem == null)
-            {
-                equipAvatar.PathInfos[equipAvatarId].EquipId = 0;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(equipAvatar));
-            }
-        }
-        else
-        {
-            if (oldItem != null)
-            {
-                oldItem.EquipAvatar = 0;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(oldItem));
-            }
-        }
-
-        itemData.EquipAvatar = avatarData.AvatarId;
-        avatarData.PathInfos[avatarId].EquipId = itemData.UniqueId;
-        await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(avatarData), new ItemSyncData(itemData)));
-    }
-
-    public async ValueTask EquipRelic(int avatarId, int relicUniqueId, int slot)
-    {
-        var itemData = Data.RelicItems.Find(x => x.UniqueId == relicUniqueId);
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(avatarId);
-        if (itemData == null || avatarData == null) return;
-        avatarData.PathInfos[avatarId].Relic.TryGetValue(slot, out var id);
-        var oldItem = Data.RelicItems.Find(x => x.UniqueId == id);
-
-        if (itemData.EquipAvatar > 0) // already be dressed
-        {
-            var equipAvatarId = itemData.EquipAvatar;
-            var equipAvatar = Player.AvatarManager!.GetFormalAvatar(equipAvatarId);
-            if (equipAvatar != null && oldItem != null)
-            {
-                // switch
-                equipAvatar.PathInfos[equipAvatarId].Relic[slot] = oldItem.UniqueId;
-                oldItem.EquipAvatar = equipAvatar.AvatarId;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(equipAvatar), new ItemSyncData(oldItem)));
-            }
-            else if (equipAvatar != null && oldItem == null)
-            {
-                equipAvatar.PathInfos[equipAvatarId].Relic[slot] = 0;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(equipAvatar));
-            }
-        }
-        else
-        {
-            if (oldItem != null)
-            {
-                oldItem.EquipAvatar = 0;
-                await Player.SendPacket(new PacketPlayerSyncScNotify(oldItem));
-            }
-        }
-
-        itemData.EquipAvatar = avatarData.AvatarId;
-        avatarData.PathInfos[avatarId].Relic[slot] = itemData.UniqueId;
-        // save
-        await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(avatarData), new ItemSyncData(itemData)));
-    }
-
-    public async ValueTask UnequipRelic(int avatarId, int slot)
-    {
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(avatarId);
-        if (avatarData == null) return;
-        var pathInfo = avatarData.PathInfos[avatarId];
-        pathInfo.Relic.TryGetValue(slot, out var uniqueId);
-        var itemData = Data.RelicItems.Find(x => x.UniqueId == uniqueId);
-        if (itemData == null) return;
-        pathInfo.Relic.Remove(slot);
-        itemData.EquipAvatar = 0;
-        await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(avatarData), new ItemSyncData(itemData)));
-    }
-
-    public async ValueTask UnequipEquipment(int avatarId)
-    {
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(avatarId);
-        if (avatarData == null) return;
-        var pathInfo = avatarData.PathInfos[avatarId];
-        var itemData = Data.EquipmentItems.Find(x => x.UniqueId == pathInfo.EquipId);
-        if (itemData == null) return;
-        itemData.EquipAvatar = 0;
-        pathInfo.EquipId = 0;
-        await Player.SendPacket(new PacketPlayerSyncScNotify(new AvatarSyncData(avatarData), new ItemSyncData(itemData)));
-    }
-
-    public async ValueTask<List<ItemData>> LevelUpAvatar(int baseAvatarId, ItemCostData item)
-    {
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(baseAvatarId);
-        if (avatarData == null) return [];
-        GameData.AvatarConfigData.TryGetValue(avatarData.AvatarId, out var avatarConfig);
-        if (avatarConfig == null) return [];
-
-        GameData.AvatarPromotionConfigData.TryGetValue(avatarData.AvatarId * 10 + avatarData.Promotion,
-            out var promotionConfig);
-        if (promotionConfig == null) return [];
-        var exp = 0;
-
-        foreach (var cost in item.ItemList)
-        {
-            GameData.ItemConfigData.TryGetValue((int)cost.PileItem.ItemId, out var itemConfig);
-            if (itemConfig == null) continue;
-            exp += itemConfig.Exp * (int)cost.PileItem.ItemNum;
-        }
-
-        // payment
-        var costScoin = exp / 10;
-        if (Player.Data.Scoin < costScoin) return [];
-        foreach (var cost in item.ItemList) await RemoveItem((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum);
-        await RemoveItem(2, costScoin);
-
-        var maxLevel = promotionConfig.MaxLevel;
-        var curExp = avatarData.Exp;
-        var curLevel = avatarData.Level;
-        var startLevel = curLevel;
-        var nextLevelExp = GameData.GetAvatarExpRequired(avatarConfig.ExpGroup, avatarData.Level);
-        do
-        {
-            int toGain;
-            if (curExp + exp >= nextLevelExp)
-                toGain = nextLevelExp - curExp;
-            else
-                toGain = exp;
-            curExp += toGain;
-            exp -= toGain;
-            // level up
-            if (curExp >= nextLevelExp)
-            {
-                curExp = 0;
-                curLevel++;
-                nextLevelExp = GameData.GetAvatarExpRequired(avatarConfig.ExpGroup, curLevel);
-            }
-        } while (exp > 0 && nextLevelExp > 0 && curLevel < maxLevel);
-
-        avatarData.Level = curLevel;
-        avatarData.Exp = curExp;
-        // leftover
-        Dictionary<int, ItemData> list = [];
-        var leftover = exp;
-        while (leftover > 0)
-        {
-            var gain = false;
-            foreach (var expItem in GameData.EquipmentExpItemConfigData.Values.Reverse())
-                if (leftover >= expItem.ExpProvide)
-                {
-                    // add
-                    await PutItem(expItem.ItemID, 1);
-                    if (list.TryGetValue(expItem.ItemID, out var i))
-                    {
-                        i.Count++;
-                    }
-                    else
-                    {
-                        i = new ItemData
-                        {
-                            ItemId = expItem.ItemID,
-                            Count = 1
-                        };
-                        list[expItem.ItemID] = i;
-                    }
-
-                    leftover -= expItem.ExpProvide;
-                    gain = true;
-                    break;
-                }
-
-            if (!gain) break; // no more item
-        }
-
-        if (list.Count > 0) await Player.SendPacket(new PacketPlayerSyncScNotify(list.Values.ToList()));
-        await Player.SendPacket(new PacketPlayerSyncScNotify(avatarData));
-        if (curLevel > startLevel)
-            await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.AnyAvatarLevelUp);
-        return [.. list.Values];
-    }
-
-    #endregion
-
     #region Levelup
 
     private async ValueTask SyncStaleEquipmentIds(IEnumerable<int> equipmentIds)
@@ -293,7 +98,7 @@ public partial class InventoryManager
         if (Player.Data.Scoin < costScoin) return (Retcode.RetScoinNotEnough, []);
         await RemoveItems(costItems);
 
-        await RemoveItem(2, costScoin);
+        await RemoveItem((int)VirtualItemEnum.Scoin, costScoin);
 
         var maxLevel = equipmentPromotionConfig.MaxLevel;
         var curExp = itemData.Exp;
@@ -359,38 +164,6 @@ public partial class InventoryManager
         if (curLevel > startLevel)
             await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.AnyEquipmentLevelUp);
         return (Retcode.RetSucc, [.. list.Values]);
-    }
-
-    public async ValueTask<bool> PromoteAvatar(int avatarId)
-    {
-        // Get avatar
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(avatarId);
-        if (avatarData == null) return false;
-
-        GameData.AvatarConfigData.TryGetValue(avatarId, out var avatarConfig);
-        if (avatarConfig == null ||
-            avatarData.Promotion >= avatarConfig.MaxPromotion) return false;
-
-        // Get promotion data
-        var promotion =
-            GameData.AvatarPromotionConfigData.Values.FirstOrDefault(x =>
-                x.AvatarID == avatarId && x.Promotion == avatarData.Promotion)!;
-
-        // Sanity check
-        if (avatarData.Level < promotion.MaxLevel ||
-            Player.Data.Level < promotion.PlayerLevelRequire ||
-            Player.Data.WorldLevel < promotion.WorldLevelRequire) return false;
-
-        // Pay items
-        foreach (var cost in promotion.PromotionCostList)
-            await Player.InventoryManager!.RemoveItem(cost.ItemID, cost.ItemNum);
-
-        // Promote
-        avatarData.Promotion += 1;
-
-        // Send packets
-        await Player.SendPacket(new PacketPlayerSyncScNotify(avatarData));
-        return true;
     }
 
     public async ValueTask<bool> PromoteEquipment(int equipmentUniqueId)
@@ -460,7 +233,7 @@ public partial class InventoryManager
             }
 
         // credit
-        await RemoveItem(2, money);
+        await RemoveItem((int)VirtualItemEnum.Scoin, money);
 
         // level up
         GameData.RelicConfigData.TryGetValue(relicItem.ItemId, out var relicExcel);
@@ -537,77 +310,6 @@ public partial class InventoryManager
             await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.AnyRelicLevelUp);
 
         return [.. list.Values];
-    }
-
-    private readonly object _exRankActivationGate = new();
-    private static readonly Logger ExRankLogger = new("AvatarExRank");
-
-    /// <summary>
-    /// Client CmdID 400 carries only an ExRank config ID (field 5). Resolve owner and cost server-side.
-    /// Normal rank/enhancement and the historical avatar MemoryPack blob are left unchanged.
-    /// </summary>
-    public async ValueTask<Retcode> ActivateExRank(int exRankId)
-    {
-        ItemData material;
-        March7thHoney.Database.Avatar.FormalAvatarInfo owned;
-        lock (_exRankActivationGate)
-        {
-            if (!AvatarExRankMaterials.Definitions.TryGetValue(exRankId, out var definition))
-                return Retcode.RetAvatarRankNotMatch;
-            var manager = Player.AvatarManager!;
-            owned = manager.GetFormalAvatar(definition.AvatarId)!;
-            if (owned == null || owned.GetPathInfo(definition.AvatarId) == null)
-                return Retcode.RetAvatarNotExist;
-            var ranks = manager.Data.ExRankIds;
-            var hadEntry = ranks.TryGetValue(owned.BaseAvatarId, out var previousIds);
-            if (previousIds?.Contains(exRankId) == true) return Retcode.RetAvatarRankReachMax;
-
-            material = Data.MaterialItems.Find(item => item.ItemId == definition.MaterialId)!;
-            if (material == null || material.Count < definition.MaterialCount) return Retcode.RetItemCostNotEnough;
-            var previousCount = material.Count;
-            var previousIndex = Data.MaterialItems.IndexOf(material);
-            var activated = new List<int>(previousIds ?? []) { exRankId };
-            try
-            {
-                DatabaseHelper.UpdateInstancesAtomically(Player.Uid, () =>
-                {
-                    material.Count -= definition.MaterialCount;
-                    if (material.Count == 0) Data.MaterialItems.Remove(material);
-                    ranks[owned.BaseAvatarId] = activated;
-                }, () =>
-                {
-                    material.Count = previousCount;
-                    if (!Data.MaterialItems.Contains(material)) Data.MaterialItems.Insert(previousIndex, material);
-                    if (hadEntry) ranks[owned.BaseAvatarId] = previousIds!;
-                    else ranks.Remove(owned.BaseAvatarId);
-                }, Data, manager.Data);
-            }
-            catch (Exception error)
-            {
-                ExRankLogger.Error($"Could not activate ExRank {exRankId} for UID {Player.Uid}", error);
-                return Retcode.RetSystemBusy;
-            }
-            // Bind the newly committed sidecar before building PlayerSync's path field 8.
-            owned = manager.GetFormalAvatar(definition.AvatarId)!;
-        }
-        // One notify contains both the consumed material (including zero) and activated avatar path.
-        await Player.SendPacket(new PacketPlayerSyncScNotify(new ItemSyncData(material), new AvatarSyncData(owned)));
-        return Retcode.RetSucc;
-    }
-
-    public async ValueTask RankUpAvatar(int avatarId, ItemCostData costData)
-    {
-        // ExRank materials must never be consumed through the ordinary star-rank protocol.
-        if (costData.ItemList.Any(cost => cost.PileItem != null && AvatarExRankMaterials.IsMaterial((int)cost.PileItem.ItemId)))
-            return;
-        foreach (var cost in costData.ItemList) await RemoveItem((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum);
-        var baseAvatarId = avatarId;
-        GameData.MultiplePathAvatarConfigData.TryGetValue(baseAvatarId, out var avatar);
-        if (avatar != null) baseAvatarId = avatar.BaseAvatarID;
-        var avatarData = Player.AvatarManager!.GetFormalAvatar(baseAvatarId);
-        if (avatarData == null) return;
-        avatarData.GetCurPathInfo().Rank++;
-        await Player.SendPacket(new PacketPlayerSyncScNotify(avatarData));
     }
 
     public async ValueTask<Retcode> RankUpEquipment(int equipmentUniqueId, ItemCostData costData)

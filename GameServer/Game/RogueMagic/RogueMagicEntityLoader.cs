@@ -4,6 +4,7 @@ using March7thHoney.Data.Excel;
 using March7thHoney.Database.RogueMagic;
 using March7thHoney.Enums.RogueMagic;
 using March7thHoney.Enums.Scene;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.Proto;
@@ -50,7 +51,7 @@ public class RogueMagicEntityLoader(SceneInstance scene, RogueMagicRunData run, 
     {
         if (Scene.IsLoaded || Scene.FloorInfo == null) return;
 
-        Scene.LeaveEntryId = RogueMagicManager.RogueLobbyEntranceId;
+        Scene.LeaveEntryId = RogueLobby.EntranceId;
         LoadGroups.AddRange(_roomGroups);
         foreach (var group in Scene.FloorInfo.Groups.Values.OrderBy(group => group.Id))
         {

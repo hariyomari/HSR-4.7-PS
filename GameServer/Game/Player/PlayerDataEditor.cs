@@ -102,7 +102,7 @@ public static class PlayerDataEditor
         data.StaminaReserve = edit.StaminaReserve;
         data.MonthCardExpireTime = edit.MonthCardExpireTime;
         // The game's own switch: the path is kept and the model paired. Teams hold the base id 8001, so they follow.
-        if (edit.Gender is Gender.Man or Gender.Woman && edit.Gender != data.CurrentGender) await player.SetHeroGender(edit.Gender);
+        if (edit.Gender is Gender.Man or Gender.Woman && edit.Gender != data.CurrentGender) await player.AvatarManager!.SetHeroGender(edit.Gender);
         // Missions gated on the new level open as they would on a level-up in play.
         if (levelledUp) await player.OnLevelUp();
     }
@@ -200,13 +200,14 @@ public static class PlayerDataEditor
                      NotFound<Database.Avatar.FormalAvatarInfo>($"Character {avatarId} is not owned");
         var pathId = avatar.PathInfos.ContainsKey(avatar.AvatarId) ? avatar.AvatarId : avatar.PathInfos.Keys.First();
         var inventory = player.InventoryManager!;
+        var avatars = player.AvatarManager!;
 
         if (edit.LightCone is { } coneId)
         {
-            if (coneId == 0) await inventory.UnequipEquipment(pathId);
+            if (coneId == 0) await avatars.UnequipEquipment(pathId);
             else if (inventory.Data.EquipmentItems.Find(item => item.UniqueId == coneId) == null)
                 Invalid($"Light cone {coneId} is not owned");
-            else await inventory.EquipAvatar(pathId, coneId);
+            else await avatars.EquipAvatar(pathId, coneId);
         }
 
         foreach (var (slot, relicId) in edit.Relics)
@@ -214,7 +215,7 @@ public static class PlayerDataEditor
             if (slot is < 1 or > 6) Invalid($"Relic slot must be 1-6, not {slot}");
             if (relicId == 0)
             {
-                await inventory.UnequipRelic(pathId, slot);
+                await avatars.UnequipRelic(pathId, slot);
                 continue;
             }
 
@@ -222,7 +223,7 @@ public static class PlayerDataEditor
                         NotFound<ItemData>($"Relic {relicId} is not owned");
             if ((int?)GameData.RelicConfigData.GetValueOrDefault(relic.ItemId)?.Type != slot)
                 Invalid($"Relic {relicId} does not fit slot {slot}");
-            await inventory.EquipRelic(pathId, relicId, slot);
+            await avatars.EquipRelic(pathId, relicId, slot);
         }
     }
 

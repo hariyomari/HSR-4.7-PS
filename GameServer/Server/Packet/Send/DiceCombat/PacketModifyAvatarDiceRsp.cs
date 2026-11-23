@@ -1,4 +1,4 @@
-using March7thHoney.GameServer.Game.MultiPlayer.DiceCombat;
+using March7thHoney.GameServer.Game.Activity.DiceCombat;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 

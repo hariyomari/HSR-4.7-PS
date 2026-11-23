@@ -59,9 +59,8 @@ public class CommandArg
         if (con != null) Target = con;
 
         CharacterArgs.TryGetValue("@", out var target);
-        if (target == null || !int.TryParse(target, out _)) return;
-        if (March7thHoneyListener.GetSnapshot()
-                .Find(item => (item as Connection)?.Player?.Uid.ToString() == target) is Connection connection)
+        if (!int.TryParse(target, out var targetUid)) return;
+        if (Listener.GetPlayerConnection(targetUid) is { } connection)
         {
             Target = connection;
             IsTargetExplicit = true;

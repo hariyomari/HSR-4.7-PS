@@ -14,8 +14,8 @@ public sealed class GridFightChimeraState
 public sealed record GridFightChimeraGood(uint Type, uint Param);
 
 /// <summary>
-///     Season-2 origin traits with lobby state: 奇兽花园 (Chimera, 1002021), 幻月游戏 (MoonGame, 1003021) and the
-///     battle-only 仙舟舰队 equipment upgrade (1001021). Layouts: artifacts/gf-season2/re-g4-origins-a.md.
+///     Season-2 origin traits with lobby state: Chimera (奇兽花园, 1002021), MoonGame (幻月游戏, 1003021) and the
+///     battle-only Xianzhou (仙舟舰队) equipment upgrade (1001021).
 /// </summary>
 public sealed partial class GridFightSession
 {
@@ -64,12 +64,12 @@ public sealed partial class GridFightSession
 
     private void InitializeSeasonTwoOrigins()
     {
-        // 每局游戏开始时，【幻月游戏】将为你带来不同的游戏规则: one sub-trait per run (context value field 11).
+        // The MoonGame trait text promises different rules every run: one sub-trait per run (context value field 11).
         _moonGameSubTraitId = MoonGameSubTraitIds[Random.Shared.Next(MoonGameSubTraitIds.Length)];
         _chimeraNode = (ChapterId, SectionId);
     }
 
-    // ---------------------------------------------------------------- 奇兽花园
+    // ---------------------------------------------------------------- Chimera (奇兽花园)
 
     private void RefreshChimera(GridFightSeasonTwoChanges changes)
     {
@@ -79,7 +79,8 @@ public sealed partial class GridFightSession
             _chimeraNode = (ChapterId, SectionId);
             if (layer > 0)
             {
-                // 每节点获得1点【奇美能量】; with enough energy a recruit is spent on entering the node.
+                // Each node gives 1 Chimera Energy (奇美能量); once there is enough, it is spent on a recruit as the node
+                // is entered.
                 _chimeraEnergy++;
                 var cost = (uint)Math.Max(1, GetTraitEffectLayerParams(ChimeraEffectId, layer).FirstOrDefault());
                 if (_chimeraEnergy >= cost)
@@ -95,7 +96,7 @@ public sealed partial class GridFightSession
                 changes.GoldChanged = true;
             }
         }
-        // 首次激活3/5/7/10羁绊时，可免费招聘一次！
+        // Trait text: the first activation of each bond level (3/5/7/10) gives one free recruit.
         if (layer > 0 && _chimeraFreeLayers.Add(layer)) _chimeraRecruits++;
     }
 
@@ -115,7 +116,7 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     Candidate rule (not in the client): role-exclusive chimeras of owned 奇兽花园 roles that are not maxed,
+    ///     Candidate rule (not in the client): role-exclusive chimeras of owned Chimera roles that are not maxed,
     ///     generic chimeras once layer param 4 unlocks them, then a gold or upgrade-consumable fallback.
     /// </summary>
     private List<GridFightChimeraGood> RollChimeraGoods()
@@ -151,8 +152,9 @@ public sealed partial class GridFightSession
         GridFightSeasonTwoTables.Chimera.Where(row => row.Id == chimeraId).Select(row => row.Star).DefaultIfEmpty(1u).Max();
 
     /// <summary>
-    ///     奇巧零食 (350119, UpgradeChimera): "选择1个角色专属奇美拉，使其提升1星". Only role-exclusive chimeras below their
-    ///     max star qualify; the chimera snapshot reaches the client through the post-request trait sync.
+    ///     Chimera upgrade consumable (奇巧零食, 350119, UpgradeChimera): "选择1个角色专属奇美拉，使其提升1星". Only
+    ///     role-exclusive chimeras below their max star qualify; the chimera snapshot reaches the client through the
+    ///     post-request trait sync.
     /// </summary>
     public bool UpgradeChimeraByConsumable(uint chimeraUniqueId)
     {
@@ -216,9 +218,9 @@ public sealed partial class GridFightSession
         return application;
     }
 
-    // ---------------------------------------------------------------- 幻月游戏
+    // ---------------------------------------------------------------- MoonGame (幻月游戏)
 
-    /// <summary>愿力 (sub-trait 1003021): layer param per finished battle, doubled on a perfect win.</summary>
+    /// <summary>Wish power (愿力, sub-trait 1003021): layer param per finished battle, doubled on a perfect win.</summary>
     private void GrantMoonGameBattlePower(bool perfect)
     {
         if (!IsSeasonTwoRules || _moonGameSubTraitId != MoonGameWishSubTraitId) return;
@@ -228,7 +230,7 @@ public sealed partial class GridFightSession
         _moonGameWishPower += perfect ? gain * 2 : gain;
     }
 
-    // ---------------------------------------------------------------- 仙舟舰队
+    // ---------------------------------------------------------------- Xianzhou (仙舟舰队)
 
     /// <summary>
     ///     UpgradeBasicEquipBeforeBattle has no client class: the battle simply receives upgraded equipment.

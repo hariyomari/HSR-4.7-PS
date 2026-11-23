@@ -30,7 +30,8 @@ public partial class LineupInfo
     public List<LineupAvatarInfo>? BaseAvatars { get; set; }
     [DefaultValue(5)] public int Mp { get; set; } = 5;
 
-    // MarkPresetLineupCsReq 标记的常用队伍。追加在已有成员之后，旧存档反序列化为 false。
+    // Favourite lineup, marked through MarkPresetLineupCsReq. Appended after the existing members, so older saves
+    // deserialize it as false.
     public bool IsFavourite { get; set; }
 
     // Story/raid trials advertise a virtual lineup. Appended so older lineup blobs keep the defaults.
@@ -120,8 +121,9 @@ public partial class LineupInfo
     }
 
     /// <summary>
-    ///     队伍在 <see cref="LineupData.Lineups" /> 里的键。旧实现取 Values 中的位置，补齐过空槽或销毁重建过额外队伍后，
-    ///     字典枚举顺序与键不一致，客户端会把队伍放到错误的编号上。
+    ///     The lineup's key in <see cref="LineupData.Lineups" />. Its position in Values is not a substitute: once
+    ///     empty slots have been filled in or an extra lineup has been destroyed and rebuilt, the dictionary's
+    ///     enumeration order no longer matches the keys, and the client would put the lineup under the wrong number.
     /// </summary>
     public int GetIndex()
     {

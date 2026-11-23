@@ -4,7 +4,7 @@ using March7thHoney.Enums.GridFight;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-/// Portal 118 / 劳务派遣合同.
+/// Portal 118, the labor dispatch contract (劳务派遣合同).
 /// Official 4.5 capture behavior:
 /// - when selected, grant one random emblem before the initial role supply;
 /// - whenever a boss node is entered, grant one random role belonging to that emblem's trait.

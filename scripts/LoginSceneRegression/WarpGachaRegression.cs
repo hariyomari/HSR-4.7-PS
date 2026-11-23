@@ -138,7 +138,7 @@ internal static class WarpGachaRegression
         option.PhaseLineup = nameof(WarpPhaseLineupEnum.Started);
 
         // A real new account: missions on before initialisation, so the opening missions are bootstrapped.
-        var player = new PlayerInstance(60042) { PendingMissionEnabledOverride = true };
+        var player = new PlayerInstance(60142) { PendingMissionEnabledOverride = true };
         await player.InitializeAsync();
         await player.InventoryManager!.AddItem(102, 50, false, sync: false);
 

@@ -1,12 +1,11 @@
+using March7thHoney.Data.Config.Scene;
 using March7thHoney.Data;
 using March7thHoney.Database.Scene;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Scene;
-using March7thHoney.GameServer.Game.Drop;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
-using March7thHoney.GameServer.Server.Packet.Send.MarkChest;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
@@ -32,7 +31,7 @@ public partial class PlayerInstance
             var isInRange = prop != null;
 
             if (isInRange)
-                if (LineupManager?.GetCurLineup()?.Heal(10000, true) == true)
+                if (LineupManager?.GetCurLineup()?.Heal(GameConstants.FULL_HP, true) == true)
                     await SendPacket(new PacketSyncLineupNotify(LineupManager.GetCurLineup()!));
 
             // Waypoint unlock is independent of the spring heal: Space Anchors / Calyx checkpoints far from any
@@ -82,197 +81,6 @@ public partial class PlayerInstance
             await SendPacket(new PacketUnlockTeleportNotify(mappingInfoId,
                 SceneInstance?.FloorId == floorId ? SceneInstance.EntryId : Data.EntryId));
         return true;
-    }
-
-    public async ValueTask<EntityProp?> InteractProp(int propEntityId, int interactId)
-    {
-        if (SceneInstance == null) return null;
-        SceneInstance.Entities.TryGetValue(propEntityId, out var entity);
-        if (entity is not EntityProp prop) return null;
-        GameData.InteractConfigData.TryGetValue(interactId, out var config);
-        if (config == null || config.SrcState != prop.State) return prop;
-        var oldState = prop.State;
-        await prop.SetState(config.TargetState);
-        var newState = prop.State;
-
-        switch (prop.Excel.PropType)
-        {
-            case PropTypeEnum.PROP_TREASURE_CHEST:
-                if (oldState == PropStateEnum.ChestClosed && newState == PropStateEnum.ChestUsed)
-                {
-                    // TODO: Filter treasure chest
-                    var items = DropService.CalculateDropsFromProp(prop.PropInfo.ChestID);
-                    await InventoryManager!.AddItems(items);
-                    await SendPacket(new PacketOpenChestScNotify(prop.PropInfo.ChestID));
-
-                    var notifyMark = false;
-                    foreach (var markedChest in SceneData!.MarkedChestData.Values)
-                    {
-                        var chest = markedChest.Find(x =>
-                            x.FloorId == SceneInstance.FloorId && x.GroupId == prop.GroupId &&
-                            x.ConfigId == prop.PropInfo.ID);
-
-                        if (chest == null) continue;
-                        markedChest.Remove(chest);
-                        notifyMark = true;
-                    }
-
-                    if (notifyMark)
-                        await SendPacket(new PacketMarkChestChangedScNotify(this));
-                }
-
-                break;
-            case PropTypeEnum.PROP_DESTRUCT:
-                if (newState == PropStateEnum.Closed) await prop.SetState(PropStateEnum.Open);
-                break;
-            case PropTypeEnum.PROP_MAZE_JIGSAW:
-                switch (newState)
-                {
-                    case PropStateEnum.Closed:
-                    {
-                        foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId))
-                            if (p.Excel.PropType == PropTypeEnum.PROP_TREASURE_CHEST)
-                            {
-                                await p.SetState(PropStateEnum.ChestClosed);
-                            }
-                            else if (p.Excel.PropType == prop.Excel.PropType)
-                            {
-                                // Skip
-                            }
-                            else
-                            {
-                                await p.SetState(PropStateEnum.Open);
-                            }
-
-                        break;
-                    }
-                    case PropStateEnum.Open:
-                    {
-                        foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId).Where(p =>
-                                     p.Excel.PropType is not PropTypeEnum.PROP_TREASURE_CHEST &&
-                                     p.Excel.PropType != prop.Excel.PropType))
-                            await p.SetState(PropStateEnum.Open);
-
-                        break;
-                    }
-                }
-
-                break;
-            case PropTypeEnum.PROP_MAZE_PUZZLE:
-                if (newState is PropStateEnum.Closed or PropStateEnum.Open)
-                    foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId))
-                    {
-                        if (p.Excel.PropType == PropTypeEnum.PROP_TREASURE_CHEST)
-                        {
-                            await p.SetState(PropStateEnum.ChestClosed);
-                        }
-                        else if (p.Excel.PropType == prop.Excel.PropType)
-                        {
-                            // Skip
-                        }
-                        else
-                        {
-                            await p.SetState(PropStateEnum.Open);
-                        }
-
-                        await MissionManager!.OnPlayerInteractWithProp();
-                    }
-
-                break;
-            case PropTypeEnum.PROP_ORDINARY:
-                if (prop.PropInfo.CommonConsole)
-                    // set group
-                    foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId))
-                    {
-                        await p.SetState(newState);
-
-                        await MissionManager!.OnPlayerInteractWithProp();
-                    }
-
-                if (prop.Excel.ID == 104039)
-                {
-                    foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId))
-                        await p.SetState(newState);
-
-                    await MissionManager!.OnPlayerInteractWithProp();
-                }
-
-                if (prop.PropInfo.Name.Contains("Piece"))
-                {
-                    var pieceDone = SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId)
-                        .Where(p => p.PropInfo.Name.Contains("Piece")).All(p => p.State == PropStateEnum.Closed);
-
-                    if (pieceDone)
-                        // set JigsawSir to open
-                        foreach (var p in SceneInstance.GetEntitiesInGroup<EntityProp>(prop.GroupId)
-                                     .Where(p => p.PropInfo.Name.Contains("JigsawSir") &&
-                                                 p.State != PropStateEnum.Closed))
-                            await p.SetState(PropStateEnum.TriggerEnable);
-                }
-
-                break;
-        }
-
-        // Prop-graph fan-out (RPG.GameCore.PropReqInteract): the interacted prop's InitLevelGraph may request
-        // sibling interacts server-side - the robot treasure-hunt scan (floor 20111001 g47) reveals its chest
-        // this way. The target's own graph is re-driven recursively so the whole chain lands at once.
-        await SceneInstance.ApplyPropInteractFanOut(prop);
-
-        // for door unlock
-        if (prop.PropInfo.UnlockDoorID.Count > 0)
-            foreach (var p in prop.PropInfo.UnlockDoorID.SelectMany(id =>
-                         SceneInstance.GetEntitiesInGroup<EntityProp>(id.Key)
-                             .Where(p => id.Value.Contains(p.PropInfo.ID))))
-            {
-                await p.SetState(PropStateEnum.Open);
-                await MissionManager!.OnPlayerInteractWithProp();
-            }
-
-        // Pad-puzzle groups reveal the hidden chest their ValueSource names on a real interaction, before
-        // the PropState gate that waits on that chest is checked.
-        if (SceneInstance.FloorInfo?.Groups.TryGetValue(prop.GroupId, out var interactedGroup) == true)
-            await SceneInstance.RevealAuthoredChest(interactedGroup);
-
-        // for mission
-        await MissionManager!.OnPlayerInteractWithProp();
-
-        // plane event
-        await InventoryManager!.HandlePlaneEvent(prop.PropInfo.EventID);
-
-        // handle plugin event
-
-        var floorSavedKey = prop.PropInfo.Name.Replace("Controller_", "");
-        var key = $"FSV_ML{floorSavedKey}{(config.TargetState == PropStateEnum.Open ? "Started" : "Complete")}";
-
-        if (prop.Group.GroupName.Contains("JigsawPuzzle") && prop.Group.GroupName.Contains("MainLine"))
-        {
-            var splits = prop.Group.GroupName.Split('_');
-            key =
-                $"JG_ML_{splits[3]}_Puzzle{(config.TargetState == PropStateEnum.Open ? "Started" : "Complete")}";
-        }
-
-        if (SceneInstance?.FloorInfo?.FloorSavedValue.Find(x => x.Name == key) != null)
-        {
-            // should save
-            var plane = SceneInstance.PlaneId;
-            var floor = SceneInstance.FloorId;
-            SceneData!.FloorSavedData.TryGetValue(floor, out var value);
-            if (value == null)
-            {
-                value = [];
-                SceneData.FloorSavedData[floor] = value;
-            }
-
-            value[key] = 1; // ParamString[2] is the key
-            await SendPacket(new PacketUpdateFloorSavedValueNotify(key, 1, this));
-
-            TaskManager?.SceneTaskTrigger.TriggerFloor(plane, floor, SceneInstance);
-            MissionManager?.HandleFinishType(MissionFinishTypeEnum.FloorSavedValue);
-        }
-
-        if (prop.PropInfo.IsLevelBtn) await prop.SetState(PropStateEnum.Closed);
-
-        return prop;
     }
 
     public async ValueTask SetPropTimeline(int propEntityId, PropTimelineInfo info)
@@ -348,7 +156,7 @@ public partial class PlayerInstance
         // with no way to tell what happened — report it instead.
         if (floorInfo == null)
         {
-            SceneLogger.Warn($"EnterScene({entryId}) aborted: no floor data for P{entrance.PlaneID}_F{entrance.FloorID}.");
+            SceneLogger.Debug($"EnterScene({entryId}) aborted: no floor data for P{entrance.PlaneID}_F{entrance.FloorID}.");
             return (false, false);
         }
 
@@ -370,15 +178,10 @@ public partial class PlayerInstance
             startAnchor = floorInfo.StartAnchorID;
         }
 
-        var anchor = floorInfo.GetAnchorInfo(startGroup, startAnchor)
-                     // The entrance may point at a group the dump does not carry; fall back to the floor's
-                     // own start anchor, then to any anchor at all, so a teleport degrades to "wrong spot"
-                     // instead of "stuck on the loading screen".
-                     ?? floorInfo.GetAnchorInfo(floorInfo.StartGroupID, floorInfo.StartAnchorID)
-                     ?? floorInfo.Groups.Values.SelectMany(x => x.AnchorList).FirstOrDefault();
+        var anchor = ResolveAnchor(floorInfo, startGroup, startAnchor, true);
         if (anchor == null)
         {
-            SceneLogger.Warn($"EnterScene({entryId}) aborted: no usable anchor on P{entrance.PlaneID}_F{entrance.FloorID} " +
+            SceneLogger.Debug($"EnterScene({entryId}) aborted: no usable anchor on P{entrance.PlaneID}_F{entrance.FloorID} " +
                         $"(group {startGroup}, anchor {startAnchor}).");
             return (false, false);
         }
@@ -419,8 +222,9 @@ public partial class PlayerInstance
         if (pos == null || rot == null)
         {
             GameData.GetFloorInfo(entrance.PlaneID, entrance.FloorID, out var floor);
-            var anchor = floor?.GetAnchorInfo(entrance.StartGroupID, entrance.StartAnchorID) ??
-                         floor?.GetAnchorInfo(floor.StartGroupID, floor.StartAnchorID);
+            var anchor = floor == null
+                ? null
+                : ResolveAnchor(floor, entrance.StartGroupID, entrance.StartAnchorID, false);
             if (anchor == null) return false;
             pos = anchor.ToPositionProto();
             rot = anchor.ToRotationProto();
@@ -443,7 +247,7 @@ public partial class PlayerInstance
         GameData.GetFloorInfo(entrance.PlaneID, entrance.FloorID, out var floorInfo);
         if (floorInfo == null)
         {
-            SceneLogger.Warn(
+            SceneLogger.Debug(
                 $"EnterSceneByEntranceId({entranceId}) aborted: no floor data for P{entrance.PlaneID}_F{entrance.FloorID}.");
             return;
         }
@@ -457,12 +261,10 @@ public partial class PlayerInstance
             startAnchor = floorInfo.StartAnchorID;
         }
 
-        var anchor = floorInfo.GetAnchorInfo(startGroup, startAnchor)
-                     ?? floorInfo.GetAnchorInfo(floorInfo.StartGroupID, floorInfo.StartAnchorID)
-                     ?? floorInfo.Groups.Values.SelectMany(x => x.AnchorList).FirstOrDefault();
+        var anchor = ResolveAnchor(floorInfo, startGroup, startAnchor, true);
         if (anchor == null)
         {
-            SceneLogger.Warn($"EnterSceneByEntranceId({entranceId}) aborted: no usable anchor on " +
+            SceneLogger.Debug($"EnterSceneByEntranceId({entranceId}) aborted: no usable anchor on " +
                         $"P{entrance.PlaneID}_F{entrance.FloorID} (group {startGroup}, anchor {startAnchor}).");
             return;
         }
@@ -470,6 +272,19 @@ public partial class PlayerInstance
         await MissionManager!.HandleFinishType(MissionFinishTypeEnum.EnterMapByEntrance, entrance);
         await LoadScene(entrance.PlaneID, entrance.FloorID, entranceId, anchor.ToPositionProto(),
             anchor.ToRotationProto(), sendPacket);
+    }
+
+    /// <summary>
+    ///     The requested anchor, else the floor's own start anchor, else (with <paramref name="anyAnchor" />) the
+    ///     first anchor of any group. An entrance may point at a group the dump does not carry; the fallbacks turn
+    ///     that into a wrong spawn spot instead of a client stuck on the loading screen.
+    /// </summary>
+    private static AnchorInfo? ResolveAnchor(FloorInfo floor, int groupId, int anchorId, bool anyAnchor)
+    {
+        var anchor = floor.GetAnchorInfo(groupId, anchorId) ??
+                     floor.GetAnchorInfo(floor.StartGroupID, floor.StartAnchorID);
+        if (anchor != null || !anyAnchor) return anchor;
+        return floor.Groups.Values.SelectMany(x => x.AnchorList).FirstOrDefault();
     }
 
     public async ValueTask MoveTo(Position position)
@@ -659,20 +474,6 @@ public partial class PlayerInstance
             {
                 SceneData.UnlockSectionIdList[SceneInstance.FloorId].Add(sectionId);
             }
-        }
-    }
-
-    public void SetCustomSaveData(int entryId, int groupId, string data)
-    {
-        if (SceneData != null)
-        {
-            if (!SceneData.CustomSaveData.TryGetValue(entryId, out var entryData))
-            {
-                entryData = [];
-                SceneData.CustomSaveData.Add(entryId, entryData);
-            }
-
-            entryData[groupId] = data;
         }
     }
 

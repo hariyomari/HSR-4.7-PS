@@ -14,7 +14,7 @@ public class PacketGetBagScRsp : BasePacket
 
         player.InventoryManager!.Data.MaterialItems.ForEach(item =>
         {
-            // 宠物物品只以 GetPetDataScRsp 的实例形式下发，见 ItemSyncData。
+            // Pet items are sent only as instances in GetPetDataScRsp; see ItemSyncData.
             if (GameData.ItemConfigData.TryGetValue(item.ItemId, out var config) &&
                 config.ItemMainType == ItemMainTypeEnum.Pet) return;
             proto.MaterialList.Add(item.ToMaterialProto());

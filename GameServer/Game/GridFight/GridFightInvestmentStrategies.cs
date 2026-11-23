@@ -129,7 +129,7 @@ public sealed partial class GridFightSession
 
     private void OnInvestmentNodeEntered()
     {
-        OnP0NodeEntered();
+        OnRewardInvestmentNodeEntered();
         if (ActiveInvestmentIds.Contains(DiamondAfterNodesAugmentId) &&
             _investmentNodeCounters.GetValueOrDefault(DiamondAfterNodesAugmentId) < 2)
         {

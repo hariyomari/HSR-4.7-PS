@@ -6,8 +6,9 @@ namespace March7thHoney.GameServer.Server.Packet.Send.Challenge;
 
 public class PacketChallengeTierceSyncNotify : BasePacket
 {
-    // 4.4: cmdid ChallengeTierceSyncNotify 被改名为 ChallengeTierceSettleNotify(值仍是 8973)。
-    // 移植时误置为 None 导致 Tierce 节点结算同步发不出去（"missing cmd id"），客户端无结算界面、退回场景。
+    // 4.4: the cmd id ChallengeTierceSyncNotify was renamed to ChallengeTierceSettleNotify (the value is still 8973).
+    // The id must not be None: the Tierce stage settlement sync then cannot be sent ("missing cmd id"), and the
+    // client shows no settlement screen and drops back to the scene.
     private PacketChallengeTierceSyncNotify(ChallengeTierceSyncNotify proto) : base(CmdIds.ChallengeTierceSyncNotify)
     {
         SetData(proto);

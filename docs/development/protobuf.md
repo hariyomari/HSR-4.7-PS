@@ -1,36 +1,52 @@
 # Proto
 
+English | [简体中文](protobuf.zh-CN.md)
+
+This document describes how the server's protocol definitions are stored, built and migrated to a new client version. Read it before renaming protocol types or fields, regenerating command IDs or switching the active protocol version.
+
 Source: [`Proto/`](../../Proto/)
 
-按游戏版本保存、按 `Cmd*Type` 分组的 protobuf 定义。当前活动版本为 **4.7**，`Proto.csproj` 在构建时把该版本的顶层 `*.proto` 自动生成为 `obj/<configuration>/<framework>/protobuf/4.7/` 中的 C#，再编译；不再跟踪生成的 C#。
+Protobuf definitions are kept per game version and grouped by `Cmd*Type`. The active version is **4.7**: `ActiveProtocolVersion` in [`Proto/Proto.csproj`](../../Proto/Proto.csproj) selects it, and at build time the project generates C# from the top-level `*.proto` files of `Proto/4.7/` into `obj/<configuration>/<framework>/protobuf/4.7/` and compiles that. The generated C# is not under version control.
 
-## 目录
+This branch keeps the 4.7 protocol so that the server works with the retail OSPRODWin4.7 client. Upstream `main` has moved to the 4.8 protocol in a single `Proto/StarRail.proto`; its layout, its ProtoOrganizer commands (`carry`, `cmdids`) and its upgrade steps do not apply here.
+
+## Layout
 
 ```text
 Proto/
-  <version>/
-    dumper/                    Mar7thDumper 自有产物及整理后的 proto
-      Raw/                     Dumper 原始 StarRail.proto、packetIds、translations 和日志
-      Cmd<Xxx>Type.proto       按命令模块分组的当前版本定义
-      Common.proto             跨模块共享类型
-      Orphans*.proto           尚未归入命令闭包的类型
-      CmdIds.cs                当前版本 cmdid 快照
-    reference/                 可选的外部 reference，只在对应版本真实存在时保存
-    compat-types.txt           进门阶段暂从上一版本保留的 API 类型
-    cmdid-aliases.txt          旧服务端命令名到当前 cmdid 名的兼容别名
-  Build/                       MSBuild 自动生成目标
-  Archives/                    旧版协议无损 ZIP（迁移时按需恢复）
-  obj/.../protobuf/4.7/        活动 C#，构建时生成且 Git 忽略
-  Tool/ProtoOrganizer/         版本迁移、分组、cmdid 和 C# 生成工具
+  <version>/                   one directory per game version
+    Cmd<Xxx>Type.proto         definitions grouped by command module
+    Common.proto               types shared across modules
+    Orphans*.proto             types not yet assigned to a command closure
+    Ungrouped.proto            types reached only from command IDs that no Cmd*Type enum lists
+    CmdIds.cs                  command ID snapshot of the version
+    Raw/                       flat master StarRail.proto, packetIds.txt and translations.txt
+    dumper/Raw/                own raw dumper output, never mixed with reference material
+    reference/                 optional external reference, kept only when one really exists for that version
+    compat-types.txt           API types kept from the previous version during bring-up
+    cmdid-aliases.txt          compatibility aliases from old server command names to current command ID names
+  4.5v3/translations.txt       same-seed input of LoginSceneRegression, tracked outside the archives
+  Archives/                    lossless ZIP archives of older protocol versions, extracted on demand for a migration
+  Build/                       MSBuild targets for automatic generation
+  obj/.../protobuf/4.7/        active C#, generated at build time and ignored by Git
+  Tool/ProtoOrganizer/         tool for version migration, grouping, command IDs and C# generation
 ```
 
-`Proto/4.4/` 是迁移到上述布局之前的兼容基线：根目录 grouped proto 和 `Raw/` 仍保留，`Proto/4.4/dumper/Raw/` 保存自有 Dumper 原始产物。`Proto/4.5/` 不创建虚假的 reference；在 4.5 reference 实际可用前，只使用 Dumper 结果、同混淆种子的 4.4 对齐信息和显式兼容清单。
+Only the top-level `*.proto` files of the active version are compiled. `Raw/`, `dumper/`, the text lists and the other version directories are ProtoOrganizer inputs and never part of the build. The files of `Proto/4.7/` are described in the section on the active 4.7 version below.
 
-资源提取与 Honey 资源缓存是两个边界：Mar7thDumper 仍执行包括原始资源导出在内的完整流程；ProtoOrganizer 只消费 proto/cmdid 产物，不会写 `Config/Resource.bin` 或切换 Honey 的资源目录。
+Older versions used other layouts and are archived. 4.4, the compatibility baseline from before this layout, keeps its grouped definitions and `Raw/` at the version root, with its own dumper output in `4.4/dumper/Raw/`; 4.5 and 4.5v3 keep their grouped output under `dumper/`. No reference was invented for 4.5: until a real 4.5 reference is available, only the dumper output, the alignment with 4.4 (same obfuscation seed) and the explicit compatibility lists are used.
 
-## 历史 4.5 迁移示例（不是本分支的活动版本）
+Resource extraction and Honey's resource cache are separate: Mar7thDumper still runs its full pipeline, including the raw resource export, while ProtoOrganizer only consumes the proto and command ID output. It never writes `Config/Resource.bin` or switches Honey's resource directory.
 
-先按 [归档说明](../../Proto/Archives/README.md) 解压 4.4 和 4.5；生成到 `Proto/Generated` 仅供工具检查，服务器构建不会编译这个旧路径。不要用本示例替换当前命令号或活动版本。
+## Archives and the same-seed input
+
+The inactive reference files of 4.4, 4.5, 4.5v3 and 4.6 are kept as lossless ZIP archives in `Proto/Archives/`. A normal 4.7 build does not need them. Before running a command that reads an old version's paths, such as the example below, extract the versions it needs as described in the [archive notes](../../Proto/Archives/README.md); the extracted directories are ignored by Git.
+
+`Proto/4.5v3/translations.txt` stays tracked as a plain file outside the archive because `LoginSceneRegression` reads it directly. Its same-seed check passes the forced mappings of this file to ProtoOrganizer's `SameSeedMigrator` (the regression references the ProtoOrganizer project for this) and expects the explicit 4.5 field corrections of `SceneMapInfo` (`floor_id = 14`, `retcode = 6`) to survive a full same-seed regeneration, not only protoc. Do not archive or delete the file while that check exists.
+
+## Historical 4.5 migration example (not the active version of this branch)
+
+First extract 4.4 and 4.5 as described in the [archive notes](../../Proto/Archives/README.md). The C# written to `Proto/Generated` only serves to check the tool; the server build never compiles that old path. The command also writes `KcpSharp/CmdIds.cs`, so do not run it on this branch to replace the current command IDs or the active version.
 
 ```sh
 dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
@@ -48,13 +64,13 @@ dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
   --cmdids-out KcpSharp/CmdIds.cs
 ```
 
-工具会依次完成：读取 Dumper 原始定义与 `Cmd*Type` enum、恢复 cmdid、利用同种子旧版本对齐类型和字段、加入版本化兼容类型/命令别名、重新分组、运行 `protoc`。当前活动版本必须达到全部 proto 编译成功后才会用于 Honey 构建。
+The tool reads the dumper's raw definitions and `Cmd*Type` enums, recovers the command IDs, aligns types and fields with the older version that has the same obfuscation seed, adds the versioned compatibility types and command aliases, regroups the definitions and runs `protoc`. A version is used for the Honey build only once all of its protos compile.
 
-已有 grouped proto 只需补语义名时，使用 `--rewrite-proto` 指定原位翻译文件、使用 `--compile-rewrite` 指定需要覆盖生成的同名 C# 文件。该模式只应用翻译表中以 `!` 开头的类型映射，不引入 Raw 中的其他定义；可同时通过 `--cmdid-aliases` 与 `--cmdids-out` 更新语义命令别名。
+When existing grouped protos only need semantic names, `--rewrite-proto` names the files to translate in place and `--compile-rewrite` the files whose C# of the same name is regenerated. This mode applies only the type mappings of the translation table (`--translation`) that start with `!` and brings in no other definitions from Raw; `--cmdid-aliases` together with `--cmdids-out` can update the semantic command aliases at the same time.
 
-`protoc` 默认从 `Google.Protobuf.Tools` NuGet 缓存按当前系统自动定位，也可用 `--protoc <path>` 覆盖。
+ProtoOrganizer finds `protoc` for the current system in the `Google.Protobuf.Tools` NuGet cache; `--protoc <path>` overrides it.
 
-## 自动生成与验证
+## Build and verification
 
 ```sh
 dotnet restore March7thHoney.sln
@@ -62,30 +78,40 @@ dotnet build March7thHoney.sln -c Release --no-restore
 python3 scripts/test-proto-generation.py
 ```
 
-NuGet 固定 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），与现有 `Google.Protobuf 3.33.1` 运行时一致。首次构建需要还原此工具包；工具不会进入服务器发布产物。Linux、Windows 使用宿主平台工具，交叉发布不改变宿主选择。该版本 macOS 工具为 x64，Apple Silicon 需要 Rosetta；也可用 `-p:ProtocolCompiler=<path>` 指向版本严格匹配的 protoc 33.1。
+NuGet pins `Google.Protobuf.Tools 3.33.1` (protoc 33.1), matching the existing `Google.Protobuf 3.33.1` runtime; both versions are declared in `Directory.Packages.props` at the repository root. The first build needs to restore this tool package; the tool does not go into the server's published output. On Linux and Windows the host platform's tool is used, and cross-publishing does not change that choice. The macOS tool in this version is x64, so Apple Silicon needs Rosetta; alternatively `-p:ProtocolCompiler=<path>` can point to a protoc of exactly version 33.1.
 
-目标检测 schema 的新增、删除、修改和缺失的生成文件；无变化时跳过生成。`dotnet clean` 后再次构建会恢复全部生成代码。修改分组定义，不手改 `obj/`。
+The build target detects added, removed and modified schemas and missing generated files; when nothing has changed, generation is skipped. Building again after `dotnet clean` restores all generated code. Change the grouped definitions; do not edit `obj/` by hand.
 
-构建前的检出体积明显减少，但构建时生成代码和 NuGet 缓存仍占空间。此改动不删除旧 Git 历史；完整克隆仍可能下载历史大文件。
+`scripts/test-proto-generation.py` runs the generation in a temporary directory whose path contains spaces, on copies of `Proto.csproj`, `Build/` and the active version's schemas next to the repository's `global.json`, `Directory.Build.props` and `Directory.Packages.props`. It checks fresh and incremental generation, the repair of a missing output, the addition, modification and removal of a schema, and that a target runtime does not change the host compiler.
 
-## 4.7 活动版本
+The checkout is much smaller before a build, but the generated code and the NuGet cache still take space at build time. Old Git history is not rewritten; a full clone may still download large historical files.
 
-4.7 的原始定义来自 [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp) 对客户端 `GameAssembly.dll` + `global-metadata.dat` 的静态 dump（`demiurge proto`），不再依赖运行时 dumper。
+## Command IDs
+
+`KcpSharp/CmdIds.cs` holds the command IDs of the active version. ProtoOrganizer generates it together with the version's snapshot `Proto/<version>/CmdIds.cs` (the two `--cmdids-out` arguments of the commands in this document): one constant per command ID, named after its `Cmd*Type` enum member or its readable name in `Raw/packetIds.txt`, followed by the aliases from `cmdid-aliases.txt`. An alias names an existing constant, not a number.
+
+`scripts/verify-security.py` checks that `KcpSharp/CmdIds.cs` is byte-identical to `Proto/<ActiveProtocolVersion>/CmdIds.cs`. ProtoOrganizer has no compare-only mode, so regenerate both copies together and never edit one of them by hand.
+
+A command enum name is not necessarily the protobuf message type name: handlers bind to the current command constant and parse the real message type, so searching for a `message` with the same name as the enum member can miss the existing structure. When a request has no handler, the framework automatically sends an empty success response; that response cannot be taken as evidence that the feature ran.
+
+## The active 4.7 version
+
+The raw 4.7 definitions come from a static dump (`demiurge proto`) of the client's `GameAssembly.dll` and `global-metadata.dat` made with [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp); a runtime dumper is no longer needed.
 
 ```text
 Proto/4.7/
-  dumper/Raw/StarRail.proto    Demiurge 原始输出：混淆类型名（恢复出的真名带 // obf:）、4.7 字段号与 cmdId
-  Raw/StarRail.proto           翻译后的扁平 master，分组文件由它生成
-  Raw/packetIds.txt            cmdid -> 名称（// obf: 原混淆名）
-  Raw/translations.txt         obf 类型 -> 名称
-  overrides-manual.txt         4.7 逐条审定的类型名，附证据
-  migration-report.txt         4.6 -> 4.7 迁移记录：新增、删除、证据分歧
-  cmdid-aliases.txt            4.6 别名按 cmdid -> obf 跟随到 4.7 名称
+  dumper/Raw/StarRail.proto    raw Demiurge output: obfuscated type names (recovered real names carry // obf:), 4.7 field numbers and cmdIds
+  Raw/StarRail.proto           translated flat master the grouped files are generated from
+  Raw/packetIds.txt            cmdid -> name (// obf: original obfuscated name)
+  Raw/translations.txt         obfuscated type -> name
+  overrides-manual.txt         4.7 type names checked one by one, each with its evidence
+  migration-report.txt         record of the 4.6 -> 4.7 migration: additions, removals, disagreements between evidence sources
+  cmdid-aliases.txt            the 4.6 aliases, followed through cmdid -> obfuscated name to the 4.7 names
 ```
 
-迁移的依据是混淆身份在版本间稳定：类型的混淆名、属性名和 `XxxFieldNumber` 常量名每个版本都相同，变化的只有字段号、cmdId 和 backing field 名。Demiurge 因此按属性名给字段命名，4.6 已审定的类型名、字段名和枚举成员名按混淆身份逐个搬到 4.7 的字段号上。字段身份按证据强弱逐级匹配：4.6 手工钉死的字段与原样保留的混淆名 → 4.4/4.5 Mar7thDumper 常量名与同版本可读定义按字段号的对应 → 4.6 master 同字段号 → 4.6 自动 overrides → 4.6 dumper raw（原名或 `nt.txt` 译名）。`nt.txt` 来自按存储槽位匹配，相邻同类型字段会互换（SceneInfo 的 `world_id` / `leader_entity_id`、`lighten_section_list` / `opened_chests_list` 即此类），只用来识别身份，不单独决定名称。
+The migration relies on obfuscated identities being stable between versions: a type's obfuscated name, its property names and its `XxxFieldNumber` constant names are the same in every version; only field numbers, cmdIds and backing field names change. Demiurge therefore names fields after their properties, and the type, field and enum member names reviewed for 4.6 were carried one by one, by obfuscated identity, onto the 4.7 field numbers. Field identity is matched by decreasing strength of evidence: fields pinned by hand in 4.6 and obfuscated names kept as they are → the 4.4/4.5 Mar7thDumper constant names matched by field number to the readable definitions of the same version → the same field number in the 4.6 master → the automatic 4.6 overrides → the 4.6 dumper raw output (original name or `nt.txt` translation). `nt.txt` comes from matching storage slots, so adjacent fields of the same type can be swapped (SceneInfo's `world_id` / `leader_entity_id` and `lighten_section_list` / `opened_chests_list` are such cases); it only identifies a field and never decides a name on its own.
 
-维护 4.7 定义时修改 `Raw/StarRail.proto`，再用下列命令重建分组定义和命令号。`--cs-out Proto/Generated` 是可选的工具校验输出，已经忽略且不参与服务器编译；随后必须正常构建，让 MSBuild 从活动分组定义自动生成到 `obj/`：
+To maintain the 4.7 definitions, edit `Raw/StarRail.proto`, then rebuild the grouped definitions and the command IDs with the command below. `--cs-out Proto/Generated` is an optional output for checking the tool; it is ignored by Git and not compiled into the server. Afterwards build normally so that MSBuild generates the C# from the active grouped definitions into `obj/`:
 
 ```sh
 dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
@@ -95,15 +121,25 @@ dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
   --cmdids-out Proto/4.7/CmdIds.cs --cmdids-out KcpSharp/CmdIds.cs
 ```
 
-`LoginSceneRegression` 中有按版本写死的 cmdId 与字段号断言（SceneMapInfo、SyncServerSceneChangeNotify、经典模拟宇宙 18xx 命令），切换活动版本时一并更新。
+`LoginSceneRegression` contains version-specific cmdId and field number assertions (VideoKeyInfo, SceneMapInfo, SyncServerSceneChangeNotify, the CommonRogueQuery branch, quick level-up, common lineups, classic Simulated Universe 18xx commands); update them when switching the active version.
 
-命令枚举名不一定等于 protobuf 消息类型名。快速升级例如：4.6 的 `KELLLHMHFHL`（376）在 `dumper/Raw/cmdid-registry.txt` 中对应 `EKLIDIDKFHC`，捕获的响应为 `PMEMIDKDAFG`（357，枚举 `MILFFHPMLMN`）；4.7 的 `Raw/packetIds.txt` 和同身份定义分别对应 355/341。处理器绑定当前命令常量并解析真实消息类型；仅按枚举名搜索同名 `message` 会漏掉现有结构。4.6 官服抓包 seq `36813-36829` 可验证请求/响应配对与升级费用，不能将其旧命令号直接用于 4.7。
+Quick level-up is an example of a command enum name differing from the message type name: in 4.6, `KELLLHMHFHL` (376) corresponds to `EKLIDIDKFHC` in `dumper/Raw/cmdid-registry.txt`, and the captured response is `PMEMIDKDAFG` (357, enum `MILFFHPMLMN`); in 4.7, `Raw/packetIds.txt` and the definitions with the same identities give 355/341. The 4.6 official server capture seq `36813-36829` can verify the request/response pairing and the level-up cost; its old command IDs cannot be used directly for 4.7.
 
-光锥快速升级的身份为 `EOBJKAMNNPI → AMNBMKEMMFL`。4.6 原始定义重复误标为 `PromoteEquipmentCsReq/ScRsp`；官服 seq `36852/36859/36927` 的原始消息分别可解出目标等级、唯一 ID、经验消耗、突破消耗及突破等级。4.7 已映射为 `EquipmentQuickUpCsReq/ScRsp`（513/517）：`IGOOJKMPMDC` 为目标等级，`KLMIBJIKIBB` 为目标突破，`BOBOKJBAMNB` 为经验材料或光锥狗粮，`IDGEEENIMMK` 为突破材料。按属性身份使用现有活动定义，不改成仅执行突破的 `PromoteEquipmentCsReq`。请求没有处理器时框架自动发送空成功响应，不能用该响应判断升级已执行。
+The Light Cone quick level-up identity is `EOBJKAMNNPI → AMNBMKEMMFL`. The 4.6 raw definitions mislabelled it as a duplicate `PromoteEquipmentCsReq/ScRsp`; the raw messages of official server seq `36852/36859/36927` decode to the target level, unique ID, EXP cost, ascension cost and ascension level respectively. 4.7 maps it to `EquipmentQuickUpCsReq/ScRsp` (513/517): `IGOOJKMPMDC` is the target level, `KLMIBJIKIBB` the target ascension, `BOBOKJBAMNB` the EXP materials or fodder Light Cones, `IDGEEENIMMK` the ascension materials. Use the existing active definitions by property identity; do not change it into `PromoteEquipmentCsReq`, which only performs ascension.
 
-## 新版本约束
+## Code excluded from the build
 
-- 自有 Dumper 产物始终放入该版本的 `dumper/Raw/`，不可混入 reference。
-- `reference/` 只保存同一游戏版本的参考定义，未更新时保持不存在或保持旧版本目录，不得伪造新版本 reference。
-- 兼容类型和命令别名必须放在对应版本清单中，禁止把旧 cmdid 数值覆盖到新版本。
-- 切换活动版本后同步更新 `Proto.csproj` 的 `ActiveProtocolVersion`、分组定义和 `KcpSharp/CmdIds.cs`，再执行 `dotnet build March7thHoney.sln` 与生成回归。
+`GameServer/GameServer.csproj` removes some sources from the build with explicit `<Compile Remove>` items, each with a comment that gives the reason:
+
+- The DiceCombat handler `HandlerDiceCombatFinishPveStageCsReq`: 4.6 left only two `uint32` candidates of the same type, and the old mapping was an unverified guess, so it is not guessed again.
+- The 4.8-only activities merged from upstream, currently ActivityBangboo, DiceyDungeon and RealityShow: their game logic, request handlers, send packets and mission finish handlers. Their commands and messages are missing from the 4.7 protocol, or the 4.7 messages of the same name carry different fields, and the mapping is not guessed. [ActivityBangboo](activity-bangboo.md), [DiceyDungeon](dicey-dungeon.md) and [RealityShow](reality-show.md) describe their 4.8 protocol. While they are excluded, their player components are not wired up and battles carry no RealityShow context.
+
+`LoginSceneRegression` leaves the matching cases out as well: `<Compile Remove>` in its project file for the activity regressions, and `#if PROTOCOL_48_ACTIVITIES` around the inline cases. Before re-enabling an excluded file, resolve its protocol evidence and compatibility problems against the active version, and re-enable its regression cases with it; do not simply delete the exclusion to make it compile again. Never copy 4.8 command IDs or field numbers into 4.7.
+
+## Constraints for a new version
+
+- Own dumper output always goes into the version's `dumper/Raw/` and is never mixed into a reference.
+- `reference/` holds only reference definitions of the same game version. While none is available, leave it absent or keep the old version's directory; never fake a reference for a new version.
+- Compatibility types and command aliases go into the lists of the version they belong to; never write an old version's cmdId numbers over a new version.
+- Never decide a mapping from fields having the same type alone.
+- When switching the active version, update `ActiveProtocolVersion` in `Proto.csproj`, the grouped definitions and `KcpSharp/CmdIds.cs` together, then run `dotnet build March7thHoney.sln` and the generation regression. Also update the version-specific assertions in `LoginSceneRegression` and check the `<Compile Remove>` exclusions in `GameServer.csproj` against the new protocol.

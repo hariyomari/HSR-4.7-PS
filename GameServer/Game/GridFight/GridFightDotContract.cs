@@ -4,7 +4,7 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-/// Portal 127 持续伤害契约. 4.5 capture shows the counter is authored by the
+/// Portal 127, the DoT contract (持续伤害契约). 4.5 capture shows the counter is authored by the
 /// battle client in GridFightBattleResultStatistics.POCKGKDFLKK and echoed by the server.
 /// </summary>
 public sealed partial class GridFightSession

@@ -48,5 +48,6 @@ public class SwitchHandComponent(PlayerInstance player) : BasePlayerComponent(pl
         return (Retcode.RetSucc, info);
     }
 
-    // TODO 4.3: GODHDEIPDJL 在 4.3 中已消失或更名，SwitchHand 更新接口暂停
+    // TODO: updates from the client are not handled. Their message disappeared or was renamed in the 4.3
+    // protocol and its current counterpart has not been identified.
 }

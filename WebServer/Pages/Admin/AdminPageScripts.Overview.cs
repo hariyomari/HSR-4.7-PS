@@ -67,7 +67,6 @@ public static partial class AdminPageScripts
                 <h3>${t("overview.server")}</h3>
                 <span class="chip-list">
                   ${server.version ? chip(`v${server.version}`, "subtle") : ""}
-                  ${server.public_mode ? chip(t("overview.public_mode"), "warn") : ""}
                 </span>
               </div>
               <div class="panel-body kv-grid">

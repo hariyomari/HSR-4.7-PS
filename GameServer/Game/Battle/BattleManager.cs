@@ -20,6 +20,17 @@ namespace March7thHoney.GameServer.Game.Battle;
 
 public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 {
+    /// <summary>Lets every game mode that can own a battle adjust it before it is sent to the client.</summary>
+    private void NotifyBattleStart(BattleInstance battleInstance)
+    {
+        Player.ChallengeManager!.ChallengeInstance?.OnBattleStart(battleInstance);
+        Player.RogueManager?.OnBattleStart(battleInstance);
+        Player.RogueTournManager?.OnBattleStart(battleInstance);
+        Player.RogueMagicManager?.OnBattleStart(battleInstance);
+        Player.ChessRogueManager?.OnBattleStart(battleInstance);
+        Player.QuestManager!.OnBattleStart(battleInstance);
+    }
+
     public StageConfigExcel? NextBattleStageConfig { get; set; }
     public List<int> NextBattleMonsterIds { get; set; } = [];
 
@@ -68,13 +79,14 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
             }
             else if (prop.Excel.IsHpRecover)
             {
-                Player.LineupManager!.GetCurLineup()!.Heal(2000, false);
+                Player.LineupManager!.GetCurLineup()!.Heal(GameConstants.PROP_HP_RECOVER, false);
                 await Player.SendPacket(new PacketSyncLineupNotify(Player.LineupManager!.GetCurLineup()!));
             }
             else if (prop.PropInfo.Name == "SpeedDestruct")
             {
                 var avatar = Player.SceneInstance!.AvatarInfo.Values.ToList().RandomElement();
-                await avatar.AddBuff(new SceneBuff(2041101, 1, -1, 15));
+                await avatar.AddBuff(new SceneBuff(SceneCompatRules.SpeedDestructBuffId, 1, -1,
+                    SceneCompatRules.SpeedDestructBuffDurationSec));
             }
             else
             {
@@ -139,12 +151,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
             var gmSpawnLevel = ApplyGmSpawnLoadout(battleInstance, targetList.Where(x => x.IsAlive));
 
             // call battle start
-            Player.ChallengeManager!.ChallengeInstance?.OnBattleStart(battleInstance);
-            Player.RogueManager?.OnBattleStart(battleInstance);
-            Player.RogueTournManager?.OnBattleStart(battleInstance);
-            Player.RogueMagicManager?.OnBattleStart(battleInstance);
-            Player.ChessRogueManager?.OnBattleStart(battleInstance);
-            Player.QuestManager!.OnBattleStart(battleInstance);
+            NotifyBattleStart(battleInstance);
 
             // A mode's own level override (challenge/rogue) always wins over the /spawn lvN request.
             if (gmSpawnLevel > 0 && battleInstance.CustomLevel == 0) battleInstance.CustomLevel = gmSpawnLevel;
@@ -220,12 +227,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         battleInstance.AvatarInfo = avatarList;
 
         // call battle start
-        Player.ChallengeManager!.ChallengeInstance?.OnBattleStart(battleInstance);
-        Player.RogueManager?.OnBattleStart(battleInstance);
-        Player.RogueTournManager?.OnBattleStart(battleInstance);
-        Player.RogueMagicManager?.OnBattleStart(battleInstance);
-        Player.ChessRogueManager?.OnBattleStart(battleInstance);
-        Player.QuestManager!.OnBattleStart(battleInstance);
+        NotifyBattleStart(battleInstance);
 
         Player.BattleInstance = battleInstance;
 
@@ -366,7 +368,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         var isActiveFarmBattle = false;
         var minimumHp = 0;
         var dropItems = new List<ItemData>();
-        if (battle.GridFightContext != null || battle.FinalityContext != null)
+        if (battle.GridFightContext != null || battle.HasActivityLineup)
             updateStatus = false;
         else switch (req.EndStatus)
         {
@@ -397,11 +399,11 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
                 if (battle.CocoonId > 0 &&
                     GameData.CocoonConfigData.TryGetValue(battle.CocoonId * 100 + battle.WorldLevel,
                         out var calyx) && calyx.CocoonType == CocoonTypeEnum.TYPE_NORMAL)
-                    await Player.InventoryManager!.AddItem(22, CalyxClearExp);
+                    await Player.InventoryManager!.AddItem((int)VirtualItemEnum.PlayerExp, CalyxClearExp);
                 break;
             case BattleEndStatus.BattleEndLose:
                 // Set avatar hp to 20% if the player's party is downed
-                minimumHp = 2000;
+                minimumHp = GameConstants.REVIVE_HP;
                 teleportToAnchor = true;
                 break;
             default:
@@ -411,7 +413,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
                 break;
         }
 
-        if (battle.CalyxOverride?.HasLineupOverride == true || battle.FinalityContext != null)
+        if (battle.CalyxOverride?.HasLineupOverride == true || battle.HasActivityLineup)
             updateStatus = false;
 
         if (updateStatus)
@@ -422,7 +424,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
             {
                 BaseAvatarInfo? avatarInstance = Player.AvatarManager!.GetFormalAvatar((int)avatar.Id);
                 var prop = avatar.AvatarStatus;
-                var curHp = (int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), minimumHp);
+                var curHp = (int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * GameConstants.FULL_HP), minimumHp);
                 // The client reports energy units (e.g. 45 of 120); stored SP is a 0..10000 ratio.
                 var curSp = prop.MaxSp > 0
                     ? (int)Math.Round(prop.LeftSp / prop.MaxSp * 10000)

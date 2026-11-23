@@ -7,7 +7,6 @@ namespace March7thHoney.GameServer.Game.GridFight;
 /// </summary>
 public static class GridFightTraitCompatibility
 {
-    public const uint GalaxyScholarTraitId = 1003;
     public const uint BelobogTraitId = 1005;
     public const uint GroupAttackTraitId = 2003;
     public const uint DebuffTraitId = 2007;
@@ -17,12 +16,11 @@ public static class GridFightTraitCompatibility
     public const uint QuantumSyncTraitId = 2009;
     public const uint SkillPointTraitId = 2011;
     public const uint ReservedLayerOnlyTrait3001 = 3001;
-    public const uint FateDivinerTraitId = 3002;
 
     private static readonly IReadOnlyDictionary<uint, uint[]> LayerThresholds =
         new Dictionary<uint, uint[]>
         {
-            [GalaxyScholarTraitId] = [2, 4, 6],
+            [GridFightSession.GalaxyScholarTraitId] = [2, 4, 6],
             [BelobogTraitId] = [2, 4],
             [GroupAttackTraitId] = [3, 5, 7, 9],
             [DebuffTraitId] = [2, 4, 6, 8],
@@ -30,7 +28,7 @@ public static class GridFightTraitCompatibility
             [DotTraitId] = [2, 4, 6],
             [SkillPointTraitId] = [2, 4, 6, 8],
             [QuantumSyncTraitId] = [2, 3, 4, 5],
-            [FateDivinerTraitId] = [1],
+            [GridFightSession.FateDivinerTraitId] = [1],
         };
 
     // Official 4.5 battle packets carry these traits as trait id + layer + members only.

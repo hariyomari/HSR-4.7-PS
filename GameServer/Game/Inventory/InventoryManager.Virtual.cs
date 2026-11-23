@@ -1,5 +1,6 @@
 using March7thHoney.Data.Excel;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 
@@ -9,40 +10,36 @@ public partial class InventoryManager
 {
     private async ValueTask<ItemData?> AddVirtualItem(int itemId, int count, ItemConfigExcel itemConfig)
     {
-        var actualCount = 0;
         var levelBefore = Player.Data.Level;
-        switch (itemConfig.ID)
+        switch ((VirtualItemEnum)itemConfig.ID)
         {
-            case 1:
+            case VirtualItemEnum.Hcoin:
                 Player.Data.Hcoin += count;
-                actualCount = Player.Data.Hcoin;
                 break;
-            case 2:
+            case VirtualItemEnum.Scoin:
                 Player.Data.Scoin += count;
-                actualCount = Player.Data.Scoin;
                 break;
-            case 3:
+            case VirtualItemEnum.Mcoin:
                 Player.Data.Mcoin += count;
-                actualCount = Player.Data.Mcoin;
                 break;
-            case 11:
+            case VirtualItemEnum.Stamina:
                 Player.Data.Stamina += count;
-                actualCount = Player.Data.Stamina;
                 break;
-            case 22:
+            case VirtualItemEnum.PlayerExp:
                 Player.Data.Exp += count;
                 Player.OnAddExp();
-                actualCount = Player.Data.Exp;
                 break;
-            case 32:
+            case VirtualItemEnum.TalentPoint:
                 Player.Data.TalentPoints += count;
-                actualCount = Player.Data.TalentPoints;
                 break;
-            case DailyActiveManager.DailyActivePointItemId:
+            case VirtualItemEnum.DailyActivePoint:
                 // Daily active points: today's window, not a stored item.
-                actualCount = Player.GetComponentOrDefault<DailyActiveManager>()?.AddPoint(count) ?? 0;
+                Player.GetComponentOrDefault<DailyActiveManager>()?.AddPoint(count);
                 break;
         }
+
+        // Read before the level-up handling below, which can roll the daily window.
+        var actualCount = GetVirtualItemCount(itemConfig.ID) ?? 0;
 
         if (count != 0)
         {
@@ -56,5 +53,21 @@ public partial class InventoryManager
         }
 
         return null;
+    }
+
+    /// <summary>The balance of a player-counter virtual item, or null when the ID is not one.</summary>
+    private int? GetVirtualItemCount(int itemId)
+    {
+        return (VirtualItemEnum)itemId switch
+        {
+            VirtualItemEnum.Hcoin => Player.Data.Hcoin,
+            VirtualItemEnum.Scoin => Player.Data.Scoin,
+            VirtualItemEnum.Mcoin => Player.Data.Mcoin,
+            VirtualItemEnum.Stamina => Player.Data.Stamina,
+            VirtualItemEnum.PlayerExp => Player.Data.Exp,
+            VirtualItemEnum.TalentPoint => Player.Data.TalentPoints,
+            VirtualItemEnum.DailyActivePoint => Player.GetComponentOrDefault<DailyActiveManager>()?.Point ?? 0,
+            _ => null
+        };
     }
 }

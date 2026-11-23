@@ -56,6 +56,11 @@ public partial class InventoryManager
             case ItemSubTypeEnum.PlayerOutfit:
                 itemData = await PutItem(itemId, count);
                 break;
+            case ItemSubTypeEnum.HeadIconFrame:
+                // Kept in the bag once (PileLimit 1): the client's HeadFrameUtils.HasHeadFrame looks for a
+                // HeadIconFrame item there before it offers the head-frame display switch.
+                itemData = GetItem(itemId) ?? await PutItem(itemId, 1);
+                break;
             case ItemSubTypeEnum.AvatarSkin:
                 if (!GameData.AvatarSkinData.TryGetValue(itemId, out var skinExcel)) break;
                 var avatarId = skinExcel.AvatarID;

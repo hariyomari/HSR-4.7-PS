@@ -1,5 +1,5 @@
+using March7thHoney.GameServer.Server.ClientLua;
 using March7thHoney.Internationalization;
-using March7thHoney.Util;
 
 namespace March7thHoney.Command.Command.Cmd;
 
@@ -9,7 +9,7 @@ public class CommandWindy : ICommand
     [CommandDefault]
     public async ValueTask Windy(CommandArg arg)
     {
-        var luaRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "Lua"));
+        var luaRoot = ClientLuaDirectory.Root;
         var luaFiles = GetLuaFiles(luaRoot);
 
         if (arg.Args.Count == 0 || arg.Args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
@@ -55,8 +55,7 @@ public class CommandWindy : ICommand
         try
         {
             var fileBytes = await HoyoToonLuaPayloadBuilder.BuildAsync(luaRoot, relativePath);
-            await arg.Target.SendPacket(new March7thHoney.Kcp.HandshakePacket(fileBytes));
-            arg.Target.RecordSentLuaScript(relativePath);
+            await arg.Target.ClientLua.SendScriptAsync(relativePath, fileBytes);
             await arg.SendMsg(I18NManager.Translate("Game.Command.Windy.Loaded", relativePath));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -91,7 +90,7 @@ public class CommandWindy : ICommand
             return;
         }
 
-        var loaded = arg.Target?.GetSentLuaScripts().ToHashSet(StringComparer.OrdinalIgnoreCase) ??
+        var loaded = arg.Target?.ClientLua.GetSentScripts().ToHashSet(StringComparer.OrdinalIgnoreCase) ??
                      new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await arg.SendMsg(I18NManager.Translate("Game.Command.Windy.FoundFiles", luaFiles.Count.ToString()));
         for (var i = 0; i < luaFiles.Count; i++)
@@ -114,7 +113,7 @@ public class CommandWindy : ICommand
             return;
         }
 
-        var loaded = arg.Target.GetSentLuaScripts();
+        var loaded = arg.Target.ClientLua.GetSentScripts();
         if (loaded.Count == 0)
         {
             await arg.SendMsg(I18NManager.Translate("Game.Command.Windy.NoLoadedFiles"));

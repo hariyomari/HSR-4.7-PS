@@ -11,7 +11,7 @@ public sealed class HandlerGridFightGetFormationCsReq : PlayerHandler
 {
     protected override Task OnHandle(Connection connection, PlayerInstance player)
     {
-        return connection.SendPacket(GridFightPacketFactory.CreatePacket(
+        return connection.SendPacket(BasePacket.Create(
             CmdIds.GetGameFormationScRsp,
             new GetGameFormationScRsp()));
     }
@@ -40,7 +40,7 @@ public sealed class HandlerGridFightTraitTrackCsReq : GridFightHandler<GridFight
         if (retcode == 0)
             await connection.SendPacket(new PacketGridFightSyncUpdateResultScNotify(
                 manager.BuildTraitTrackSync()));
-        await connection.SendPacket(GridFightPacketFactory.CreatePacket(
+        await connection.SendPacket(BasePacket.Create(
             CmdIds.GridFightTrackTraitScRsp,
             new GridFightTrackTraitScRsp { Retcode = retcode }));
     }

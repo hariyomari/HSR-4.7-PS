@@ -20,8 +20,9 @@ public static class GateServerRoutes
             if (!ConfigManager.Config.ServerOption.ServerConfig.RunGateway)
                 return Results.StatusCode(404);
 
-            // 手动从查询串读参，缺失取空串。Minimal API 的 [AsParameters] 会把非空 string
-            // 属性当作必填参数，客户端缺任一参数即静默 400，故改回与 QueryDispatch 一致的宽松读取。
+            // Read the parameters from the query string by hand; a missing one becomes an empty string. Minimal API's
+            // [AsParameters] treats non-nullable string properties as required and silently answers 400 when the
+            // client omits any of them, so this reads as leniently as QueryDispatch does.
             var q = ctx.Request.Query;
             var req = new GateWayRequest
             {

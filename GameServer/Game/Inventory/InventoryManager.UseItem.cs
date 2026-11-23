@@ -3,6 +3,7 @@ using March7thHoney.Database.Inventory;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
 using March7thHoney.Proto;
+using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Inventory;
 
@@ -15,8 +16,15 @@ public partial class InventoryManager
         if (itemConfig == null) return (Retcode.RetItemNotExist, null);
         var dataId = itemConfig.ID;
 
+        GameData.ItemUseBuffDataData.TryGetValue(dataId, out var useConfig);
+        if (useConfig != null && baseAvatarId > 0 && Player.AvatarManager?.GetFormalAvatar(baseAvatarId) == null)
+            return (Retcode.RetAvatarNotExist, null);
+
+        // The used items are paid before any effect or reward; this also bounds count by what the player holds.
+        if (!await TryRemoveItems([(itemId, count)])) return (Retcode.RetItemNotEnough, null);
+
         List<ItemData> resItemDatas = [];
-        if (GameData.ItemUseBuffDataData.TryGetValue(dataId, out var useConfig))
+        if (useConfig != null)
         {
             for (var i = 0; i < count; i++) // do count times
             {
@@ -34,8 +42,8 @@ public partial class InventoryManager
                     if (useConfig.PreviewHPRecoveryPercent != 0)
                     {
                         avatar.SetCurHp(
-                            Math.Min(Math.Max(avatar.GetCurHp(extraLineup) + (int)(useConfig.PreviewHPRecoveryPercent * 10000), 0),
-                                10000), extraLineup);
+                            Math.Min(Math.Max(avatar.GetCurHp(extraLineup) + (int)(useConfig.PreviewHPRecoveryPercent * GameConstants.FULL_HP), 0),
+                                GameConstants.FULL_HP), extraLineup);
 
                         await Player.SendPacket(new PacketSyncLineupNotify(Player.LineupManager.GetCurLineup()!));
                     }
@@ -43,7 +51,7 @@ public partial class InventoryManager
                     if (useConfig.PreviewHPRecoveryValue != 0)
                     {
                         avatar.SetCurHp(
-                            Math.Min(Math.Max(avatar.GetCurHp(extraLineup) + (int)useConfig.PreviewHPRecoveryValue, 0), 10000),
+                            Math.Min(Math.Max(avatar.GetCurHp(extraLineup) + (int)useConfig.PreviewHPRecoveryValue, 0), GameConstants.FULL_HP),
                             extraLineup);
 
                         await Player.SendPacket(new PacketSyncLineupNotify(Player.LineupManager.GetCurLineup()!));
@@ -64,7 +72,7 @@ public partial class InventoryManager
                     // team use
                     if (useConfig.PreviewHPRecoveryPercent != 0)
                     {
-                        Player.LineupManager!.GetCurLineup()!.Heal((int)(useConfig.PreviewHPRecoveryPercent * 10000),
+                        Player.LineupManager!.GetCurLineup()!.Heal((int)(useConfig.PreviewHPRecoveryPercent * GameConstants.FULL_HP),
                             true);
 
                         await Player.SendPacket(new PacketSyncLineupNotify(Player.LineupManager.GetCurLineup()!));
@@ -102,9 +110,6 @@ public partial class InventoryManager
         if (GameData.ItemUseDataData.TryGetValue(dataId, out var useData))
             foreach (var rewardId in useData.UseParam)
                 resItemDatas.AddRange(await HandleReward(rewardId, true));
-
-        // remove item
-        await RemoveItem(itemId, count);
 
         return (Retcode.RetSucc, resItemDatas);
     }

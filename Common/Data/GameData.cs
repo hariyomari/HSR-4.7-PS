@@ -1,3 +1,5 @@
+using March7thHoney.Data.Activity;
+using March7thHoney.Data.Challenge;
 using March7thHoney.Data.Config;
 using March7thHoney.Data.Config.AdventureAbility;
 using March7thHoney.Data.Config.Character;
@@ -33,10 +35,32 @@ public static partial class GameData
 
     #endregion
 
+    #region ActivityBangboo
+
+    /// <summary>
+    ///     Planarcadia Reverie (ActivityBangboo) tables from Config/Custom/ActivityBangboo.json. Read on every boot
+    ///     like the other operator files and kept out of Resource.bin.
+    /// </summary>
+    public static ActivityBangbooConfig ActivityBangbooConfig { get; set; } = new();
+
+    #endregion
+
     #region VideoKeys
 
     public static VideoKeysConfig VideoKeysConfig { get; set; } = new();
     public static QueryProductInfoConfig QueryProductInfoConfig { get; set; } = new();
+
+    /// <summary>
+    ///     Containment Starts With a Roll (DiceyDungeon) tables from Config/Custom/DiceyDungeon.json. Read on every boot
+    ///     like the other operator files and kept out of Resource.bin.
+    /// </summary>
+    public static DiceyDungeonConfig DiceyDungeonConfig { get; set; } = new();
+
+    /// <summary>
+    ///     Interastral Peace Gala: Road to Fame (RealityShow) challenges from Config/Custom/RealityShow.json. Read on
+    ///     every boot like the other operator files and kept out of Resource.bin.
+    /// </summary>
+    public static RealityShowConfig RealityShowConfig { get; set; } = new();
 
     #endregion
 
@@ -117,6 +141,16 @@ public static partial class GameData
     public static Dictionary<int, ChallengePeakConfigExcel> ChallengePeakConfigData { get; private set; } = [];
     public static Dictionary<int, ChallengePeakBossConfigExcel> ChallengePeakBossConfigData { get; private set; } = [];
     public static ChallengePeakOverrideConfig ChallengePeakOverrideConfig { get; set; } = new();
+
+    /// <summary>
+    ///     Seasons that ChallengePeak.json leaves out, with the map <see cref="ChallengePeakMapResolver" /> derived
+    ///     from the resources. Rebuilt on every load and kept out of Resource.bin.
+    /// </summary>
+    public static List<ChallengePeakGroupOverride> ChallengePeakDerivedGroups { get; set; } = [];
+
+    /// <summary>Every playable season: the ones pinned in ChallengePeak.json followed by the derived ones.</summary>
+    public static IEnumerable<ChallengePeakGroupOverride> ChallengePeakGroups =>
+        ChallengePeakOverrideConfig.ChallengePeak.Concat(ChallengePeakDerivedGroups);
 
     /// <summary>
     ///     Selected ChallengePeak group from Config/Custom/ChallengePeak.json (switched via /peak).
@@ -357,6 +391,8 @@ public static partial class GameData
         [];
 
     public static Dictionary<int, TrainPartyAreaConfigExcel> TrainPartyAreaConfigData { get; private set; } = [];
+
+    public static Dictionary<int, TrainPartyRewardConfigExcel> TrainPartyRewardConfigData { get; private set; } = [];
 
     public static Dictionary<int, TrainPartyAreaGoalConfigExcel> TrainPartyAreaGoalConfigData { get; private set; } =
         [];
@@ -635,9 +671,10 @@ public static partial class GameData
             IsChallengePeakGroupAvailable(selected))
             return selected;
 
-        // Prefer explicit group order from Config/Custom/ChallengePeak.json overrides.
-        if (ChallengePeakOverrideConfig.ChallengePeak.Count > 0)
-            return ChallengePeakOverrideConfig.ChallengePeak.Max(x => x.GroupId);
+        // Prefer the playable seasons (ChallengePeak.json plus the derived ones).
+        var groups = ChallengePeakGroups.ToList();
+        if (groups.Count > 0)
+            return groups.Max(x => x.GroupId);
 
         if (ChallengePeakGroupConfigData.Count > 0)
             return ChallengePeakGroupConfigData.Keys.Max();
@@ -654,25 +691,24 @@ public static partial class GameData
 
     public static bool IsChallengePeakGroupAvailable(int groupId)
     {
-        return ChallengePeakOverrideConfig.ChallengePeak.Any(x => x.GroupId == groupId);
+        return ChallengePeakGroups.Any(x => x.GroupId == groupId);
     }
 
     public static IEnumerable<int> GetAvailableChallengePeakGroupIds()
     {
-        return ChallengePeakOverrideConfig.ChallengePeak
+        return ChallengePeakGroups
             .Select(x => x.GroupId)
             .Distinct()
             .OrderBy(x => x);
     }
 
     /// <summary>
-    ///     After (re)loading ChallengePeak.json, use its latest group as the global default.
+    ///     After (re)loading ChallengePeak.json, use the latest playable season as the global default.
     /// </summary>
     public static void SyncCurrentChallengePeakGroupId()
     {
-        CurrentChallengePeakGroupId = ChallengePeakOverrideConfig.ChallengePeak.Count > 0
-            ? ChallengePeakOverrideConfig.ChallengePeak.Max(x => x.GroupId)
-            : null;
+        var groups = ChallengePeakGroups.ToList();
+        CurrentChallengePeakGroupId = groups.Count > 0 ? groups.Max(x => x.GroupId) : null;
     }
 
     #endregion

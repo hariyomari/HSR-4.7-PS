@@ -28,13 +28,16 @@ def main():
                         help='Require Config/Resource.bin and run LoginScene/GridFight/DailyActive suites')
     parser.add_argument('--skip-build', action='store_true', help='Use a previously verified solution build')
     args = parser.parse_args()
+    run([sys.executable, 'scripts/check-comments.py'])
+    run([sys.executable, 'scripts/check-docs.py'])
     version = ET.parse(ROOT / 'Proto/Proto.csproj').findtext('.//ActiveProtocolVersion')
     if (ROOT / 'KcpSharp/CmdIds.cs').read_bytes() != (ROOT / 'Proto' / version / 'CmdIds.cs').read_bytes():
         raise RuntimeError('Active protocol CmdIds.cs copies differ')
     print('PASS: active protocol command IDs match')
     if not args.skip_build:
         run(['dotnet', 'build', 'March7thHoney.sln', '-c', 'Release', '-m:1', '-p:UseSharedCompilation=false'])
-    for name in ['AuthRegression', 'WebServerRegression', 'KcpSecurityRegression', 'KcpAdmissionRegression']:
+    for name in ['AuthRegression', 'WebServerRegression', 'KcpSecurityRegression', 'KcpAdmissionRegression',
+                 'InventoryRegression', 'SourceGenRegression']:
         project = f'scripts/{name}/{name}.csproj'
         run(['dotnet', 'build', project, '-c', 'Release', '-m:1', '-p:UseSharedCompilation=false'])
         run(['dotnet', 'run', '--project', project, '-c', 'Release', '--no-build', '--no-restore'])

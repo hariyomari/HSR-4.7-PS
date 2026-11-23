@@ -1,5 +1,6 @@
 using MemoryPack;
 using March7thHoney.Data;
+using March7thHoney.Data.Avatar;
 using March7thHoney.Data.Excel;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Database.Player;
@@ -274,8 +275,8 @@ public partial class FormalAvatarInfo : BaseAvatarInfo
             WorldLevel = (uint)collection.PlayerData.WorldLevel,
             EnhancedId = (uint)pathInfo.EnhanceId
         };
-        // Activated 奇缘星魂 also apply in 货币战争 (GridFight builds this proto from the owned avatar); they used to be
-        // left out there.
+        // Activated ExRanks (奇缘星魂) also apply in Currency War (货币战争): GridFight builds this proto from the owned
+        // avatar.
         proto.IGDEHGIKFJA.AddRange(GetActivatedExRanks(avatarId, collection.PlayerData.Uid));
         return proto;
     }

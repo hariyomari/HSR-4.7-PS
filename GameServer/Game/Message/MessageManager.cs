@@ -65,9 +65,8 @@ public class MessageManager(PlayerInstance player) : BasePlayerManager<MessageDa
             }
             else if (stubFinishUnseen)
             {
-                // EnableMission=false 时整个任务系统停掉，玩家永远走不到手机消息流程，
-                // 但部分客户端解锁（如忘却之庭通过帕姆消息推进 4010105/4010134）会以
-                // 消息组完成态作为门控。把未见过的组按"全部已完成"返回，对齐 stub 语义。
+                // Without missions, unseen message groups are unreachable. Report them as finished for client
+                // unlock checks such as Forgotten Hall (Pom-Pom messages 4010105/4010134).
                 var stub = new MessageGroup
                 {
                     Id = (uint)item.ID,

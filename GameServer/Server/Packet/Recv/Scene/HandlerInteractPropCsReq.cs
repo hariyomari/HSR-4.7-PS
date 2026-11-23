@@ -12,7 +12,9 @@ public class HandlerInteractPropCsReq : Handler<InteractPropCsReq>
         // Some client versions send the real interact config id in interact_id2.
         // interact_id can be a large token/timestamp-like value and cannot be used to query InteractConfig directly.
         var interactId = req.InteractId2 != 0 ? (int)req.InteractId2 : (int)req.InteractId;
-        var prop = await player.InteractProp((int)req.PropEntityId, interactId);
+        var prop = player.SceneInstance == null
+            ? null
+            : await player.SceneInstance.InteractProp((int)req.PropEntityId, interactId);
         await connection.SendPacket(new PacketInteractPropScRsp(prop));
     }
 }

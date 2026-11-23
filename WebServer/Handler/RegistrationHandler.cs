@@ -1,7 +1,9 @@
 using March7thHoney.Database.Account;
 using March7thHoney.Util;
 using March7thHoney.WebServer.Objects;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Http;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Handler;
 
@@ -10,7 +12,7 @@ public class RegistrationHandler
     public async Task<IResult> Handle(RegisterReqJson req, HttpRequest request)
     {
         if (!ConfigManager.Config.ServerOption.Auth.EnableRegistration)
-            return Error("Registration is disabled");
+            return SdkError("Registration is disabled");
 
         var identityKeys = LoginIdentityContextFactory.Build(request, req.device, req.device_id, req.device_fp);
         var antiAbuse = ConfigManager.Config.ServerOption.Auth.AntiAbuse;
@@ -28,29 +30,29 @@ public class RegistrationHandler
         if (antiAbuse.RequireRegistrationIdentity &&
             !identityKeys.Any(key => key.StartsWith("device:", StringComparison.Ordinal)))
         {
-            return Error("Registration is not available for this browser or network");
+            return SdkError("Registration is not available for this browser or network");
         }
 
         if (string.IsNullOrWhiteSpace(username))
-            return Error("Username cannot be empty");
+            return SdkError("Username cannot be empty");
 
         if (string.IsNullOrWhiteSpace(email))
-            return Error("Email cannot be empty");
+            return SdkError("Email cannot be empty");
 
         if (!string.IsNullOrEmpty(confirmation) && !string.Equals(password, confirmation, StringComparison.Ordinal))
-            return Error("Passwords do not match");
+            return SdkError("Passwords do not match");
 
         if (antiAbuse.LimitRegistrationPerIdentity &&
             AccountBanHelper.TryFindAccountByIdentityKeys(identityKeys, antiAbuse.RegistrationIdentityMode, out _))
         {
-            return Error("Registration is not available for this device or network");
+            return SdkError("Registration is not available for this device or network");
         }
 
         if (AccountData.GetAccountByUserName(username) != null)
-            return Error("Username already exists");
+            return SdkError("Username already exists");
 
         if (AccountData.GetAccountByEmail(email) != null)
-            return Error("Email already exists");
+            return SdkError("Email already exists");
 
         AccountData account;
         try
@@ -59,14 +61,14 @@ public class RegistrationHandler
         }
         catch (Exception ex)
         {
-            return Error(ex.Message);
+            return SdkError(ex.Message);
         }
 
         var emailSent = false;
         if (account != null && ConfigManager.Config.ServerOption.Auth.SendVerificationEmailOnRegister)
         {
             var verificationToken = account.GenerateEmailVerificationToken();
-            emailSent = await AccountEmailSender.SendVerificationEmailAsync(account, verificationToken, request);
+            emailSent = await AccountEmailSender.SendVerificationEmailAsync(account, verificationToken);
         }
 
         if (account != null && !account.CanLogin())
@@ -74,7 +76,7 @@ public class RegistrationHandler
 
         LoginSessionFactory.LoginFailure failure;
         if (!LoginSessionFactory.TryCreateSession(username, password, identityKeys, out var session, out failure))
-            return Error(failure.Message, failure.Retcode);
+            return SdkError(failure.Message, failure.Retcode);
 
         var verify = session.IsEmailVerified ? "1" : "0";
         return Results.Json(new RegResult(0, "OK", new RegData(
@@ -97,11 +99,6 @@ public class RegistrationHandler
             new RegToken(1, ""),
             emailSent,
             requiresEmailVerification)));
-    }
-
-    private static IResult Error(string message, int retcode = -201)
-    {
-        return Results.Json(new StatusResult(retcode, message));
     }
 
     private static string ResolveUsername(RegisterReqJson req)

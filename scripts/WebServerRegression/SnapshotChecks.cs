@@ -16,6 +16,7 @@ using Microsoft.Data.Sqlite;
 internal static class SnapshotChecks
 {
     private const int SourceUid = 20001;
+    private const int EmptyUid = 20009;
 
     public static async Task Run(HttpClient client, Action<string, bool> check)
     {
@@ -81,7 +82,10 @@ internal static class SnapshotChecks
                    new { username = "snapshot-clone" }))
             check("cloning onto a taken username fails without creating an account",
                 response.StatusCode == HttpStatusCode.BadRequest && AccountCount() == accounts);
-        using (var response = await client.PostAsJsonAsync("/admin/api/accounts/10002/clone", new { }))
+        // An account of its own: the shared fixture account (10002) gains a save from the order checks.
+        AccountHelper.CreateAccount("snapshot-empty", "snapshot-empty@example.invalid", "empty-password-1", EmptyUid, null);
+        accounts = AccountCount();
+        using (var response = await client.PostAsJsonAsync($"/admin/api/accounts/{EmptyUid}/clone", new { }))
             check("cloning an account without gameplay data is refused",
                 response.StatusCode == HttpStatusCode.BadRequest && AccountCount() == accounts);
 

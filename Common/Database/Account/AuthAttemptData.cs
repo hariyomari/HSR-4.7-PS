@@ -3,6 +3,7 @@ using MemoryPack;
 namespace March7thHoney.Database.Account;
 
 [DbTable("AuthAttempt")]
+[NotPlayerData]
 public class AuthAttemptData : BaseDatabaseDataHelper
 {
     public string AttemptKey { get; set; } = string.Empty;

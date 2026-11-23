@@ -1,3 +1,4 @@
+using March7thHoney.GameServer.Server.Packet.Send.Item;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 
@@ -8,7 +9,8 @@ public class HandlerDestroyItemCsReq : Handler<DestroyItemCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, DestroyItemCsReq req)
     {
-        await player.InventoryManager!.RemoveItem((int)req.ItemId, (int)req.ItemCount);
-        await connection.SendPacket(CmdIds.DestroyItemScRsp);
+        var destroyed = req.ItemId <= int.MaxValue &&
+                        await player.InventoryManager!.TryRemoveItems([((int)req.ItemId, req.ItemCount)]);
+        await connection.SendPacket(new PacketDestroyItemScRsp(destroyed ? Retcode.RetSucc : Retcode.RetItemNotEnough));
     }
 }

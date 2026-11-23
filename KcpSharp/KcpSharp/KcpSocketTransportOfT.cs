@@ -13,6 +13,8 @@ public abstract class KcpSocketTransport<T> : IKcpTransport, IDisposable where T
 {
     private readonly int _mtu;
     private readonly UdpClient _udpListener;
+    private readonly int _handshakeSize;
+    private readonly Func<UdpReceiveResult, Task>? _handshakeHandler;
     private T? _connection;
     private CancellationTokenSource? _cts;
     private bool _disposed;
@@ -22,11 +24,19 @@ public abstract class KcpSocketTransport<T> : IKcpTransport, IDisposable where T
     /// </summary>
     /// <param name="socket">The socket instance.</param>
     /// <param name="mtu">The maximum packet size that can be transmitted.</param>
-    protected KcpSocketTransport(UdpClient listener, int mtu)
+    /// <param name="handshakeSize">Size of the datagrams routed to <paramref name="handshakeHandler" />.</param>
+    /// <param name="handshakeHandler">
+    ///     Receives every datagram of exactly <paramref name="handshakeSize" /> bytes instead of the KCP connection;
+    ///     none when null.
+    /// </param>
+    protected KcpSocketTransport(UdpClient listener, int mtu, int handshakeSize = 0,
+        Func<UdpReceiveResult, Task>? handshakeHandler = null)
     {
         _udpListener = listener ?? throw new ArgumentNullException(nameof(listener));
         _mtu = mtu;
         if (mtu < 50) throw new ArgumentOutOfRangeException(nameof(mtu));
+        _handshakeSize = handshakeSize;
+        _handshakeHandler = handshakeHandler;
     }
 
     /// <summary>
@@ -122,8 +132,8 @@ public abstract class KcpSocketTransport<T> : IKcpTransport, IDisposable where T
 
                 if (bytesReceived != 0 && bytesReceived <= _mtu)
                 {
-                    if (bytesReceived == March7thHoneyConnection.HANDSHAKE_SIZE)
-                        await March7thHoneyListener.HandleHandshake(result);
+                    if (_handshakeHandler is not null && bytesReceived == _handshakeSize)
+                        await _handshakeHandler(result);
                     else if (!error)
                         await connection.InputPakcetAsync(result, cancellationToken).ConfigureAwait(false);
                 }

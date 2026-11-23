@@ -4,7 +4,6 @@ using March7thHoney.Database;
 using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Friend;
 using March7thHoney.Database.Inventory;
-using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Quest;
@@ -16,8 +15,11 @@ using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Avatar;
 
-public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData>(player)
+public partial class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData>(player)
 {
+    /// <summary>March 7th: every new account starts with her, and she joins the team at character creation.</summary>
+    public const int StarterCompanionAvatarId = 1001;
+
     private static readonly Logger Logger = new("Avatar");
 
     public async ValueTask<AvatarConfigExcel?> AddAvatar(int avatarId, bool sync = true, bool notify = true,
@@ -46,7 +48,7 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         {
             Level = 1,
             Timestamp = Extensions.GetUnixSec(),
-            CurrentHp = 10000,
+            CurrentHp = GameConstants.FULL_HP,
             CurrentSp = 0
         };
 
@@ -67,6 +69,27 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         if (notify) await Player.SendPacket(new PacketAddAvatarScNotify(avatar.BaseAvatarId, isGacha));
 
         return avatarExcel;
+    }
+
+    public async ValueTask<FormalAvatarInfo> MarkAvatar(int avatarId, bool isMarked, bool sendPacket = true)
+    {
+        var avatar = GetFormalAvatar(avatarId)!;
+        avatar.IsMarked = isMarked;
+        if (sendPacket) await Player.SendPacket(new PacketPlayerSyncScNotify(avatar));
+        return avatar;
+    }
+
+    /// <summary>Caps every stored skill level at the skill tree's MaxLevel (saves made under older tables).</summary>
+    public void ClampSkillLevels()
+    {
+        foreach (var avatar in Data.FormalAvatars)
+        foreach (var path in avatar.PathInfos.Values)
+        foreach (var skill in path.GetSkillTree())
+        {
+            GameData.AvatarSkillTreeConfigData.TryGetValue(skill.Key * 100 + 1, out var config);
+            if (config == null) continue;
+            path.GetSkillTree()[skill.Key] = Math.Min(skill.Value, config.MaxLevel); // limit skill level
+        }
     }
 
     public FormalAvatarInfo? GetFormalAvatar(int avatarId)
@@ -207,8 +230,8 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         foreach (var config in GameData.MultiplePathAvatarConfigData.Values.OrderBy(config => config.AvatarID))
         {
             if (config.UnlockConditions.Count == 0) continue;
-            if (config.BaseAvatarID == 8001 &&
-                PlayerInstance.NormalizeHeroPathId(config.AvatarID, Player.Data.CurrentGender) != config.AvatarID)
+            if (config.BaseAvatarID == TrailblazerAvatar.BaseAvatarId &&
+                TrailblazerAvatar.NormalizePathId(config.AvatarID, Player.Data.CurrentGender) != config.AvatarID)
                 continue;
 
             var owner = GetFormalAvatar(config.BaseAvatarID);
@@ -251,105 +274,6 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         }
 
         return true;
-    }
-
-    /// <summary>The opening main mission, which holds the nickname and gender prompt.</summary>
-    public const int OpeningMainMissionId = 1000101;
-
-    /// <summary>The prologue sub-mission that waits for the nickname and gender choice.</summary>
-    public const int NameAndGenderSubMissionId = 100010134;
-
-    public FormalAvatarInfo? GetHero()
-    {
-        return Data.FormalAvatars.Find(avatar => avatar.BaseAvatarId == 8001);
-    }
-
-    /// <summary>
-    ///     Story mode before the gender prompt: the opening mission is running, its name and gender step is not
-    ///     finished, and no team holds the Trailblazer. The client keeps every Trailblazer path it is shown for the
-    ///     rest of the session, so until the choice the Trailblazer is left out of the avatar data and the choice
-    ///     announces it with the chosen path only. A Trailblazer already in a team (a replayed prologue) stays
-    ///     visible, since the client cannot build a team member it has no path data for.
-    /// </summary>
-    public bool IsHeroGenderPending =>
-        Player.MissionEnabled &&
-        Player.MissionManager!.GetMainMissionStatus(OpeningMainMissionId) == MissionPhaseEnum.Accept &&
-        Player.MissionManager.GetSubMissionStatus(NameAndGenderSubMissionId) != MissionPhaseEnum.Finish &&
-        !Player.LineupManager!.GetAllLineup().Any(lineup =>
-            lineup.BaseAvatars?.Any(avatar => avatar.BaseAvatarId == 8001) == true);
-
-    /// <summary>
-    ///     登录前校正开拓者当前命途（yuukisr_go a532fa0）：<c>cur_multi_path_avatar_type</c> 必须是一个开拓者命途变体，
-    ///     且在已设定性别时与玩家性别一致。旧存档可能留下非命途 id 或与性别相反的变体，客户端按它解析队长时
-    ///     找不到对应命途数据，<c>TeamManager._CreateMemberEntity</c> 抛 IndexOutOfRange，登录停在加载界面。
-    ///     只修内存数据并标脏，由下次存档持久化；数据已一致时不做任何改动。返回是否发生了修正。
-    /// </summary>
-    public bool NormalizeHeroCurPath()
-    {
-        var hero = GetHero();
-        if (hero == null) return false;
-
-        var gender = Player.Data.CurrentGender;
-        // 剧情性别选择之前客户端还没决定主角形象，不按默认性别去改。
-        var genderKnown = gender is Gender.Man or Gender.Woman && !IsHeroGenderPending;
-        var cur = hero.AvatarId;
-
-        if (!IsHeroPath(cur))
-        {
-            // 非命途 id：回落到已拥有的、与性别相符的编号最小的命途；都没有就用该性别的毁灭命途。
-            var owned = hero.PathInfos.Keys.Where(IsHeroPath)
-                .Where(id => !genderKnown || PlayerInstance.NormalizeHeroPathId(id, gender) == id)
-                .OrderBy(id => id).ToList();
-            cur = owned.Count > 0 ? owned[0] : gender == Gender.Man ? 8001 : 8002;
-        }
-        else if (genderKnown)
-        {
-            cur = PlayerInstance.NormalizeHeroPathId(cur, gender);
-        }
-
-        var hasPath = hero.PathInfos.ContainsKey(cur);
-        if (cur == hero.AvatarId && Player.Data.CurBasicType == cur && hasPath) return false;
-        if (!hasPath && !hero.EnsurePathInfo(cur)) return false;
-
-        Logger.Warn($"Player {Player.Uid}: Trailblazer current path {hero.AvatarId} retargeted to {cur}");
-        hero.AvatarId = cur;
-        Player.Data.CurBasicType = cur;
-        MarkDirty();
-        return true;
-    }
-
-    public static bool IsHeroPath(int avatarId)
-    {
-        return GameData.MultiplePathAvatarConfigData.TryGetValue(avatarId, out var config) &&
-               config.BaseAvatarID == 8001;
-    }
-
-    /// <summary>
-    ///     The gender chosen when the account names its Trailblazer: records it and puts the Trailblazer on that
-    ///     gender's Destruction path. Any choice other than female counts as male. When the Trailblazer was still
-    ///     hidden (<see cref="IsHeroGenderPending" />), the path is set without a path-change notify and one sync
-    ///     introduces the Trailblazer with only the chosen path.
-    /// </summary>
-    public async ValueTask SetHeroGenderAtCreation(Gender gender)
-    {
-        var heroHidden = IsHeroGenderPending;
-        Player.Data.CurrentGender = gender == Gender.Woman ? Gender.Woman : Gender.Man;
-        Player.Data.IsGenderSet = true;
-        if (!heroHidden)
-        {
-            await Player.ChangeAvatarPathType(8001, MultiPathAvatarTypeEnum.Warrior);
-            return;
-        }
-
-        var hero = GetHero();
-        if (hero == null) return;
-        var pathId = PlayerInstance.NormalizeHeroPathId(8001, Player.Data.CurrentGender);
-        Player.Data.CurBasicType = pathId;
-        hero.AvatarId = pathId;
-        hero.SetCurSp(0, Player.LineupManager!.GetCurLineup()!.IsExtraLineup());
-        hero.CheckPathSkillTree();
-        MarkDirty();
-        await Player.SendPacket(new PacketPlayerSyncScNotify(hero));
     }
 
     public async ValueTask ReforgeRelic(int uniqueId)
@@ -438,8 +362,9 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         Player.InventoryManager!.Data.RelicPlans[uniqueId] = new RelicPlanData();
     }
 
-    // ---- 遗器预设（4.5 智能装配保存下来的方案）----
-    // 4.5 客户端的智能装配走的是 RelicPreset 这套协议，和上面 2.3 时代的 RelicSmartWear 方案是两套东西。
+    // ---- Relic presets (plans saved from the 4.5 smart equip feature) ----
+    // Smart equip (智能装配) in the 4.5 client uses the RelicPreset protocol, which is separate from the 2.3-era
+    // RelicSmartWear plans above.
 
     public List<PFCKBFLDHNI> GetRelicPresetPlans(int avatarId)
     {
@@ -452,8 +377,8 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
     }
 
     /// <summary>
-    ///     新建方案。角色必须已拥有、遗器列表非空且每件遗器都在背包里（yuukisr_go c4f5979 同样拒绝空方案），
-    ///     否则返回 null 且不写存档。
+    ///     Creates a plan. The avatar must be owned, the relic list non-empty and every relic in the inventory
+    ///     (yuukisr_go c4f5979 also rejects empty plans); otherwise returns null and saves nothing.
     /// </summary>
     public PFCKBFLDHNI? AddRelicPresetPlan(uint avatarId, string name, IEnumerable<uint> relicIds,
         RelicPresetPlanSourceType sourceType)
@@ -478,12 +403,13 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
     }
 
     /// <summary>
-    ///     一次请求要么改名要么换遗器（4.6 dump 里这两个字段是 oneof），请求带了什么就改什么。
+    ///     A request either renames the plan or replaces its relics (the two fields are a oneof in the 4.6 dump);
+    ///     whichever one the request carries is applied.
     /// </summary>
     public bool UpdateRelicPresetPlan(int uniqueId, HPPOINFLEPJ? relicList, string? name)
     {
         if (!Player.InventoryManager!.Data.RelicPresetPlans.TryGetValue(uniqueId, out var plan)) return false;
-        // 两项都没带的请求没有可改的内容，不当作成功。
+        // A request carrying neither has nothing to change and is not reported as success.
         if (relicList == null && string.IsNullOrEmpty(name)) return false;
         if (relicList != null && (relicList.RelicIds.Count == 0 || !OwnsRelics(relicList.RelicIds))) return false;
 
@@ -501,7 +427,7 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
     private bool OwnsRelics(IEnumerable<uint> relicIds)
     {
         var owned = Player.InventoryManager!.Data.RelicItems.Select(x => x.UniqueId).ToHashSet();
-        // 0 视为空槽位，不当作未拥有的遗器。
+        // 0 is an empty slot, not an unowned relic.
         return relicIds.All(id => id == 0 || owned.Contains((int)id));
     }
 

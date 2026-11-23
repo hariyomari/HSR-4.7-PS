@@ -21,5 +21,7 @@ public enum GridFightBonusTypeEnum
     ElationGoods = 21,
     ElationItem = 22,
     SpotLightFreeRefreshCnt = 23,
-    Augment = 24
+    Augment = 24,
+    // New in the OSBETAWin4.7.51 tables; 25 is also its value in the client (RPG.GameCore.GridFightBonusType).
+    AllAvatarByRarity = 25
 }

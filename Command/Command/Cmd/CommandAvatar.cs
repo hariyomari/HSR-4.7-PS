@@ -276,7 +276,7 @@ public class CommandAvatar : ICommand
             return;
         }
 
-        var storedId = await arg.Target.Player.ChangeAvatarPathType(avatarId, (MultiPathAvatarTypeEnum)pathId);
+        var storedId = await arg.Target.Player.AvatarManager!.ChangePathType(avatarId, (MultiPathAvatarTypeEnum)pathId);
         if (storedId == 0)
         {
             await arg.SendMsg(I18NManager.Translate("Game.Command.Avatar.AvatarNotFound"));

@@ -186,6 +186,26 @@ Check("tier rewards paid Trailblaze EXP", expAfter != exp || levelAfter != level
 Check("level list reports every tier as taken", daily.BuildLevelList().All(l => l.IsHasTaken) &&
                                                daily.BuildLevelList().All(l => l.WorldLevel == 0));
 
+// --- Optional quest reward ------------------------------------------------------------------------------------------
+var optionalQuest = firstSet[2];
+await quests.FinishQuest(optionalQuest);
+var optionalQuestRewardId = GameData.QuestDataData[optionalQuest].RewardID;
+var foreignRewardId = GameData.RewardDataData.Keys.First(id => id != optionalQuestRewardId);
+var hcoinBeforeOptional = player.Data.Hcoin;
+var pointBeforeOptional = daily.Point;
+var (foreignRet, foreignItems) = await quests.TakeQuestOptionalReward(optionalQuest, foreignRewardId);
+Check("optional reward rejects a reward id the quest does not define",
+    foreignRet == Retcode.RetReqParaInvalid && foreignItems.Count == 0 &&
+    quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestFinish);
+var (itemRet, itemItems) = await quests.TakeQuestOptionalReward(optionalQuest, 1);
+Check("optional reward rejects a raw item id and grants nothing",
+    itemRet == Retcode.RetReqParaInvalid && itemItems.Count == 0 && player.Data.Hcoin == hcoinBeforeOptional &&
+    daily.Point == pointBeforeOptional && quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestFinish);
+var (plainRet, plainItems) = await quests.TakeQuestOptionalReward(optionalQuest, 0);
+Check("optional reward without a choice pays only the quest RewardID once",
+    plainRet == Retcode.RetSucc && plainItems.Count > 0 && quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestClose &&
+    (await quests.TakeQuestOptionalReward(optionalQuest, 0)).Item1 == Retcode.RetQuestRewardAlreadyTaken);
+
 // --- Rollover ---------------------------------------------------------------------------------------------------------
 var finishedToday = firstSet[1];
 await quests.FinishQuest(finishedToday);

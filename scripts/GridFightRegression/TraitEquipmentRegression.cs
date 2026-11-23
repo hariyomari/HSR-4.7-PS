@@ -2,8 +2,8 @@ using March7thHoney.GameServer.Game.GridFight;
 using March7thHoney.Proto;
 
 /// <summary>
-///     星核猎手 Script Equipment ("按羁绊等级解锁并分配"): the pieces follow the bond level, stay wearable, and cannot be used
-///     like owned items (craft, reroll, upgrade). They used to stay for good as ordinary equipment.
+///     Stellaron Hunter (星核猎手) Script Equipment ("按羁绊等级解锁并分配"): the pieces follow the bond level, stay
+///     wearable, and cannot be used like owned items (craft, reroll, upgrade).
 /// </summary>
 static class TraitEquipmentRegression
 {

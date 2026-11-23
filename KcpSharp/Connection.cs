@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Net;
+using March7thHoney.Internationalization;
 using March7thHoney.Kcp.KcpSharp;
 using March7thHoney.Util;
 
@@ -7,33 +9,31 @@ namespace March7thHoney.Kcp;
 
 public class March7thHoneyConnection
 {
-    public const int HANDSHAKE_SIZE = 20;
-    public static readonly ConcurrentBag<int> BannedPackets = [];
     private static readonly Logger Logger = new("GameServer");
     public static readonly ConcurrentDictionary<int, string> LogMap = [];
+    private static readonly ConcurrentDictionary<string, int> NameToCmdId = new(StringComparer.Ordinal);
 
-    public static readonly ConcurrentBag<int> IgnoreLog =
-    [
+    // Packets too frequent to be worth a packet log line; checked on every send and receive.
+    private static readonly FrozenSet<int> IgnoreLog = new[]
+    {
         CmdIds.PlayerHeartBeatCsReq, CmdIds.PlayerHeartBeatScRsp, CmdIds.SceneEntityMoveCsReq,
         CmdIds.SceneEntityMoveScRsp, CmdIds.GetShopListCsReq, CmdIds.GetShopListScRsp
-    ];
+    }.ToFrozenSet();
 
     protected readonly CancellationTokenSource CancelToken;
     protected readonly KcpConversation Conversation;
     public readonly IPEndPoint RemoteEndPoint;
 
-    public string DebugFile = "";
-    public bool IsOnline = true;
-    public StreamWriter? Writer;
+    private readonly PacketLogFile _packetLog = new();
+
+    public bool IsOnline { get; protected set; } = true;
 
     public March7thHoneyConnection(KcpConversation conversation, IPEndPoint remote)
     {
         Conversation = conversation;
         RemoteEndPoint = remote;
         CancelToken = new CancellationTokenSource();
-        if (ConfigManager.Config.GameServer.UsePacketEncryption) XorKey = Crypto.ClientSecretKey!.GetXorKey();
-
-        Start();
+        if (Crypto.PacketEncryptionEnabled) XorKey = Crypto.ClientSecretKey!.GetXorKey();
     }
 
     public byte[]? XorKey { get; set; }
@@ -42,18 +42,19 @@ public class March7thHoneyConnection
     public long? ConversationId => Conversation.ConversationId;
 
     public SessionStateEnum State { get; set; } = SessionStateEnum.INACTIVE;
-    //public PlayerInstance? Player { get; set; }
 
+    /// <summary>
+    ///     Activates the connection. Called by the listener once the connection is registered — never from
+    ///     the constructor, so overrides start no I/O before the object is fully built and reachable.
+    /// </summary>
     public virtual void Start()
     {
-        Logger.Info($"New connection from {RemoteEndPoint}.");
+        Logger.Debug($"New connection from {RemoteEndPoint}.");
         State = SessionStateEnum.WAITING_FOR_TOKEN;
     }
 
     public virtual void Stop()
     {
-        //Player?.OnLogoutAsync();
-        //Listener.UnregisterConnection(this);
         Conversation.Dispose();
         try
         {
@@ -64,67 +65,70 @@ public class March7thHoneyConnection
         {
         }
 
+        _packetLog.Dispose();
         IsOnline = false;
+    }
+
+    /// <summary>Sends this connection's packet log to <paramref name="path" /> when SavePersonalDebugFile is on.</summary>
+    public void SetPacketLogFile(string path)
+    {
+        _packetLog.SetPath(path);
     }
 
     public void LogPacket(string sendOrRecv, ushort opcode, byte[] payload)
     {
         if (!ConfigManager.Config.ServerOption.LogOption.EnableGamePacketLog) return;
+        if (IgnoreLog.Contains(opcode)) return;
 
         try
         {
-            if (IgnoreLog.Contains(opcode)) return;
-
-            if (ConfigManager.Config.ServerOption.LogOption.DisableLogDetailPacket) throw new Exception();
-
-            var asJson = PacketLogHelper.ConvertPacketToJson(opcode, payload);
-            var output = $"{sendOrRecv}: {LogMap[opcode]}({opcode})\r\n{asJson}";
-
-            if (ConfigManager.Config.ServerOption.LogOption.LogPacketToConsole)
-                Logger.Debug(output);
-
-            if (DebugFile == "" || !ConfigManager.Config.ServerOption.LogOption.SavePersonalDebugFile) return;
-            var sw = GetWriter();
-            sw.WriteLine($"[{DateTime.Now:HH:mm:ss}] [GameServer] [DEBUG] " + output);
-            sw.Flush();
+            WritePacketLog(BuildPacketLogLine(sendOrRecv, opcode, payload));
         }
         catch
         {
-            // 这里是正常控制流：DisableLogDetailPacket 为 true 时上面会主动 throw 走到这一支。
-            // 写日志失败（典型场景：磁盘写满）绝不能把游戏服务器进程带崩，所以整段再包一层保护。
+            // A failure to write the log (typically a full disk) must never bring down the game server process.
             try
             {
-                var output = $"{sendOrRecv}: {LogMap.GetValueOrDefault(opcode, "UnknownPacket")}({opcode})";
-
-                if (ConfigManager.Config.ServerOption.LogOption.LogPacketToConsole)
-                    Logger.Debug(output);
-
-                if (DebugFile != "" && ConfigManager.Config.ServerOption.LogOption.SavePersonalDebugFile)
-                {
-                    var sw = GetWriter();
-                    sw.WriteLine($"[{DateTime.Now:HH:mm:ss}] [GameServer] [DEBUG] " + output);
-                    sw.Flush();
-                }
+                WritePacketLog(ShortPacketLogLine(sendOrRecv, opcode));
             }
             catch
             {
-                // 有意吞掉：丢一条包日志远好过整个服务器进程 abort。
+                // Swallowed on purpose: losing one packet log entry is far better than aborting the server process.
             }
         }
     }
 
-    private StreamWriter GetWriter()
+    private static string BuildPacketLogLine(string sendOrRecv, ushort opcode, byte[] payload)
     {
-        // Create the file if it doesn't exist
-        var file = new FileInfo(DebugFile);
-        if (!file.Exists)
-        {
-            Directory.CreateDirectory(file.DirectoryName!);
-            File.Create(DebugFile).Dispose();
-        }
+        if (ConfigManager.Config.ServerOption.LogOption.DisableLogDetailPacket)
+            return ShortPacketLogLine(sendOrRecv, opcode);
+        if (!LogMap.TryGetValue(opcode, out var name))
+            return ShortPacketLogLine(sendOrRecv, opcode);
 
-        Writer ??= new StreamWriter(DebugFile, true);
-        return Writer;
+        try
+        {
+            var asJson = PacketLogHelper.ConvertPacketToJson(opcode, payload);
+            return $"{sendOrRecv}: {name}({opcode})\r\n{asJson}";
+        }
+        catch
+        {
+            // Unknown or unparseable payloads degrade to the short line instead of failing the send/recv path.
+            return ShortPacketLogLine(sendOrRecv, opcode);
+        }
+    }
+
+    private static string ShortPacketLogLine(string sendOrRecv, ushort opcode)
+    {
+        return $"{sendOrRecv}: {LogMap.GetValueOrDefault(opcode, "UnknownPacket")}({opcode})";
+    }
+
+    private void WritePacketLog(string output)
+    {
+        if (ConfigManager.Config.ServerOption.LogOption.LogPacketToConsole)
+            Logger.Packet(output);
+
+        if (!ConfigManager.Config.ServerOption.LogOption.SavePersonalDebugFile) return;
+        _packetLog.WriteLine($"[{DateTime.Now:HH:mm:ss}] [GameServer] [DEBUG] " + output);
     }
 
     /// <summary>
@@ -138,55 +142,70 @@ public class March7thHoneyConnection
     {
         try
         {
-            if (ConfigManager.Config.GameServer.UsePacketEncryption)
+            if (Crypto.PacketEncryptionEnabled)
                 Crypto.Xor(packet, XorKey!);
 
             _ = await Conversation.SendAsync(packet, CancelToken.Token);
         }
         catch (Exception e)
         {
-            // Never swallow this silently. A dropped response is invisible to the client, which simply
-            // keeps waiting — the classic symptom is a black screen with the loading bar frozen after a
-            // teleport into a dense floor, where the scene notify exceeds MaxPacketBytes.
+            // A dropped scene notification can leave the client stuck on the teleport loading screen.
             var name = cmdId != 0 ? LogMap.GetValueOrDefault(cmdId, cmdId.ToString()) : "<raw>";
             if (packet.Length > MaxPacketBytes)
-                Logger.Error(
-                    $"Dropped {name} ({packet.Length} bytes): over the {MaxPacketBytes}-byte KCP message limit. " +
-                    "The client will wait forever for this response.", e);
+                Logger.Error(I18NManager.Translate("Server.Log.PacketTooLarge", name, packet.Length.ToString(),
+                    MaxPacketBytes.ToString()), e);
             else
-                Logger.Error($"Failed to send {name} ({packet.Length} bytes)", e);
+                Logger.Debug($"Failed to send {name} ({packet.Length} bytes)", e);
         }
     }
 
     public async Task SendPacket(BasePacket packet)
     {
-        // Test
         if (packet.CmdId <= 0)
         {
             Logger.Debug("Tried to send packet with missing cmd id!");
             return;
         }
 
-        // DO NOT REMOVE (unless we find a way to validate code before sending to client which I don't think we can)
-        if (BannedPackets.Contains(packet.CmdId)) return;
         LogPacket("Send", packet.CmdId, packet.Data);
-        // Header
-        var packetBytes = packet.BuildPacket();
+        // Header: a reply sent while a request is handled carries that request's packet id.
+        var requestPacketId = PacketHead.RequestPacketId.Value;
+        var packetBytes = packet.BuildPacket(requestPacketId != 0 ? PacketHead.Encode(requestPacketId) : null);
 
         await SendPacket(packetBytes, packet.CmdId);
-
-        if (packet.CmdId == CmdIds.SetClientPausedScRsp)
-        {
-            await SendClientUiLuaAsync();
-        }
-
+        await OnPacketSentAsync(packet);
     }
+
+    /// <summary>
+    ///     Runs after a packet has been handed to the transport. Game features that must react to a
+    ///     specific outbound packet hook here instead of hard-coding their cmdId in the base send path.
+    /// </summary>
+    protected virtual Task OnPacketSentAsync(BasePacket packet) => Task.CompletedTask;
 
     public async Task SendPacket(int cmdId)
     {
         await SendPacket(new BasePacket((ushort)cmdId));
     }
 
-    public virtual Task SendWatermarkLuaAsync() => Task.CompletedTask;
-    public virtual Task SendClientUiLuaAsync() => SendWatermarkLuaAsync();
+    /// <summary>
+    ///     Fills <see cref="LogMap" /> (cmdId → name) and the reverse <see cref="NameToCmdId" /> from the
+    ///     generated <see cref="CmdIds" /> constants. One reflection pass at startup; the send/receive and
+    ///     fallback-reply paths then work on plain dictionary lookups.
+    /// </summary>
+    public static void InitPacketNameMap()
+    {
+        foreach (var field in typeof(CmdIds).GetFields())
+        {
+            if (field.FieldType != typeof(int)) continue;
+            var value = (int)field.GetValue(null)!;
+            LogMap.TryAdd(value, field.Name);
+            NameToCmdId.TryAdd(field.Name, value);
+        }
+    }
+
+    /// <summary>Resolve a packet name to its cmdId in O(1); false when the name is unknown.</summary>
+    public static bool TryGetCmdIdByName(string packetName, out int cmdId)
+    {
+        return NameToCmdId.TryGetValue(packetName, out cmdId);
+    }
 }

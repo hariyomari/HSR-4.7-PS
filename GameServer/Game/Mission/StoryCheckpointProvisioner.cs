@@ -8,6 +8,7 @@ using March7thHoney.Database.Mail;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Scene;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Tutorial;
 using March7thHoney.GameServer.Server;
@@ -506,8 +507,8 @@ public static class StoryCheckpointProvisioner
         {
             var gender = request.TrailblazerGender == Gender.Man ? Gender.Man : Gender.Woman;
             if (!string.IsNullOrWhiteSpace(request.TrailblazerName)) _player.Data.Name = request.TrailblazerName.Trim();
-            await _player.SetHeroGender(gender);
-            await _player.ChangeAvatarPathType(8001, MultiPathAvatarTypeEnum.Warrior);
+            await _player.AvatarManager!.SetHeroGender(gender);
+            await _player.AvatarManager.ChangePathType(TrailblazerAvatar.BaseAvatarId, MultiPathAvatarTypeEnum.Warrior);
             await _player.LineupManager!.AddAvatarToRealTeam(gender == Gender.Woman ? 8002 : 8001, false);
             await _player.LineupManager.AddAvatarToRealTeam(1001, false);
         }

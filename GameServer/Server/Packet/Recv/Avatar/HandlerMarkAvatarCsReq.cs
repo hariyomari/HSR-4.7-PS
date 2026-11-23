@@ -9,7 +9,7 @@ public class HandlerMarkAvatarCsReq : Handler<MarkAvatarCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, MarkAvatarCsReq req)
     {
-        var avatar = await player.MarkAvatar((int)req.AvatarId, req.IsMarked);
+        var avatar = await player.AvatarManager!.MarkAvatar((int)req.AvatarId, req.IsMarked);
         await connection.SendPacket(new PacketMarkAvatarScRsp(avatar));
     }
 }

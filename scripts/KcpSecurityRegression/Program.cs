@@ -3,7 +3,8 @@ using System.Net;
 using System.Net.Sockets;
 using March7thHoney.Kcp.KcpSharp;
 
-// All packets are delivered in memory. No sockets, listener, accounts or game resources are used.
+// Packets are delivered in memory, except for the loopback UDP pair of the handshake routing check. No listener,
+// accounts or game resources are used.
 var expected = new IPEndPoint(IPAddress.Parse("192.0.2.10"), 41000);
 var wrongIp = new IPEndPoint(IPAddress.Parse("192.0.2.11"), 41000);
 var wrongPort = new IPEndPoint(expected.Address, 41001);
@@ -77,6 +78,38 @@ using (var multiplex = new KcpMultiplexConnection<object>(transport))
     var buffer = new byte[16];
     Check("Multiplex routing cannot bypass endpoint and conversation ID validation",
         conv.TryReceive(buffer, out var result) && result.BytesReceived == 1 && buffer[0] == 0xA2);
+}
+
+// The socket transport hands datagrams of exactly the handshake size to the handshake callback and everything else
+// to KCP. This is the one check that needs a socket: a loopback UDP pair.
+using (var server = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+using (var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+{
+    const int handshakeSize = 20;
+    var handshakes = new List<int>();
+    var routed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var socketTransport = KcpSocketTransport.CreateMultiplexConnection(server, 1400, handshakeSize, received =>
+    {
+        lock (handshakes) handshakes.Add(received.Buffer.Length);
+        routed.TrySetResult();
+        return Task.CompletedTask;
+    });
+    socketTransport.Start();
+    if (server.Client.LocalEndPoint is IPEndPoint serverEndPoint)
+    {
+        await client.SendAsync(new byte[handshakeSize + 1], serverEndPoint);
+        await client.SendAsync(new byte[handshakeSize], serverEndPoint);
+        var arrived = await Task.WhenAny(routed.Task, Task.Delay(TimeSpan.FromSeconds(3))) == routed.Task;
+        // UDP does not promise ordering, so wait briefly for a misrouted 21-byte datagram to be counted as well.
+        await Task.Delay(100);
+        lock (handshakes)
+            Check("Socket transport routes only handshake-sized datagrams to the handshake callback",
+                arrived && handshakes.SequenceEqual([handshakeSize]));
+    }
+    else
+    {
+        Check("Socket transport routes only handshake-sized datagrams to the handshake callback", false);
+    }
 }
 
 Console.WriteLine($"KCP security checks: {checks}, failures: {failures}");

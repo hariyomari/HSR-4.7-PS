@@ -1,0 +1,32 @@
+<Project>
+
+  <!-- Package versions for every project in this checkout. A PackageReference names the package only. -->
+  <PropertyGroup>
+    <!--
+      A checkout of another commit can sit below this directory, for example a Git worktree of a
+      version branch. Its projects find this file by walking up but carry their own versions, so
+      central management applies only when the nearest solution file belongs to this checkout.
+    -->
+    <_NearestSolutionDirectory>$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildProjectDirectory)', 'March7thHoney.sln'))</_NearestSolutionDirectory>
+    <ManagePackageVersionsCentrally Condition="'$(_NearestSolutionDirectory)' == '' or '$([MSBuild]::EnsureTrailingSlash($(_NearestSolutionDirectory)))' == '$(MSBuildThisFileDirectory)'">true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <!-- The runtime and the protoc tools move together; the protocol build expects protoc 33.1. -->
+    <PackageVersion Include="Google.Protobuf" Version="3.33.1" />
+    <PackageVersion Include="Google.Protobuf.Tools" Version="3.33.1" />
+    <PackageVersion Include="MailKit" Version="5.0.0" />
+    <PackageVersion Include="MemoryPack" Version="1.22.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
+    <PackageVersion Include="MySqlConnector" Version="3.0.0" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="11.0.0" />
+    <PackageVersion Include="System.Management" Version="11.0.0" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
+  </ItemGroup>
+
+</Project>

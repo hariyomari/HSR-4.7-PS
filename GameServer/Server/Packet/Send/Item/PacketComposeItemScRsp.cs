@@ -6,11 +6,11 @@ namespace March7thHoney.GameServer.Server.Packet.Send.Item;
 
 public class PacketComposeItemScRsp : BasePacket
 {
-    public PacketComposeItemScRsp() : base(CmdIds.ComposeItemScRsp)
+    public PacketComposeItemScRsp(Retcode retcode = Retcode.RetFail) : base(CmdIds.ComposeItemScRsp)
     {
         var proto = new ComposeItemScRsp
         {
-            Retcode = 1
+            Retcode = (uint)retcode
         };
 
         SetData(proto);

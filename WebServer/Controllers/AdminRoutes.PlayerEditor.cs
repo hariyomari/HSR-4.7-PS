@@ -21,6 +21,7 @@ using March7thHoney.Util;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
@@ -31,44 +32,42 @@ namespace March7thHoney.WebServer.Controllers;
 /// </summary>
 public static partial class AdminRoutes
 {
-    private const string EditorPrefix = "/admin/api/players/{uid:int}/editor";
+    private const string EditorPrefix = "/players/{uid:int}/editor";
     private static readonly Logger EditorLogger = new("PlayerEditor");
 
-    private static void MapPlayerEditorRoutes(IEndpointRouteBuilder app)
+    private static void MapPlayerEditorRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/editor/catalog", GetEditorCatalog);
-        app.MapGet(EditorPrefix, GetEditorSummary);
-        app.MapPost(EditorPrefix + "/undo", UndoEditorChange);
-        app.MapGet(EditorPrefix + "/profile", GetEditorProfile);
-        app.MapPut(EditorPrefix + "/profile", SetEditorProfile);
-        app.MapGet(EditorPrefix + "/avatars", GetEditorAvatars);
-        app.MapPost(EditorPrefix + "/avatars", AddEditorAvatar);
-        app.MapPut(EditorPrefix + "/avatars/{avatarId:int}", EditEditorAvatar);
-        app.MapDelete(EditorPrefix + "/avatars/{avatarId:int}", RemoveEditorAvatar);
-        app.MapPut(EditorPrefix + "/avatars/{avatarId:int}/gear", SetEditorAvatarGear);
-        app.MapGet(EditorPrefix + "/inventory", GetEditorInventory);
-        app.MapPost(EditorPrefix + "/inventory/grant", GrantEditorItem);
-        app.MapPut(EditorPrefix + "/inventory/items/{itemId:int}", SetEditorItemCount);
-        app.MapPut(EditorPrefix + "/inventory/light-cones/{uniqueId:int}", EditEditorLightCone);
-        app.MapPost(EditorPrefix + "/inventory/remove", RemoveEditorGear);
-        app.MapGet(EditorPrefix + "/lineups", GetEditorLineups);
-        app.MapPut(EditorPrefix + "/lineups/{index:int}", SetEditorLineup);
-        app.MapGet(EditorPrefix + "/story", GetEditorStory);
-        app.MapPost(EditorPrefix + "/story/missions", RunEditorMissionAction);
-        app.MapPost(EditorPrefix + "/story/teleports", UnlockEditorTeleports);
-        app.MapPost(EditorPrefix + "/story/tutorials", FinishEditorTutorials);
-        app.MapPut(EditorPrefix + "/position", SetEditorPosition);
-        app.MapGet(EditorPrefix + "/raw", GetEditorRawTables);
-        app.MapGet(EditorPrefix + "/raw/{table}", GetEditorRawTable);
-        app.MapPut(EditorPrefix + "/raw/{table}", SetEditorRawTable);
+        api.MapGet("/editor/catalog", GetEditorCatalog);
+        api.MapGet(EditorPrefix, GetEditorSummary);
+        api.MapPost(EditorPrefix + "/undo", UndoEditorChange);
+        api.MapGet(EditorPrefix + "/profile", GetEditorProfile);
+        api.MapPut(EditorPrefix + "/profile", SetEditorProfile);
+        api.MapGet(EditorPrefix + "/avatars", GetEditorAvatars);
+        api.MapPost(EditorPrefix + "/avatars", AddEditorAvatar);
+        api.MapPut(EditorPrefix + "/avatars/{avatarId:int}", EditEditorAvatar);
+        api.MapDelete(EditorPrefix + "/avatars/{avatarId:int}", RemoveEditorAvatar);
+        api.MapPut(EditorPrefix + "/avatars/{avatarId:int}/gear", SetEditorAvatarGear);
+        api.MapGet(EditorPrefix + "/inventory", GetEditorInventory);
+        api.MapPost(EditorPrefix + "/inventory/grant", GrantEditorItem);
+        api.MapPut(EditorPrefix + "/inventory/items/{itemId:int}", SetEditorItemCount);
+        api.MapPut(EditorPrefix + "/inventory/light-cones/{uniqueId:int}", EditEditorLightCone);
+        api.MapPost(EditorPrefix + "/inventory/remove", RemoveEditorGear);
+        api.MapGet(EditorPrefix + "/lineups", GetEditorLineups);
+        api.MapPut(EditorPrefix + "/lineups/{index:int}", SetEditorLineup);
+        api.MapGet(EditorPrefix + "/story", GetEditorStory);
+        api.MapPost(EditorPrefix + "/story/missions", RunEditorMissionAction);
+        api.MapPost(EditorPrefix + "/story/teleports", UnlockEditorTeleports);
+        api.MapPost(EditorPrefix + "/story/tutorials", FinishEditorTutorials);
+        api.MapPut(EditorPrefix + "/position", SetEditorPosition);
+        api.MapGet(EditorPrefix + "/raw", GetEditorRawTables);
+        api.MapGet(EditorPrefix + "/raw/{table}", GetEditorRawTable);
+        api.MapPut(EditorPrefix + "/raw/{table}", SetEditorRawTable);
     }
 
     #region Catalog and summary
 
-    private static IResult GetEditorCatalog(HttpContext ctx)
+    private static IResult GetEditorCatalog()
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
-
         var avatars = GameData.AvatarConfigData.Values
             .Where(avatar => avatar.MaxRank >= 6)
             .Select(avatar => new EditorCatalogAvatar(avatar.AvatarID,
@@ -91,9 +90,8 @@ public static partial class AdminRoutes
             entrances));
     }
 
-    private static IResult GetEditorSummary(HttpContext ctx, int uid)
+    private static IResult GetEditorSummary(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
 
         var account = AccountData.GetAccountByUid(uid);
@@ -116,9 +114,8 @@ public static partial class AdminRoutes
             PlayerDataEditor.MaxWorldLevel, account.DeleteOnLogout));
     }
 
-    private static async Task<IResult> UndoEditorChange(HttpContext ctx, int uid)
+    private static async Task<IResult> UndoEditorChange(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         return await EditorCall(async () => new EditorSaved(await OfflinePlayerSession.UndoAsync(uid)));
     }
 
@@ -126,18 +123,16 @@ public static partial class AdminRoutes
 
     #region Profile
 
-    private static IResult GetEditorProfile(HttpContext ctx, int uid)
+    private static IResult GetEditorProfile(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var view = ProfileView(uid);
         return view == null
             ? Error("Player has no save", statusCode: StatusCodes.Status404NotFound)
             : Success(new EditorProfileData(view, ViewVersion(view, WebJsonContext.Default.EditorProfileView)));
     }
 
-    private static async Task<IResult> SetEditorProfile(HttpContext ctx, int uid, AdminEditorProfileRequest? request)
+    private static async Task<IResult> SetEditorProfile(int uid, AdminEditorProfileRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing profile");
         if (!TryParseOption(request.gender, "keep", out var gender, ("keep", Gender.None), ("man", Gender.Man),
                 ("woman", Gender.Woman)))
@@ -173,23 +168,22 @@ public static partial class AdminRoutes
         return missions is { MissionEnabled: true } &&
                missions.GetMainMissionStatus(AvatarManager.OpeningMainMissionId) == MissionPhaseEnum.Accept &&
                missions.GetSubMissionStatus(AvatarManager.NameAndGenderSubMissionId) != MissionPhaseEnum.Finish &&
-               lineups?.Lineups.Values.Any(lineup => lineup.BaseAvatars?.Any(slot => slot.BaseAvatarId == 8001) == true) != true;
+               lineups?.Lineups.Values.Any(lineup =>
+                   lineup.BaseAvatars?.Any(slot => slot.BaseAvatarId == TrailblazerAvatar.BaseAvatarId) == true) != true;
     }
 
     #endregion
 
     #region Characters
 
-    private static IResult GetEditorAvatars(HttpContext ctx, int uid)
+    private static IResult GetEditorAvatars(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var avatars = AvatarsView(uid);
         return Success(new EditorAvatarsData(avatars, ViewVersion(avatars, WebJsonContext.Default.ListEditorAvatarView)));
     }
 
-    private static async Task<IResult> AddEditorAvatar(HttpContext ctx, int uid, AdminEditorAvatarRequest? request)
+    private static async Task<IResult> AddEditorAvatar(int uid, AdminEditorAvatarRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var avatarId = request?.avatar_id ?? 0;
         return await EditorEdit(uid, $"add character {avatarId}", async player =>
         {
@@ -198,10 +192,8 @@ public static partial class AdminRoutes
         }, null, (saved, _) => new EditorSaved(saved));
     }
 
-    private static async Task<IResult> EditEditorAvatar(HttpContext ctx, int uid, int avatarId,
-        AdminEditorAvatarRequest? request)
+    private static async Task<IResult> EditEditorAvatar(int uid, int avatarId, AdminEditorAvatarRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing character values");
 
         var edit = new AvatarEdit(request.level, request.promotion ?? -1, request.rank, request.max_traces);
@@ -213,9 +205,8 @@ public static partial class AdminRoutes
             (saved, _) => new EditorSaved(saved));
     }
 
-    private static async Task<IResult> RemoveEditorAvatar(HttpContext ctx, int uid, int avatarId)
+    private static async Task<IResult> RemoveEditorAvatar(int uid, int avatarId)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         return await EditorEdit(uid, $"remove character {avatarId}", player =>
         {
             PlayerDataEditor.RemoveAvatar(player, avatarId);
@@ -223,10 +214,8 @@ public static partial class AdminRoutes
         }, null, (saved, _) => new EditorSaved(saved));
     }
 
-    private static async Task<IResult> SetEditorAvatarGear(HttpContext ctx, int uid, int avatarId,
-        AdminEditorGearRequest? request)
+    private static async Task<IResult> SetEditorAvatarGear(int uid, int avatarId, AdminEditorGearRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing gear");
 
         var relics = new Dictionary<int, int>();
@@ -280,9 +269,8 @@ public static partial class AdminRoutes
 
     #region Inventory
 
-    private static IResult GetEditorInventory(HttpContext ctx, int uid)
+    private static IResult GetEditorInventory(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var inventory = DatabaseHelper.Instance?.GetInstance<InventoryData>(uid);
         if (inventory == null) return Error("Player has no inventory", statusCode: StatusCodes.Status404NotFound);
 
@@ -296,9 +284,8 @@ public static partial class AdminRoutes
             GameConstants.INVENTORY_MAX_EQUIPMENT, GameConstants.INVENTORY_MAX_RELIC));
     }
 
-    private static async Task<IResult> GrantEditorItem(HttpContext ctx, int uid, AdminEditorItemRequest? request)
+    private static async Task<IResult> GrantEditorItem(int uid, AdminEditorItemRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing item");
 
         var grant = new ItemGrant(request.item_id, request.count ?? 1, request.level ?? 1, request.rank ?? 1,
@@ -308,10 +295,8 @@ public static partial class AdminRoutes
             (saved, count) => new EditorCountResult(count, saved));
     }
 
-    private static async Task<IResult> SetEditorItemCount(HttpContext ctx, int uid, int itemId,
-        AdminEditorItemRequest? request)
+    private static async Task<IResult> SetEditorItemCount(int uid, int itemId, AdminEditorItemRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var count = request?.count ?? 0;
         return await EditorEdit(uid, $"set item {itemId} to {count}", async player =>
         {
@@ -320,10 +305,8 @@ public static partial class AdminRoutes
         }, null, (saved, value) => new EditorCountResult(value, saved));
     }
 
-    private static async Task<IResult> EditEditorLightCone(HttpContext ctx, int uid, int uniqueId,
-        AdminEditorItemRequest? request)
+    private static async Task<IResult> EditEditorLightCone(int uid, int uniqueId, AdminEditorItemRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing light cone values");
 
         var edit = new LightConeEdit(request.level ?? 1, request.promotion ?? -1, request.rank ?? 1);
@@ -334,9 +317,8 @@ public static partial class AdminRoutes
         }, null, (saved, _) => new EditorSaved(saved));
     }
 
-    private static async Task<IResult> RemoveEditorGear(HttpContext ctx, int uid, AdminEditorRemoveRequest? request)
+    private static async Task<IResult> RemoveEditorGear(int uid, AdminEditorRemoveRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var ids = request?.unique_ids ?? [];
         if (ids.Count is < 1 or > 3000) return Error("Select 1-3000 light cones or relics");
         return await EditorEdit(uid, $"remove {ids.Count} light cones/relics",
@@ -348,9 +330,8 @@ public static partial class AdminRoutes
 
     #region Lineups
 
-    private static IResult GetEditorLineups(HttpContext ctx, int uid)
+    private static IResult GetEditorLineups(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var lineups = LineupsView(uid);
         if (lineups == null) return Error("Player has no teams", statusCode: StatusCodes.Status404NotFound);
         var data = DatabaseHelper.Instance!.GetInstance<LineupData>(uid)!;
@@ -358,10 +339,8 @@ public static partial class AdminRoutes
             ViewVersion(lineups, WebJsonContext.Default.ListEditorLineupView)));
     }
 
-    private static async Task<IResult> SetEditorLineup(HttpContext ctx, int uid, int index,
-        AdminEditorLineupRequest? request)
+    private static async Task<IResult> SetEditorLineup(int uid, int index, AdminEditorLineupRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request?.slots == null) return Error("Missing team");
 
         var slots = request.slots.Select(slot => new LineupSlotEdit(slot.base_avatar_id, slot.special_avatar_id)).ToList();
@@ -392,17 +371,14 @@ public static partial class AdminRoutes
 
     #region Story and position
 
-    private static IResult GetEditorStory(HttpContext ctx, int uid)
+    private static IResult GetEditorStory(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var story = StoryView(uid);
         return story == null ? Error("Player has no save", statusCode: StatusCodes.Status404NotFound) : Success(story);
     }
 
-    private static async Task<IResult> RunEditorMissionAction(HttpContext ctx, int uid,
-        AdminEditorMissionRequest? request)
+    private static async Task<IResult> RunEditorMissionAction(int uid, AdminEditorMissionRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (string.IsNullOrWhiteSpace(request?.action)) return Error("Missing mission action");
 
         var action = new MissionAction(request.action.Trim(), request.mission_id, request.count ?? 1, request.strict);
@@ -412,9 +388,8 @@ public static partial class AdminRoutes
             (saved, log) => new EditorMissionResult(log, StoryView(uid)!, saved));
     }
 
-    private static async Task<IResult> UnlockEditorTeleports(HttpContext ctx, int uid, AdminEditorModeRequest? request)
+    private static async Task<IResult> UnlockEditorTeleports(int uid, AdminEditorModeRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (!TryParseOption(request?.mode, "reached_planes", out var mode,
                 ("reached_planes", StoryTeleportsModeEnum.ReachedPlanes), ("all", StoryTeleportsModeEnum.All)))
             return Error("Invalid mode");
@@ -423,9 +398,8 @@ public static partial class AdminRoutes
             (saved, count) => new EditorCountResult(count, saved));
     }
 
-    private static async Task<IResult> FinishEditorTutorials(HttpContext ctx, int uid)
+    private static async Task<IResult> FinishEditorTutorials(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         return await EditorEdit(uid, "finish tutorials", player =>
         {
             PlayerDataEditor.FinishTutorials(player, out var count);
@@ -433,9 +407,8 @@ public static partial class AdminRoutes
         }, null, (saved, count) => new EditorCountResult(count, saved));
     }
 
-    private static async Task<IResult> SetEditorPosition(HttpContext ctx, int uid, AdminEditorPositionRequest? request)
+    private static async Task<IResult> SetEditorPosition(int uid, AdminEditorPositionRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var entryId = request?.entry_id ?? 0;
         return await EditorEdit(uid, $"move to entrance {entryId}", player =>
         {
@@ -474,18 +447,16 @@ public static partial class AdminRoutes
 
     #region Raw tables
 
-    private static IResult GetEditorRawTables(HttpContext ctx, int uid)
+    private static IResult GetEditorRawTables(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         var present = DatabaseHelper.CloneUidGameplayData(uid).Select(row => row.GetType()).ToHashSet();
         return Success(new EditorRawTablesData(PlayerDataEditor.RawStores()
             .Select(store => new EditorRawTableView(store.Table, present.Contains(store.Type)))
             .ToList()));
     }
 
-    private static IResult GetEditorRawTable(HttpContext ctx, int uid, string table)
+    private static IResult GetEditorRawTable(int uid, string table)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         try
         {
             var raw = PlayerDataEditor.ReadRaw(uid, table);
@@ -499,10 +470,8 @@ public static partial class AdminRoutes
         }
     }
 
-    private static async Task<IResult> SetEditorRawTable(HttpContext ctx, int uid, string table,
-        AdminEditorRawRequest? request)
+    private static async Task<IResult> SetEditorRawTable(int uid, string table, AdminEditorRawRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (string.IsNullOrWhiteSpace(request?.json)) return Error("Missing JSON");
         return await EditorCall(async () =>
             new EditorSaved(await PlayerDataEditor.WriteRawAsync(uid, table, request.json, request.version)));

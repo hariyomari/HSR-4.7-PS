@@ -7,23 +7,22 @@ using March7thHoney.Proto;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 // Story checkpoints: the browsable story catalog and the provisioner that builds a save standing at a chosen mission.
 public static partial class AdminRoutes
 {
-    private static void MapStoryRoutes(IEndpointRouteBuilder app)
+    private static void MapStoryRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/story/catalog", GetStoryCatalog);
-        app.MapPost("/admin/api/accounts/provision-story", ProvisionStoryAccount);
-        app.MapPost("/admin/api/accounts/{uid:int}/provision-story", ProvisionStoryExisting);
+        api.MapGet("/story/catalog", GetStoryCatalog);
+        api.MapPost("/accounts/provision-story", ProvisionStoryAccount);
+        api.MapPost("/accounts/{uid:int}/provision-story", ProvisionStoryExisting);
     }
 
-    private static IResult GetStoryCatalog(HttpContext ctx)
+    private static IResult GetStoryCatalog()
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
-
         var config = GameData.WarpStoryGatesConfig;
         var chapterOf = new Dictionary<int, (int Id, string Name)>();
         foreach (var gate in config.ChapterGates)
@@ -67,9 +66,8 @@ public static partial class AdminRoutes
         return main.MissionInfo.SubMissionList.Select(sub => sub.LevelFloorID).FirstOrDefault(floor => floor > 0);
     }
 
-    private static async Task<IResult> ProvisionStoryAccount(HttpContext ctx, AdminProvisionStoryRequest? request)
+    private static async Task<IResult> ProvisionStoryAccount(AdminProvisionStoryRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
 
         request ??= new AdminProvisionStoryRequest();
@@ -99,10 +97,8 @@ public static partial class AdminRoutes
         }
     }
 
-    private static async Task<IResult> ProvisionStoryExisting(HttpContext ctx, int uid,
-        AdminProvisionStoryRequest? request)
+    private static async Task<IResult> ProvisionStoryExisting(int uid, AdminProvisionStoryRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
 
         var account = AccountData.GetAccountByUid(uid);

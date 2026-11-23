@@ -7,6 +7,7 @@ using March7thHoney.Database.Calyx;
 using March7thHoney.Database.Lineup;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.GameServer.Game.Battle;
+using March7thHoney.GameServer.Game.Challenge;
 using March7thHoney.GameServer.Game.Lineup;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Scene;
@@ -233,21 +234,9 @@ public class CalyxOverrideManager(PlayerInstance player) : BasePlayerManager(pla
             battle.Buffs.Add(new MazeBuff(config.MazeBuffID, 1, -1) { WaveFlag = -1 });
 
         if (config.IsStory())
-        {
-            // Pure Fiction / FantasticStory: id 10003 is the continuous-wave score
-            // container (client settles only after all waves clear). Using legacy
-            // 10002 cuts the battle short after wave 1.
-            battle.AddBattleTarget(1, 10003, 0);
-            if (config.StoryExcel?.BattleTargetID != null)
-                foreach (var id in config.StoryExcel.BattleTargetID)
-                    battle.AddBattleTarget(5, id, 0);
-        }
+            ChallengeScoreTargets.AddStoryTargets(battle, config.StoryExcel?.BattleTargetID ?? [], 0);
         else if (config.IsBoss())
-        {
-            // Apocalyptic Shadow: score header on slot 1.
-            battle.AddBattleTarget(1, 90004, 0);
-            battle.AddBattleTarget(1, 90005, 0);
-        }
+            ChallengeScoreTargets.AddBossTargets(battle);
     }
 
     private static List<StageMonsterList>? BuildMonsterList(List<List<FreesrMonsterEntry>>? waves)

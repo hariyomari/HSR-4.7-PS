@@ -1,0 +1,50 @@
+name: Bug report
+description: Something the server does wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities here; follow the security policy instead.
+        Remove tokens, passwords and personal data from anything you paste.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`, or the CI artifact you run.
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Game client version
+      placeholder: e.g. 4.7.51
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, architecture, database type, and whether you run from source, a published build or NativeAOT.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what the server or client did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From a fresh account if possible. Say so if it only happens on an existing account.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log
+      description: The lines around the problem, including any exception.
+      render: text

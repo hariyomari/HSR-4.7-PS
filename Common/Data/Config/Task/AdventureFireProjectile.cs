@@ -8,7 +8,6 @@ public partial class AdventureFireProjectile : TaskConfigInfo
 {
     public TargetEvaluator TargetType { get; set; } = new UnknownTargetEvaluator();
 
-    //public ProjectileData Projectile { get; set; }
     public List<TaskConfigInfo> OnProjectileHit { get; set; } = [];
     public List<TaskConfigInfo> OnProjectileLifetimeFinish { get; set; } = [];
     public bool WaitProjectileFinish { get; set; }

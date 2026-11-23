@@ -94,7 +94,7 @@ public class ChallengeEntityLoader(SceneInstance scene, PlayerInstance player) :
 
     public override async ValueTask<EntityNpc?> LoadNpc(NpcInfo info, GroupInfo group, bool sendPacket = false)
     {
-        await System.Threading.Tasks.Task.CompletedTask;
+        await Task.CompletedTask;
         return null;
     }
 }

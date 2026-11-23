@@ -5,14 +5,14 @@ namespace March7thHoney.GameServer.Game.GridFight;
 
 public sealed record GridFightBonfireNodeState(uint ChapterId, uint SectionId, uint EventId, uint PetPalEffectId);
 
-/// <summary>One offered 幕后茶歇 option (MHCOIBONODA): show type, role parameter, (event, option) key.</summary>
+/// <summary>One offered bonfire option (MHCOIBONODA): show type, role parameter, (event, option) key.</summary>
 public sealed record GridFightBonfireOption(uint ShowType, uint RoleId, uint EventId, uint OptionId);
 
 /// <summary>
-///     【幕后茶歇】 reward node used by many 本局奇遇 effects ("第X位面的最后的奖励节点将替换为幕后茶歇"). Layout and flow:
-///     artifacts/gf-season2/re-g7-bonfire-petpal.md. Option effects live in server JSON that is not shipped; options
-///     whose table params name a reward (HP-cost coffees, items, projectors, copies) are applied, rule-changing
-///     options are accepted without effect.
+///     Bonfire (幕后茶歇) reward node used by many partner (本局奇遇) effects ("第X位面的最后的奖励节点将替换为幕后茶歇").
+///     Option effects live in server JSON that is not
+///     shipped; options whose table params name a reward (HP-cost coffees, items, projectors, copies) are applied,
+///     rule-changing options are accepted without effect.
 /// </summary>
 public sealed partial class GridFightSession
 {
@@ -61,7 +61,7 @@ public sealed partial class GridFightSession
             plans.AddRange(events.Take(3).Select((eventId, index) => ((uint)index + 1, eventId)));
         else if (BonfireEffectPlane.TryGetValue(PetPalEffectId, out var plane))
             plans.Add((plane, PetPalEffectId == 107001 && events.Count > 1
-                // 菇菇兔会变成你认识的其它伙伴: a random disguised event from its param list.
+                // 107001 (菇菇兔) disguises itself as another partner: a random event from the rest of its param list.
                 ? events[1 + Random.Shared.Next(events.Count - 1)]
                 : events[0]));
         foreach (var (chapter, eventId) in plans)
@@ -187,7 +187,7 @@ public sealed partial class GridFightSession
         {
             case BonfireOptionShowCopyMaxStar or BonfireOptionShowCopyMaxRarity or BonfireOptionShowCopyMaxEquip:
             {
-                // 临摹同伴: a copy of the matching role at its star level.
+                // Copy options (临摹同伴): a copy of the matching role at its star level.
                 var source = FindCopySource(option.ShowType);
                 return source == null
                     ? new GridFightRewardApplication { Success = true }
@@ -195,7 +195,7 @@ public sealed partial class GridFightSession
             }
             case BonfireOptionShowHpCondition:
             {
-                // [bonus, count, hp cost]; 无名氏咖啡 (no params) is one of the others at random.
+                // [bonus, count, hp cost]; the coffee without params (无名氏咖啡) is one of the others at random.
                 if (p.Length < 3)
                 {
                     var others = BonfireRows(row.EventId).Where(entry => entry.Params.Length >= 3).ToList();
@@ -211,7 +211,8 @@ public sealed partial class GridFightSession
                 return application;
             }
             case BonfireOptionShowPreGenBonus:
-                // 不死狼委托: the commission reward is handed out right away (the pray-quest tracking is not modelled).
+                // Commission option (不死狼委托): the commission reward is handed out right away (the pray-quest tracking
+                // is not modelled).
                 return TryAddOrb(BonfireCommissionOrbId, out var orb)
                     ? new GridFightRewardApplication { Success = true, AddedOrbs = { orb } }
                     : new GridFightRewardApplication { Success = true };

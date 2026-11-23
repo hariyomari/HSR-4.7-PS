@@ -6,7 +6,7 @@ using March7thHoney.Database;
 using March7thHoney.Database.Account;
 using March7thHoney.Util;
 using March7thHoney.Util.Security;
-using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Http;
 
 internal static class BanRegression

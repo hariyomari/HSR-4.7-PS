@@ -5,9 +5,7 @@ using March7thHoney.Util;
 namespace March7thHoney.WebServer.Pages;
 
 /// <summary>
-///     Shared chrome for the player-facing pages under /login-platform (registration, password recovery, the
-///     email verification landing page and the 404 page): one stylesheet, one layout and a tiny bilingual
-///     helper so every page looks the same and can switch between Chinese and English.
+///     Shared layout, styles and Chinese/English helpers for player-facing /login-platform pages.
 /// </summary>
 public static class LoginPlatformPage
 {

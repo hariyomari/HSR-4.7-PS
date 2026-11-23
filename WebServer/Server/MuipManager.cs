@@ -1,20 +1,21 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Management;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using March7thHoney.Command;
 using March7thHoney.Data;
 using March7thHoney.Database;
+using March7thHoney.Database.Account;
 using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Lineup;
 using March7thHoney.Database.Player;
 using March7thHoney.Database.Quests;
 using March7thHoney.Enums;
+using March7thHoney.GameServer.Server;
+using March7thHoney.Internationalization;
 using March7thHoney.Util;
 using March7thHoney.WebServer.Response;
-using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Services;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.X509;
@@ -25,12 +26,8 @@ public static class MuipManager
 {
     public delegate Task ExecuteCommandDelegate(string message, MuipCommandSender sender);
 
-    public delegate void GetPlayerStatusDelegate(int uid, out PlayerStatusEnum status,
-        out PlayerSubStatusEnum subStatus);
-
-    public delegate void ServerInformationDelegate(Dictionary<int, PlayerData> resultData);
-
     private static readonly Logger logger = Logger.GetByClassName();
+    private static ExecuteCommandDelegate? _commandHandler;
 
     public static string RsaPublicKey { get; private set; } = "";
     public static string RsaPrivateKey { get; private set; } = "";
@@ -74,9 +71,21 @@ public static class MuipManager
     /// </summary>
     public static Func<IReadOnlyList<CommandCatalogEntry>>? CommandCatalogProvider { get; set; }
 
-    public static event ExecuteCommandDelegate? OnExecuteCommand;
-    public static event ServerInformationDelegate? OnGetServerInformation;
-    public static event GetPlayerStatusDelegate? OnGetPlayerStatus;
+    /// <summary>
+    ///     Runs decoded commands, wired by the entry point for the same reason as <see cref="CommandCatalogProvider" />.
+    ///     It holds exactly one handler: a combined delegate (for example from a second <c>+=</c>) is refused, because
+    ///     it would run every command once per registration.
+    /// </summary>
+    public static ExecuteCommandDelegate? CommandHandler
+    {
+        get => _commandHandler;
+        set
+        {
+            if (value is { HasSingleTarget: false })
+                throw new ArgumentException("MUIP accepts a single command handler.", nameof(value));
+            _commandHandler = value;
+        }
+    }
 
     public static CreateSessionResponse CreateSession(string keyType, string? clientKey = null)
     {
@@ -109,7 +118,7 @@ public static class MuipManager
         }
     }
 
-    public static AuthAdminKeyResponse AuthAdmin(string sessionId, string key)
+    public static AuthAdminKeyResponse AuthAdmin(string sessionId, string key, string? clientKey = null)
     {
         if (Sessions.TryGetValue(sessionId, out var value))
         {
@@ -120,11 +129,17 @@ public static class MuipManager
                 return new AuthAdminKeyResponse(1, "Session has expired!", null);
             }
 
+            // A wrong key consumes the session so every guess costs a new one, on top of the shared
+            // per-client failure counter.
             var keyStr = DecodeWithRsaFallback(key);
-            if (!CryptographicOperations.FixedTimeEquals(
-                    SHA256.HashData(Encoding.UTF8.GetBytes(keyStr)),
-                    SHA256.HashData(Encoding.UTF8.GetBytes(ConfigManager.Config.MuipServer.AdminKey))))
-                return new AuthAdminKeyResponse(2, "Admin key is invalid!", null);
+            if (!AdminSessionManager.TryVerifyAdminKey(keyStr, clientKey ?? session.ClientKey, out var failure,
+                    out var blocked))
+            {
+                Sessions.TryRemove(sessionId, out _);
+                return blocked
+                    ? new AuthAdminKeyResponse(3, failure, null)
+                    : new AuthAdminKeyResponse(2, "Admin key is invalid!", null);
+            }
 
             session.IsAuthorized = true;
 
@@ -180,29 +195,66 @@ public static class MuipManager
             if (string.IsNullOrWhiteSpace(commandStr))
                 return new ExecuteCommandResponse(3, "Wrong encrypted key");
 
-            var handlers = OnExecuteCommand;
-            if (handlers == null)
-                return new ExecuteCommandResponse(5, "Command handler is not initialized!");
-
-            logger.Info($"SessionId: {sessionId}, UID: {targetUid}, ExecuteCommand: {commandStr}");
-            var output = new StringBuilder();
-            var sender = new MuipCommandSender(session, msg =>
-            {
-                lock (output) output.Append(msg).Append("\r\n");
-            }) { SenderUid = targetUid };
-
-            foreach (ExecuteCommandDelegate handler in handlers.GetInvocationList())
-                await handler(commandStr, sender).ConfigureAwait(false);
+            var result = await RunCommandAsync(session, commandStr, targetUid).ConfigureAwait(false);
+            if (result.Code != 0)
+                return new ExecuteCommandResponse(result.Code, result.Message);
 
             return new ExecuteCommandResponse(0, "Success", new ExecuteCommandData
             {
                 SessionId = sessionId,
-                Message = Convert.ToBase64String(Encoding.UTF8.GetBytes(output.ToString()))
+                Message = Convert.ToBase64String(Encoding.UTF8.GetBytes(result.Output))
             });
         }
 
         return new ExecuteCommandResponse(2, "Session not found!");
     }
+
+    /// <summary>
+    ///     Builds the session for a web caller that authenticated the request itself (the admin page or the player
+    ///     console). It is never added to <see cref="Sessions" />, so it cannot be looked up by ID and does not count
+    ///     toward the admission limits.
+    /// </summary>
+    internal static MuipSession CreateLocalSession(string idPrefix, bool isAdmin, AccountData? account = null)
+    {
+        return new MuipSession
+        {
+            SessionId = $"{idPrefix}-{Guid.NewGuid():N}",
+            ExpireTimeStamp = DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds(),
+            IsAdmin = isAdmin,
+            IsAuthorized = true,
+            Account = account
+        };
+    }
+
+    /// <summary>
+    ///     Runs a plain-text command for <paramref name="session" /> and collects its output. The session rules still
+    ///     apply, so an administrator session stops working once the admin key is disabled, wherever it came from.
+    /// </summary>
+    internal static async Task<CommandResult> RunCommandAsync(MuipSession session, string command, int targetUid)
+    {
+        if (!IsCurrent(session))
+            return new CommandResult(1, "Session has expired!", "");
+
+        if (!session.IsAuthorized)
+            return new CommandResult(4, "Not authorized!", "");
+
+        var handler = CommandHandler;
+        if (handler == null)
+            return new CommandResult(5, "Command handler is not initialized!", "");
+
+        logger.Info(I18NManager.Translate("Server.Log.MuipCommand", session.SessionId, targetUid.ToString(), command));
+        var output = new StringBuilder();
+        var sender = new MuipCommandSender(session, msg =>
+        {
+            lock (output) output.Append(msg).Append("\r\n");
+        }) { SenderUid = targetUid };
+
+        await handler(command, sender).ConfigureAwait(false);
+        return new CommandResult(0, "Success", output.ToString());
+    }
+
+    /// <summary>Outcome of <see cref="RunCommandAsync" />; <see cref="Output" /> is plain text, one line per message.</summary>
+    internal readonly record struct CommandResult(int Code, string Message, string Output);
 
     public static ServerInformationResponse GetInformation(string sessionId)
     {
@@ -222,29 +274,12 @@ public static class MuipManager
 
             var currentProcessMemory = currentProcess.WorkingSet64;
 
-            // get system info
-            var totalMemory = -1f;
-            var availableMemory = -1f;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                totalMemory = GetTotalMemoryWindows();
-                availableMemory = GetAvailableMemoryWindows();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                totalMemory = GetTotalMemoryLinux();
-                availableMemory = GetAvailableMemoryLinux();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                totalMemory = GetTotalMemoryMacOS();
-                availableMemory = GetAvailableMemoryMacOS();
-            }
+            var (totalMemory, availableMemory) = HostMetrics.GetMachineMemoryStrict();
 
-            var result = new Dictionary<int, PlayerData>();
-            var sync = Task.Run(() => OnGetServerInformation?.Invoke(result));
-
-            sync.Wait();
+            // One entry per uid, even while the listener still holds an old connection of a reconnecting player.
+            var onlinePlayers = new Dictionary<int, PlayerData>();
+            foreach (var (_, player) in Listener.GetPlayerConnections())
+                onlinePlayers.TryAdd(player.Uid, player.Data);
 
             return new ServerInformationResponse(0, "Success", new ServerInformationData
             {
@@ -252,7 +287,7 @@ public static class MuipManager
                 MaxMemory = totalMemory,
                 ProgramUsedMemory = currentProcessMemory / 1024 / 1024,
                 UsedMemory = totalMemory - availableMemory,
-                OnlinePlayers = result.Values.Select(x => new SimplePlayerInformationData
+                OnlinePlayers = onlinePlayers.Values.Select(x => new SimplePlayerInformationData
                 {
                     Name = x.Name ?? "",
                     HeadIconId = x.HeadIcon,
@@ -281,12 +316,8 @@ public static class MuipManager
             var player = DatabaseHelper.Instance?.GetInstance<PlayerData>(uid);
             if (player == null) return new PlayerInformationResponse(2, "Player not exist!");
 
-            var status = PlayerStatusEnum.Offline;
-            var subStatus = PlayerSubStatusEnum.None;
-
-            var statusSync = Task.Run(() => OnGetPlayerStatus?.Invoke(player.Uid, out status, out subStatus));
-
-            statusSync.Wait();
+            var (status, subStatus) = Listener.GetPlayerConnection(player.Uid)?.Player?.GetOnlineStatus() ??
+                                      (PlayerStatusEnum.Offline, PlayerSubStatusEnum.None);
 
             var avatarData = DatabaseHelper.Instance!.GetInstance<AvatarData>(player.Uid)!;
             var lineupData = DatabaseHelper.Instance!.GetInstance<LineupData>(player.Uid)!;
@@ -433,297 +464,6 @@ public static class MuipManager
         }
 
         return result;
-    }
-
-    /// <summary>Total and available physical memory in MB for the current OS (0 when unavailable).</summary>
-    public static (float TotalMb, float AvailableMb) GetMachineMemory()
-    {
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return GetMemoryWindows();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                return (GetTotalMemoryLinux(), GetAvailableMemoryLinux());
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                return (GetTotalMemoryMacOS(), GetAvailableMemoryMacOS());
-        }
-        catch
-        {
-            // Diagnostics only.
-        }
-
-        return (0, 0);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MemoryStatusEx
-    {
-        public uint Length;
-        public uint MemoryLoad;
-        public ulong TotalPhysical;
-        public ulong AvailablePhysical;
-        public ulong TotalPageFile;
-        public ulong AvailablePageFile;
-        public ulong TotalVirtual;
-        public ulong AvailableVirtual;
-        public ulong AvailableExtendedVirtual;
-    }
-
-    [DllImport("kernel32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx status);
-
-    private static (float TotalMb, float AvailableMb) GetMemoryWindows()
-    {
-        if (!OperatingSystem.IsWindows()) return (0, 0);
-
-        // A single native snapshot avoids WMI/PerformanceCounter initialization on the HTTP request path
-        // and works under NativeAOT without COM. Read both values together so they describe one sample.
-        var status = new MemoryStatusEx { Length = (uint)Marshal.SizeOf<MemoryStatusEx>() };
-        return GlobalMemoryStatusEx(ref status)
-            ? (status.TotalPhysical / (1024f * 1024f), status.AvailablePhysical / (1024f * 1024f))
-            : (0, 0);
-    }
-
-    public static float GetTotalMemoryWindows()
-    {
-        return GetMemoryWindows().TotalMb;
-    }
-
-    public static float GetAvailableMemoryWindows()
-    {
-        return GetMemoryWindows().AvailableMb;
-    }
-
-    public static float GetTotalMemoryLinux()
-    {
-        var lines = File.ReadAllLines("/proc/meminfo");
-        foreach (var line in lines)
-            if (line.StartsWith("MemTotal"))
-                return float.Parse(line.Split(':')[1].Trim().Split(' ')[0]) / 1024;
-        return 0;
-    }
-
-    public static float GetAvailableMemoryLinux()
-    {
-        var lines = File.ReadAllLines("/proc/meminfo");
-        foreach (var line in lines)
-            if (line.StartsWith("MemAvailable"))
-                return float.Parse(line.Split(':')[1].Trim().Split(' ')[0]) / 1024;
-        return 0;
-    }
-
-    public static float GetCpuUsage()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return GetCpuUsageLinux();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return GetCpuUsageWindows();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return GetCpuUsageMacOS();
-        return 0;
-    }
-
-    private static float GetCpuUsageLinux()
-    {
-        var lines = File.ReadAllLines("/proc/stat");
-        var cpuInfo = lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var idleTime = float.Parse(cpuInfo[4]);
-        float totalTime = 0;
-
-        for (var i = 1; i < cpuInfo.Length; i++) totalTime += float.Parse(cpuInfo[i]);
-
-        return 100 * (1 - idleTime / totalTime);
-    }
-
-    private static float GetCpuUsageWindows()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            throw new PlatformNotSupportedException("PerformanceCounter is only supported on Windows");
-
-        try
-        {
-            var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-            cpuCounter.NextValue();
-            Thread.Sleep(1000);
-            return cpuCounter.NextValue();
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
-    public static (string ModelName, int Cores, float Frequency) GetCpuDetails()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return GetCpuDetailsLinux();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return GetCpuDetailsWindows();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return GetCpuDetailsMacOS();
-        return ("Unknown", Environment.ProcessorCount, 0f);
-    }
-
-    private static (string ModelName, int Cores, float Frequency) GetCpuDetailsLinux()
-    {
-        var lines = File.ReadAllLines("/proc/cpuinfo");
-        var modelName = "";
-        var cores = 0;
-        float frequency = 0;
-
-        foreach (var line in lines)
-        {
-            if (line.StartsWith("model name")) modelName = line.Split(':')[1].Trim();
-            if (line.StartsWith("cpu cores")) cores = int.Parse(line.Split(':')[1].Trim());
-            if (line.StartsWith("cpu MHz")) frequency = float.Parse(line.Split(':')[1].Trim());
-        }
-
-        return (modelName, cores, frequency);
-    }
-
-    private static (string ModelName, int Cores, float Frequency) GetCpuDetailsWindows()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            throw new PlatformNotSupportedException("ManagementObjectSearcher is only supported on Windows");
-
-        var modelName = "Unknown";
-        var cores = Environment.ProcessorCount;
-        float frequency = 0;
-
-        try
-        {
-            // WMI (System.Management) is COM-based and throws under NativeAOT — fall back to process info.
-            var searcher = new ManagementObjectSearcher("select * from Win32_Processor");
-            foreach (var item in searcher.Get())
-            {
-                modelName = item["Name"]?.ToString() ?? "Unknown";
-                cores = int.Parse(item["NumberOfCores"]?.ToString() ?? "0");
-                frequency = float.Parse(item["MaxClockSpeed"]?.ToString() ?? "0") / 1000; // MHz to GHz
-            }
-        }
-        catch
-        {
-            // WMI unavailable (e.g. NativeAOT) — keep the process-derived fallback above.
-        }
-
-        return (modelName, cores, frequency);
-    }
-
-    public static string GetSystemVersion()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return GetWindowsVersion();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return GetLinuxVersion();
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return GetMacOSVersion();
-        return RuntimeInformation.OSDescription;
-    }
-
-    private static string GetWindowsVersion()
-    {
-        return Environment.OSVersion.VersionString;
-    }
-
-    private static string GetLinuxVersion()
-    {
-        var version = string.Empty;
-        if (File.Exists("/etc/os-release"))
-        {
-            var lines = File.ReadAllLines("/etc/os-release");
-            foreach (var line in lines)
-                if (line.StartsWith("PRETTY_NAME"))
-                {
-                    version = line.Split('=')[1].Trim('"');
-                    break;
-                }
-        }
-        else if (File.Exists("/proc/version"))
-        {
-            version = File.ReadAllText("/proc/version");
-        }
-
-        return version;
-    }
-
-    private static string RunCommand(string fileName, string arguments)
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = fileName,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            });
-            if (process == null) return string.Empty;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(3000);
-            return output.Trim();
-        }
-        catch
-        {
-            return string.Empty;
-        }
-    }
-
-    private static float GetTotalMemoryMacOS()
-    {
-        return ulong.TryParse(RunCommand("/usr/sbin/sysctl", "-n hw.memsize"), out var bytes)
-            ? bytes / 1024f / 1024f
-            : 0;
-    }
-
-    private static float GetAvailableMemoryMacOS()
-    {
-        var pageSize = long.TryParse(RunCommand("/usr/sbin/sysctl", "-n hw.pagesize"), out var ps) ? ps : 4096;
-        long freePages = 0;
-        foreach (var line in RunCommand("/usr/bin/vm_stat", string.Empty).Split('\n'))
-        {
-            if (!line.StartsWith("Pages free:") && !line.StartsWith("Pages inactive:") &&
-                !line.StartsWith("Pages speculative:")) continue;
-
-            var digits = string.Empty;
-            foreach (var ch in line)
-                if (char.IsDigit(ch))
-                    digits += ch;
-            if (long.TryParse(digits, out var pages)) freePages += pages;
-        }
-
-        return freePages * pageSize / 1024f / 1024f;
-    }
-
-    private static float GetCpuUsageMacOS()
-    {
-        var output = RunCommand("/bin/sh", "-c \"top -l 2 -n 0 | grep 'CPU usage' | tail -1\"");
-        var idleIndex = output.IndexOf("% idle", StringComparison.OrdinalIgnoreCase);
-        if (idleIndex <= 0) return 0;
-
-        var segment = output[..idleIndex];
-        var lastSpace = segment.LastIndexOf(' ');
-        return lastSpace >= 0 && float.TryParse(segment[(lastSpace + 1)..], out var idle) ? 100 - idle : 0;
-    }
-
-    private static (string ModelName, int Cores, float Frequency) GetCpuDetailsMacOS()
-    {
-        var modelName = RunCommand("/usr/sbin/sysctl", "-n machdep.cpu.brand_string");
-        if (string.IsNullOrEmpty(modelName)) modelName = "Apple Silicon";
-        var cores = int.TryParse(RunCommand("/usr/sbin/sysctl", "-n hw.physicalcpu"), out var c)
-            ? c
-            : Environment.ProcessorCount;
-        // hw.cpufrequency is unavailable on Apple Silicon and reports 0 there
-        var frequency = long.TryParse(RunCommand("/usr/sbin/sysctl", "-n hw.cpufrequency"), out var f)
-            ? f / 1_000_000_000f
-            : 0f;
-        return (modelName, cores, frequency);
-    }
-
-    private static string GetMacOSVersion()
-    {
-        var name = RunCommand("/usr/bin/sw_vers", "-productName");
-        var version = RunCommand("/usr/bin/sw_vers", "-productVersion");
-        var build = RunCommand("/usr/bin/sw_vers", "-buildVersion");
-        var combined = $"{name} {version} ({build})".Trim();
-        return string.IsNullOrWhiteSpace(name) ? RuntimeInformation.OSDescription : combined;
     }
 
     #endregion

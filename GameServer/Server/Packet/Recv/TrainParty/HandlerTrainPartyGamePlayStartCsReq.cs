@@ -13,8 +13,7 @@ public class HandlerTrainPartyGamePlayStartCsReq : Handler
         var manager = connection.Player!.TrainPartyManager!;
         var ret = manager.StartGameplay(req.IDBDBICPBBG, out var gameplayData);
 
-        var rsp = new BasePacket(CmdIds.TrainPartyGamePlayStartScRsp);
-        rsp.SetData(new TrainPartyGamePlayStartScRsp
+        var rsp = BasePacket.Create(CmdIds.TrainPartyGamePlayStartScRsp, new TrainPartyGamePlayStartScRsp
         {
             FJKHJADDKLD = gameplayData,
             Retcode = ret

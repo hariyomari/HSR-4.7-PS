@@ -6,7 +6,7 @@ namespace March7thHoney.GameServer.Game.GridFight;
 /// <summary>
 ///     Season-2 partner (本局奇遇, GridFightPetPalEff) effects that only change existing server rules: supply
 ///     contents, battle settlement, exp purchases, crafting and run-start gifts. The rules follow each effect's
-///     SwitchDesc; partners whose effects need the 幕后茶歇 node or client-side state are handled elsewhere.
+///     SwitchDesc; partners whose effects need the bonfire node (幕后茶歇) or client-side state are handled elsewhere.
 /// </summary>
 public sealed partial class GridFightSession
 {
@@ -23,9 +23,10 @@ public sealed partial class GridFightSession
     private bool IsPetPalEffect(params uint[] effectIds) =>
         IsSeasonTwoRules && PetPalEffectId != 0 && effectIds.Contains(PetPalEffectId);
 
-    // ---------------------------------------------------------------- 绯绯狐: 补给会出现粉丝礼物
+    // ---------------------------------------------------------------- Feifei Fox (绯绯狐)
+    // Fan gifts appear in supplies.
 
-    /// <summary>Applies the 绯绯狐 supply rules to a freshly rolled supply offer.</summary>
+    /// <summary>Applies the Feifei Fox supply rules (effects 109xxx) to a freshly rolled supply offer.</summary>
     private IReadOnlyList<GridFightSupplyOfferState> ApplyPetPalSupplyRules(IReadOnlyList<GridFightSupplyOfferState> offers)
     {
         if (!IsSeasonTwoRules || PetPalEffectId / 1000 != 109) return offers;
@@ -84,7 +85,8 @@ public sealed partial class GridFightSession
         return free.Count == 0 ? offer : offer with { RoleId = free[Random.Shared.Next(free.Count)] };
     }
 
-    // ---------------------------------------------------------------- 汪汪丹: 首次失败的战斗变为完美通关
+    // ---------------------------------------------------------------- Wangwang Dan (汪汪丹)
+    // The first lost battle becomes a perfect clear.
 
     private uint ApplyPetPalGuard(uint progressPercent)
     {
@@ -101,7 +103,8 @@ public sealed partial class GridFightSession
         return 100;
     }
 
-    // ---------------------------------------------------------------- 三月兔: 购买经验时额外获得1点经验
+    // ---------------------------------------------------------------- March Rabbit (三月兔)
+    // Buying exp gives 1 extra exp.
 
     private uint PetPalBuyExpBonus() => PetPalEffectId switch
     {
@@ -110,7 +113,8 @@ public sealed partial class GridFightSession
         _ => 0,
     };
 
-    // ---------------------------------------------------------------- 绷带猫: 每个位面首次合成装备时返还一个简易装备
+    // ---------------------------------------------------------------- Bandage Cat (绷带猫)
+    // The first equipment craft in each plane returns one simple equipment.
 
     private void ApplyPetPalCraftRefund(IReadOnlyList<GridFightEquipmentState> materials)
     {

@@ -1,6 +1,6 @@
 using MemoryPack;
 
-namespace March7thHoney.GameServer.Game.GridFight;
+namespace March7thHoney.GameServer.Game.GridFight.Persistence;
 
 // Persisted form of a live GridFight run (GridFightData.RunInstance, Base64 MemoryPack).
 // MemoryPack reads members by declaration order: only ever append members, never reorder or remove them.
@@ -197,7 +197,7 @@ public partial class GridFightRunSnapshot
     public uint JadeGoodsStar { get; set; }
     public bool JadeAutoOpen { get; set; }
     public uint TrailblazeCoin { get; set; }
-    // 帕姆王 progress: the session's _trailblazeCostedCoin and _pamKingUnlocked.
+    // Pam King (帕姆王) progress: the session's _trailblazeCostedCoin and _pamKingUnlocked.
     public uint TrailblazeSpent { get; set; }
     public bool PamKingGranted { get; set; }
     public List<GridFightUIntPairSnapshot> TrailblazeGoods { get; set; } = [];
@@ -237,7 +237,7 @@ public partial class GridFightRunSnapshot
     public byte[] LastBattleDamageStatistics { get; set; } = [];
 
     // ---- Appended members ----
-    // 0 in blobs written before the 帕姆王 modifier existed; restored as a fresh id when the train is active.
+    // 0 in blobs written before the Pam King modifier existed; restored as a fresh id when the train is active.
     public uint PamKingModifierUniqueId { get; set; }
     public bool SpentGoldThisNode { get; set; }
     public List<uint> BonusInvestmentQueue { get; set; } = [];

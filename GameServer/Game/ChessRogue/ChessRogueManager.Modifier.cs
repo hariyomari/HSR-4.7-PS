@@ -3,6 +3,7 @@ using March7thHoney.Data.Custom;
 using March7thHoney.Database.ChessRogue;
 using March7thHoney.Enums.Rogue;
 using March7thHoney.GameServer.Game.Battle;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.Proto;
 using March7thHoney.Util;
 
@@ -245,7 +246,7 @@ public partial class ChessRogueManager
             switch (parts[0])
             {
                 case "Area" when cell.BlockType == (int)RogueDLCBlockTypeEnum.MonsterElite:
-                    OpenDraft(run, ChessRogueResources.BossDraftGroupId);
+                    OpenDraft(run, RogueDraftGroups.Elite);
                     await GainMoney(run, Random.Shared.Next(70, 150));
                     break;
                 case "Area":

@@ -3,6 +3,7 @@ using March7thHoney.Data.Excel;
 using March7thHoney.Database;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Database.Quests;
+using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Quest;
 using March7thHoney.GameServer.Game.Battle;
@@ -18,7 +19,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager<QuestData>(
     /// <summary>QuestData.QuestType of the daily training (每日实训) quests.</summary>
     public const int DailyQuestType = 5;
 
-    public UnlockHandler UnlockHandler { get; } = new(player);
+    public FuncUnlockChecker FuncUnlockChecker { get; } = new(player);
     public List<QuestInfo> WaitToSync { get; } = [];
 
     private QuestInfo? GetActivityQuest(int questId) => Player.B51RacingManager?.GetQuestInfo(questId) ?? Player.MechCraftManager?.GetQuestInfo(questId);
@@ -86,7 +87,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager<QuestData>(
 
                     if (accept2) acceptQuest = await AcceptQuest(quest.QuestID, false);
                     break;
-                case QuestUnlockTypeEnum.ManualUnlock: // idk what this is
+                case QuestUnlockTypeEnum.ManualUnlock: // what triggers this is not known
                     break;
                 case QuestUnlockTypeEnum.BattlePassWeekly:
                 case QuestUnlockTypeEnum.CakeCatchNotFinish:
@@ -258,6 +259,10 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager<QuestData>(
         GameData.QuestDataData.TryGetValue(questId, out var questExcel);
         if (questExcel == null) return (Retcode.RetFail, rewards);
 
+        // QuestData defines no per-quest optional reward choices, so the only grant a quest allows is its
+        // configured RewardID; a client-chosen id would otherwise let any reward package or item be claimed.
+        if (optionalRewardId != 0) return (Retcode.RetReqParaInvalid, rewards);
+
         if (!Data.Quests.TryGetValue(questId, out var questInfo))
         {
             if (ConfigManager.Config.ServerOption.EnableQuest) return (Retcode.RetQuestNotAccept, rewards);
@@ -273,20 +278,6 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager<QuestData>(
         if (questExcel.RewardID != 0)
         {
             await AppendGrantedRewardForRsp(questExcel.RewardID, rewards);
-        }
-
-        if (optionalRewardId != 0)
-        {
-            // In most quest packets this id is a RewardID, not a direct ItemID.
-            if (GameData.RewardDataData.ContainsKey(optionalRewardId))
-            {
-                await AppendGrantedRewardForRsp(optionalRewardId, rewards);
-            }
-            else
-            {
-                var optionalReward = await Player.InventoryManager!.AddItem(optionalRewardId, 1, false);
-                if (optionalReward != null) rewards.Add(optionalReward);
-            }
         }
 
         await Player.SendPacket(new PacketPlayerSyncScNotify(questInfo));
@@ -311,7 +302,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager<QuestData>(
                 rewards.Add(new ItemData { ItemId = itemId, Count = count });
 
         if (rewardData.Hcoin > 0)
-            rewards.Add(new ItemData { ItemId = 1, Count = rewardData.Hcoin });
+            rewards.Add(new ItemData { ItemId = (int)VirtualItemEnum.Hcoin, Count = rewardData.Hcoin });
     }
 
     public async ValueTask AddQuestProgress(int questId, int progress, bool push = false)

@@ -58,7 +58,7 @@ public sealed record CommandCatalogData(List<CommandCatalogItem> commands, int c
 public sealed record AdminSettingField(
     string key, string group, string type, string value, bool restart, List<string>? options, bool configured);
 
-public sealed record SettingsData(List<AdminSettingField> fields, bool public_mode);
+public sealed record SettingsData(List<AdminSettingField> fields);
 
 public sealed record SettingsApplyData(
     int applied, List<string> errors, bool restart_required, bool persisted, List<AdminSettingField> fields);
@@ -85,7 +85,7 @@ public sealed record MaintenanceData(
     int uid_count, int dirty_uids, long last_save, string db_type, string db_name, long db_size,
     int rate_limit_entries, int blocked_entries, long server_time, string version, string os, int processors,
     double process_memory_mb, double machine_total_mb, double machine_available_mb, long uptime_seconds,
-    int threads, int connections, int admin_sessions, bool public_mode, List<string> handbook_languages,
+    int threads, int connections, int admin_sessions, List<string> handbook_languages,
     int gc_collections, double gc_heap_mb);
 
 public sealed record SaveDatabaseData(bool saved, double seconds, int flushed);

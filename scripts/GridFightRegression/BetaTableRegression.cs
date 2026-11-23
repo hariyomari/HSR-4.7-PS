@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using March7thHoney.Data;
 using March7thHoney.Data.Excel;
+using March7thHoney.Data.GridFight;
 using March7thHoney.Enums.GridFight;
 using March7thHoney.GameServer.Game.GridFight;
 using March7thHoney.Proto;

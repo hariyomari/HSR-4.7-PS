@@ -3,6 +3,7 @@ using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
+using March7thHoney.Kcp;
 using March7thHoney.GameServer.Server.Packet.Send.Rogue;
 using March7thHoney.Proto;
 
@@ -160,7 +161,7 @@ public partial class RogueManager
             if (inst.Rooms.TryGetValue(siteId, out var next))
             {
                 next.Status = RogueRoomStatus.Unlock;
-                await Player.SendPacket(new PacketRogueScRsp(March7thHoney.Kcp.CmdIds.SyncRogueMapRoomScNotify,
+                await Player.SendPacket(BasePacket.Create(March7thHoney.Kcp.CmdIds.SyncRogueMapRoomScNotify,
                     new SyncRogueMapRoomScNotify { MapId = (uint)inst.MapId, HNEANMNJHDB = BuildRoom(next, next.Status) }));
             }
     }

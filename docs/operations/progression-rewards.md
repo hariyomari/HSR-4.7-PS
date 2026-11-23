@@ -1,5 +1,7 @@
 # Progression rewards
 
+English | [简体中文](progression-rewards.zh-CN.md)
+
 The server can pay bonus items when a player finishes a main mission or a sub-mission, or wins a battle. The bonus comes on top of the official rewards, which are unchanged. The setting lives in `Config.json` under `ServerOption.ProgressionRewards` and can be changed from the admin console (`rewards` group in Settings) without a restart. It is off by default.
 
 ## Configuration (`ServerOption.ProgressionRewards`)

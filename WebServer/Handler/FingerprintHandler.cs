@@ -1,3 +1,4 @@
+using March7thHoney.WebServer.Http;
 using Microsoft.AspNetCore.Http;
 using static March7thHoney.WebServer.Handler.FingerprintResJson;
 
@@ -10,7 +11,7 @@ public class FingerprintHandler
         FingerprintResJson res = new();
         if (device_fp == null)
         {
-            res.retcode = -202;
+            res.retcode = WebConstants.RetcodeInvalidData;
             res.message = "Error";
         }
         else

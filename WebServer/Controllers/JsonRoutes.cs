@@ -1,11 +1,12 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using March7thHoney.Database.Account;
-using March7thHoney.GameServer.Game.Calyx;
+using March7thHoney.GameServer.Game.Freesr;
 using March7thHoney.GameServer.Server;
 using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
 using March7thHoney.Util;
+using March7thHoney.WebServer.Handler;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -16,12 +17,17 @@ public static class JsonRoutes
 {
     public static void MapJsonRoutes(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/sr-tools", SrTools);
-        app.MapGet("/sr-tools-export", DownloadFreedata);
+        app.MapPost("/sr-tools", (Delegate)SrTools);
+        app.MapPost("/sr-tools-export", (Delegate)DownloadFreedata);
+        // The export used to take the password in the query string, where proxies and logs keep it.
+        app.MapGet("/sr-tools-export", () => Results.Text(
+            "Use POST with a JSON body: {\"username\":\"<uid>\",\"password\":\"<password>\"}.",
+            "text/plain", null, StatusCodes.Status405MethodNotAllowed));
     }
 
-    private static async Task<IResult> SrTools(HttpRequest request)
+    private static async Task<IResult> SrTools(HttpContext ctx)
     {
+        var request = ctx.Request;
         try
         {
             using var reader = new StreamReader(request.Body, Encoding.UTF8);
@@ -39,21 +45,11 @@ public static class JsonRoutes
             if (acc == null)
                 return Results.Text("uid not found on server", "text/plain", null, 400);
 
-            // Save import always requires credentials. RSA only controls login transport decryption,
-            // not permission to overwrite a save. Accounts without a password must set one first.
-            if (string.IsNullOrEmpty(password) || !acc.VerifyPassword(password))
-                return Results.Text("Invalid password for this uid.", "text/plain", null, 401);
+            // RSA only controls login transport decryption, not permission to overwrite a save.
+            if (!WebCredentialVerifier.TryVerify(ctx, acc, password, "sr_tools_import", out var failure))
+                return CredentialFailure(failure);
 
-            Connection? con = null;
-            foreach (var item in March7thHoneyListener.GetSnapshot())
-            {
-                if (item is not Connection c) continue;
-                if (c.Player?.Uid == acc.Uid)
-                {
-                    con = c;
-                    break;
-                }
-            }
+            var con = Listener.GetPlayerConnection(acc.Uid);
 
             if (con?.Player == null)
                 return Results.Text("player offline", "text/plain", null, 400);
@@ -77,30 +73,38 @@ public static class JsonRoutes
         }
     }
 
-    private static async Task<IResult> DownloadFreedata(HttpRequest request, HttpResponse response)
+    private static async Task<IResult> DownloadFreedata(HttpContext ctx)
     {
-        int uid = 0;
-        if (request.Query.ContainsKey("uid"))
-            int.TryParse(request.Query["uid"], out uid);
+        JsonObject? body;
+        try
+        {
+            using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
+            body = JsonNode.Parse(await reader.ReadToEndAsync()) as JsonObject;
+        }
+        catch (Exception)
+        {
+            body = null;
+        }
 
-        if (uid == 0)
-            return Results.Text("Error: Missing valid uid parameter", "text/plain", null, 400);
+        var uidText = (body?["username"] ?? body?["uid"])?.ToString() ?? "";
+        if (!int.TryParse(uidText, out var uid) || uid == 0)
+            return Results.Text("Username field must be the player's UID (integer).", "text/plain", null, 400);
 
         var acc = AccountData.GetAccountByUid(uid);
         if (acc == null)
             return Results.Text("uid not found on server", "text/plain", null, 400);
 
-        // Always verify the password when the account has one set, regardless of the RSA-login
-        // flag (same rule as the player console) — this endpoint exports a player's full save data
-        // and must not be reachable by uid alone.
-        var password = request.Query.TryGetValue("password", out var pw) ? pw.ToString() : "";
-        if (acc.HasPassword() && (string.IsNullOrEmpty(password) || !acc.VerifyPassword(password)))
-            return Results.Text("Invalid password for this uid.", "text/plain", null, 401);
+        if (!WebCredentialVerifier.TryVerify(ctx, acc, body?["password"]?.ToString(), "sr_tools_export",
+                out var failure))
+            return CredentialFailure(failure);
 
         var json = await FreesrShared.ExportPlayerDataAsync(uid, true);
 
-        response.Headers["Content-Disposition"] =
+        ctx.Response.Headers["Content-Disposition"] =
             "attachment; filename=freesr-data.json; filename*=UTF-8''freesr-data.json";
         return Results.Text(json, "application/octet-stream");
     }
+
+    private static IResult CredentialFailure(WebCredentialVerifier.Failure failure) =>
+        failure.Response ?? Results.Text(failure.Message, "text/plain", null, failure.StatusCode);
 }

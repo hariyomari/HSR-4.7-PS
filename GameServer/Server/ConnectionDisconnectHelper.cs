@@ -12,6 +12,11 @@ public static class ConnectionDisconnectHelper
     private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(1);
 
+    // PlayerSqueezedScNotify kick types. The proto enum names are obfuscated, so the values the client expects for
+    // each kick are named here.
+    private const JNFDGPDHENJ GmKickType = (JNFDGPDHENJ)5;
+    private const JNFDGPDHENJ BannedKickType = (JNFDGPDHENJ)1;
+
     public static void KickByGm(Connection? connection)
     {
         _ = Task.Run(() => KickByGmAsync(connection));
@@ -20,7 +25,7 @@ public static class ConnectionDisconnectHelper
     public static Task KickByGmAsync(Connection? connection)
     {
         return DisconnectAsync(connection,
-            new PacketPlayerSqueezedScNotify((JNFDGPDHENJ)5));
+            new PacketPlayerSqueezedScNotify(GmKickType));
     }
 
     public static void KickBanned(Connection? connection, AccountBanStatus banStatus)
@@ -31,7 +36,7 @@ public static class ConnectionDisconnectHelper
     public static Task KickBannedAsync(Connection? connection, AccountBanStatus banStatus)
     {
         return DisconnectAsync(connection, new PacketPlayerSqueezedScNotify(
-            (JNFDGPDHENJ)1,
+            BannedKickType,
             AccountBanHelper.ToBlackInfo(banStatus)));
     }
 
@@ -47,11 +52,11 @@ public static class ConnectionDisconnectHelper
             if (completedTask == sendTask)
                 await sendTask;
             else
-                Logger.Warn($"Timed out sending disconnect packet to {connection.RemoteEndPoint}.");
+                Logger.Debug($"Timed out sending disconnect packet to {connection.RemoteEndPoint}.");
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Failed to send disconnect packet to {connection.RemoteEndPoint}.", ex);
+            Logger.Debug($"Failed to send disconnect packet to {connection.RemoteEndPoint}.", ex);
         }
         finally
         {
@@ -68,11 +73,11 @@ public static class ConnectionDisconnectHelper
             if (completedTask == stopTask)
                 await stopTask;
             else
-                Logger.Warn($"Timed out stopping connection {connection.RemoteEndPoint}.");
+                Logger.Debug($"Timed out stopping connection {connection.RemoteEndPoint}.");
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Failed to stop connection {connection.RemoteEndPoint}.", ex);
+            Logger.Debug($"Failed to stop connection {connection.RemoteEndPoint}.", ex);
         }
     }
 }

@@ -9,7 +9,7 @@ public class HandlerAvatarExpUpCsReq : Handler<AvatarExpUpCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, AvatarExpUpCsReq req)
     {
-        var returnItem = await player.InventoryManager!.LevelUpAvatar((int)req.BaseAvatarId, req.ItemCost);
+        var returnItem = await player.AvatarManager!.LevelUpAvatar((int)req.BaseAvatarId, req.ItemCost);
 
         await connection.SendPacket(new PacketAvatarExpUpScRsp(returnItem));
     }

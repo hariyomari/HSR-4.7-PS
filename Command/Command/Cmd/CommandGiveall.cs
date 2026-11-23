@@ -1,6 +1,5 @@
 using March7thHoney.Data;
 using March7thHoney.Database.Inventory;
-using March7thHoney.Database.TrainParty;
 using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Server.Packet.Send.Avatar;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
@@ -325,20 +324,7 @@ public class CommandGiveall : ICommand
         // Reset
         player.TrainPartyManager!.Data.Fund = 1000000;
         player.TrainPartyManager!.Data.Areas.Clear();
-
-        foreach (var excel in GameData.TrainPartyAreaConfigData.Where(excel =>
-                     !player.TrainPartyManager!.Data.Areas.ContainsKey(excel.Key)))
-            player.TrainPartyManager!.Data.Areas[excel.Key] = new TrainAreaInfo
-            {
-                AreaId = excel.Key,
-                StepList = []
-            };
-
-        foreach (var area in player.TrainPartyManager!.Data.Areas)
-        foreach (var step in GameData.TrainPartyStepConfigData.Values.Where(stepExcel =>
-                     GameData.TrainPartyAreaGoalConfigData.FirstOrDefault(x =>
-                         x.Value.AreaID == area.Value.AreaId).Value.StepGroupList.Contains(stepExcel.GroupID)))
-            area.Value.StepList.Add(step.ID);
+        player.TrainPartyManager!.CompleteAllAreas();
 
         foreach (var floorInfo in GameData.FloorInfoData.Values)
         {

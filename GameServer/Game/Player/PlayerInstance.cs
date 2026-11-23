@@ -9,6 +9,7 @@ using March7thHoney.Database.Player;
 using March7thHoney.Database.Scene;
 using March7thHoney.Database.Tutorial;
 using March7thHoney.Enums.Avatar;
+using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Game.Activity;
 using March7thHoney.GameServer.Game.Activity.ExpeditionBattle;
 using March7thHoney.GameServer.Game.Activity.FinalityBattle;
@@ -40,7 +41,7 @@ using March7thHoney.GameServer.Game.Shop;
 using March7thHoney.GameServer.Game.Sync.Player;
 using March7thHoney.GameServer.Game.TrainCakeCatch;
 using March7thHoney.GameServer.Game.TrainParty;
-using March7thHoney.GameServer.Game.Task;
+using March7thHoney.GameServer.Game.LevelTasks;
 using March7thHoney.GameServer.Server;
 using March7thHoney.GameServer.Server.Packet.Send.DailyActive;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
@@ -72,7 +73,7 @@ public partial class PlayerInstance(PlayerData data)
     #region Shopping Managers
 
     public GachaManager? GachaManager { get; private set; }
-    public ShopService? ShopService { get; private set; }
+    public ShopManager? ShopManager { get; private set; }
     public OfferingManager? OfferingManager { get; private set; }
 
     #endregion
@@ -218,7 +219,7 @@ public partial class PlayerInstance(PlayerData data)
         MessageManager = new MessageManager(this);
         MailManager = new MailManager(this);
         FriendManager = new FriendManager(this);
-        ShopService = new ShopService(this);
+        ShopManager = new ShopManager(this);
         ChallengeManager = new ChallengeManager(this);
         ChallengePeakManager = new ChallengePeakManager(this);
         ChallengeTierceManager = new ChallengeTierceManager(this);
@@ -268,28 +269,8 @@ public partial class PlayerInstance(PlayerData data)
 
         Data.LastActiveTime = Extensions.GetUnixSec();
 
-        foreach (var avatar in AvatarManager?.Data.FormalAvatars ?? [])
-        foreach (var path in avatar.PathInfos.Values)
-        foreach (var skill in path.GetSkillTree())
-        {
-            GameData.AvatarSkillTreeConfigData.TryGetValue(skill.Key * 100 + 1, out var config);
-            if (config == null) continue;
-            path.GetSkillTree()[skill.Key] = Math.Min(skill.Value, config.MaxLevel); // limit skill level
-        }
-
-        foreach (var info in LineupManager!.GetAllLineup().SelectMany(lineupInfo => lineupInfo.BaseAvatars ?? []))
-        {
-            if (info.SpecialAvatarId > 0 &&
-                GameData.SpecialAvatarData.TryGetValue(info.SpecialAvatarId, out var excel))
-            {
-                info.SpecialAvatarId = excel.SpecialAvatarID;
-                AvatarManager!.GetTrialAvatar(excel.SpecialAvatarID)?.CheckLevel(Data.WorldLevel);
-            }
-
-            if (info.SpecialAvatarId > 0 &&
-                GameData.SpecialAvatarData.TryGetValue(info.SpecialAvatarId * 10 + 0, out var e))
-                AvatarManager!.GetTrialAvatar(e.SpecialAvatarID)?.CheckLevel(Data.WorldLevel);
-        }
+        AvatarManager?.ClampSkillLevels();
+        LineupManager!.RefreshTrialAvatarSlots();
 
         // Applied before the bootstrap below so a /mission start reset seeds the story roster and accepts
         // the opening mission even when the server-wide EnableMission is off.
@@ -307,10 +288,7 @@ public partial class PlayerInstance(PlayerData data)
             await MissionManager.RepairStalledMainMissions(false);
         }
 
-        foreach (var friendDevelopmentInfoPb in FriendRecordData!.DevelopmentInfos.ToArray())
-            if (Extensions.GetUnixSec() - friendDevelopmentInfoPb.Time >=
-                TimeSpan.TicksPerDay * 7 / TimeSpan.TicksPerSecond)
-                FriendRecordData.DevelopmentInfos.Remove(friendDevelopmentInfoPb);
+        FriendManager!.PruneExpiredDevelopmentRecords();
 
         await QuestManager!.AcceptQuestByCondition();
     }
@@ -336,26 +314,27 @@ public partial class PlayerInstance(PlayerData data)
 
     private async ValueTask SeedNewPlayerAsync()
     {
-        // 8002/8004/... 是 8001 的命途变体（同一基础角色不同 path），AvatarManager.AddAvatar
-        // 走 path 分支时会先在 FormalAvatars 里找 BaseAvatarID(=8001) 再挂 PathInfo，
-        // 因此必须先添加基础 8001 再添加 8002 path，否则 FormalAvatars 里没有任何主角，
-        // lineup 引用 8001/8002 都会 Find 不到导致 ToProto 抛 null
-        await AddAvatar(8001);
-        await AddAvatar(8002);
-        await AddAvatar(1001);
+        // 8002/8004/... are path variants of 8001 (the same base avatar on a different path). For a path,
+        // AvatarManager.AddAvatar first looks up BaseAvatarID (= 8001) in FormalAvatars and then attaches the PathInfo,
+        // so the base 8001 must be added before the 8002 path. Otherwise FormalAvatars holds no Trailblazer at all, and
+        // a lineup referencing 8001 or 8002 finds nothing and ToProto throws on null.
+        await AvatarManager!.AddAvatar(TrailblazerAvatar.MaleDestructionId);
+        await AvatarManager.AddAvatar(TrailblazerAvatar.FemaleDestructionId);
+        await AvatarManager.AddAvatar(AvatarManager.StarterCompanionAvatarId);
         if (MissionEnabled)
         {
             await LineupManager!.AddSpecialAvatarToCurTeam(10010050);
         }
         else
         {
-            await LineupManager!.AddAvatarToCurTeam(8001);
+            await LineupManager!.AddAvatarToCurTeam(TrailblazerAvatar.BaseAvatarId);
             Data.CurrentGender = Gender.Woman;
-            Data.CurBasicType = 8002;
-            // FormalAvatar.AvatarId 决定客户端显示的命途/性别（CurMultiPathAvatarType），
-            // AddAvatar 创建时 AvatarId=8001（男），需要切到 8002 才会显示女主
+            Data.CurBasicType = TrailblazerAvatar.FemaleDestructionId;
+            // FormalAvatar.AvatarId decides the path and gender the client shows (CurMultiPathAvatarType). AddAvatar
+            // creates the avatar with AvatarId=8001 (male), so it must be switched to 8002 for the female Trailblazer
+            // to show.
             var hero = AvatarManager!.GetHero();
-            if (hero != null) hero.AvatarId = 8002;
+            if (hero != null) hero.AvatarId = TrailblazerAvatar.FemaleDestructionId;
         }
     }
 
@@ -372,6 +351,7 @@ public partial class PlayerInstance(PlayerData data)
     {
         if (AvatarManager != null)
             await AvatarManager.GrantUnlockedStoryPaths(false);
+        await HeadFrameService.RepairOwnedItem(this);
 
         CalyxOverrideManager?.ResetLineupOverride();
         await SendPacket(new PacketStaminaInfoScNotify(this));
@@ -397,51 +377,11 @@ public partial class PlayerInstance(PlayerData data)
         if (RaidManager != null)
             await RaidManager.OnLogin();
 
-        if (LineupManager!.GetCurLineup() != null) // null -> ignore(new player)
-        {
-            if (LineupManager!.GetCurLineup()!.IsExtraLineup() &&
-                RaidManager!.Data.CurRaidId == 0 && StoryLineManager!.StoryLineData.CurStoryLineId == 0 &&
-                ChallengeManager!.ChallengeInstance == null)
-            {
-                LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, []);
-                if (LineupManager!.GetCurLineup()!.IsExtraLineup()) await LineupManager!.SetCurLineup(0);
-            }
-
-            foreach (var lineup in LineupManager.Data.Lineups)
-            {
-                if (lineup.Value.BaseAvatars!.Count >= 5)
-                    lineup.Value.BaseAvatars = lineup.Value.BaseAvatars.GetRange(0, 4);
-
-                foreach (var avatar in lineup.Value.BaseAvatars!)
-                    if (avatar.BaseAvatarId > 10000)
-                    {
-                        GameData.SpecialAvatarData.TryGetValue(avatar.BaseAvatarId, out var special);
-                        if (special != null)
-                        {
-                            avatar.SpecialAvatarId = special.SpecialAvatarID;
-                            avatar.BaseAvatarId = special.AvatarID;
-                        }
-                        else
-                        {
-                            GameData.SpecialAvatarData.TryGetValue(avatar.BaseAvatarId * 10 + Data.WorldLevel,
-                                out special);
-                            if (special != null)
-                            {
-                                avatar.SpecialAvatarId = special.SpecialAvatarID;
-                                avatar.BaseAvatarId = special.AvatarID;
-                            }
-                        }
-                    }
-            }
-
-            foreach (var avatar in LineupManager.GetCurLineup()!.BaseAvatars!)
-            {
-                var avatarData = AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId);
-                if (avatarData is { CurrentHp: <= 0 })
-                    // revive
-                    avatarData.CurrentHp = 2000;
-            }
-        }
+        // An extra lineup outlives the logout only while the raid, story line or challenge that owns it is running.
+        var extraLineupOwned = RaidManager!.Data.CurRaidId != 0 ||
+                               StoryLineManager!.StoryLineData.CurStoryLineId != 0 ||
+                               ChallengeManager!.ChallengeInstance != null;
+        await LineupManager!.RepairAtLogin(extraLineupOwned);
 
         if (tierceLobbyEntry == null && RogueManager != null)
             await RogueManager.RestoreLineupAtLogin();
@@ -463,7 +403,7 @@ public partial class PlayerInstance(PlayerData data)
     {
         if (StoryLineManager?.StoryLineData.CurStoryLineId > 0)
         {
-            SceneLogger.Info($"Player {Uid}: location reset on login skipped while story line " +
+            SceneLogger.Debug($"Player {Uid}: location reset on login skipped while story line " +
                              $"{StoryLineManager.StoryLineData.CurStoryLineId} is active.");
             return;
         }
@@ -473,7 +413,7 @@ public partial class PlayerInstance(PlayerData data)
         ChallengeTierceManager?.ClearInstance();
 
         if (!TryPlaceAtEntrance(DefaultSpawnEntryId))
-            SceneLogger.Warn($"Player {Uid}: location reset on login failed, default spawn {DefaultSpawnEntryId} is unusable.");
+            SceneLogger.Debug($"Player {Uid}: location reset on login failed, default spawn {DefaultSpawnEntryId} is unusable.");
     }
 
     public async ValueTask TrySendWelcomeAnnounce()
@@ -494,7 +434,8 @@ public partial class PlayerInstance(PlayerData data)
         DatabaseHelper.MarkDirty(Uid);
     }
 
-    public void OnLogoutAsync()
+    /// <summary>Synchronous logout bookkeeping: stamps the active time and flushes manager state.</summary>
+    public void OnLogout()
     {
         Data.LastActiveTime = Extensions.GetUnixSec();
         DatabaseHelper.MarkDirty(Uid);
@@ -522,167 +463,14 @@ public partial class PlayerInstance(PlayerData data)
         await SendPacket(new PacketPlayerSyncScNotify([new PlayerBoardSync(this)]));
     }
 
-    /// <summary>
-    ///     Maps a Trailblazer path variant to the player's gender: variants pair as male (odd) / female (even = odd + 1).
-    ///     Ids without a matching config entry, and players without a gender, are returned unchanged.
-    /// </summary>
-    public static int NormalizeHeroPathId(int pathId, Gender gender)
-    {
-        if (gender is not (Gender.Man or Gender.Woman)) return pathId;
-        var maleId = pathId % 2 == 0 ? pathId - 1 : pathId;
-        var id = gender == Gender.Woman ? maleId + 1 : maleId;
-        return GameData.MultiplePathAvatarConfigData.TryGetValue(id, out var excel) && excel.BaseAvatarID == 8001
-            ? id
-            : pathId;
-    }
-
-    /// <summary>
-    ///     Switches a multi-path character to <paramref name="type" /> (any variant of the path; Trailblazer ids are
-    ///     normalized to the player's gender). Returns the avatar id actually stored, or 0 when the path does not
-    ///     belong to that character.
-    /// </summary>
-    public async ValueTask<int> ChangeAvatarPathType(int baseAvatarId, MultiPathAvatarTypeEnum type)
-    {
-        if (!GameData.MultiplePathAvatarConfigData.TryGetValue((int)type, out var pathExcel)) return 0;
-        var owner = AvatarManager!.GetFormalAvatar(baseAvatarId);
-        if (owner == null || owner.BaseAvatarId != pathExcel.BaseAvatarID) return 0;
-        baseAvatarId = owner.BaseAvatarId;
-
-        FormalAvatarInfo avatar;
-        int id;
-        if (baseAvatarId == 8001)
-        {
-            id = NormalizeHeroPathId((int)type, Data.CurrentGender);
-            avatar = owner;
-            if (Data.CurBasicType == id && avatar.AvatarId == id) return id; // CurBasicType can desync from the hero record (e.g. stale seed data); check both
-            Data.CurBasicType = id;
-            // Set avatar path
-            avatar.AvatarId = id;
-            avatar.SetCurSp(0, LineupManager!.GetCurLineup()!.IsExtraLineup());
-            // Save new skill tree
-            avatar.CheckPathSkillTree();
-        }
-        else
-        {
-            id = (int)type;
-            avatar = owner;
-            avatar.AvatarId = id;
-            avatar.SetCurSp(0, LineupManager!.GetCurLineup()!.IsExtraLineup());
-            // Save new skill tree
-            avatar.CheckPathSkillTree();
-        }
-
-        // The field actor is built from the current path. Rebuild it before the path notify,
-        // or the world keeps the previous model.
-        await RefreshAvatarActor(baseAvatarId);
-
-        if (baseAvatarId == 8001)
-        {
-            await SendPacket(new PacketAvatarPathChangedNotify(8001, (MultiPathAvatarType)id));
-            await SendPacket(new PacketPlayerSyncScNotify(AvatarManager!.GetHero()!));
-        }
-        else
-        {
-            await SendPacket(new PacketAvatarPathChangedNotify((uint)baseAvatarId, (MultiPathAvatarType)type));
-            await SendPacket(new PacketPlayerSyncScNotify(avatar));
-        }
-
-        return id;
-    }
-
-    private async ValueTask RefreshAvatarActor(int baseAvatarId)
-    {
-        if (SceneInstance == null) return;
-        var existing = SceneInstance.AvatarInfo.Values.FirstOrDefault(x => x.AvatarInfo.BaseAvatarId == baseAvatarId);
-        if (existing == null) return;
-
-        await existing.ClearAllBuff();
-        SceneInstance.AvatarInfo.Remove(existing.EntityId);
-        SceneInstance.Entities.Remove(existing.EntityId);
-        await existing.OnDestroyInstance();
-
-        var fresh = new AvatarSceneInfo(existing.AvatarInfo, existing.AvatarType, this)
-        {
-            EntityId = ++SceneInstance.LastEntityId
-        };
-        SceneInstance.AvatarInfo[fresh.EntityId] = fresh;
-        SceneInstance.Entities[fresh.EntityId] = fresh;
-        if (SceneInstance.LeaderEntityId == existing.EntityId)
-            SceneInstance.LeaderEntityId = fresh.EntityId;
-
-        await SendPacket(new PacketSceneGroupRefreshScNotify(this,
-            new List<BaseGameEntity> { fresh }, new List<BaseGameEntity> { existing }));
-    }
-
-    /// <summary>
-    ///     Switches the Trailblazer to <paramref name="gender" />, keeping the current path. Before the story's gender
-    ///     prompt only the saved data changes, so the prompt can still introduce the Trailblazer cleanly. Afterwards
-    ///     the client keeps the previous gender's path next to the new one until the next login; no known packet
-    ///     makes it drop a path.
-    /// </summary>
-    public async ValueTask SetHeroGender(Gender gender)
-    {
-        if (gender is not (Gender.Man or Gender.Woman)) return;
-
-        // Keep the current Path; hero ids pair as male(odd)/female(even) per Path.
-        var pathBase = Data.CurBasicType;
-        if (pathBase is < 8001 or > 8010) pathBase = 8001;
-        if (pathBase % 2 == 0) pathBase -= 1;
-        var newId = pathBase + (gender == Gender.Woman ? 1 : 0);
-        if (!GameData.MultiplePathAvatarConfigData.ContainsKey(newId)) newId = gender == Gender.Woman ? 8002 : 8001;
-
-        var heroHidden = AvatarManager!.IsHeroGenderPending;
-        Data.CurrentGender = gender;
-        Data.IsGenderSet = true;
-        Data.CurBasicType = newId;
-
-        var hero = AvatarManager.GetHero();
-        if (hero != null)
-        {
-            hero.AvatarId = newId;
-            hero.CheckPathSkillTree();
-            hero.SetCurSp(0, LineupManager!.GetCurLineup()?.IsExtraLineup() ?? false);
-        }
-
-        DatabaseHelper.MarkDirty(Uid);
-        if (heroHidden) return;
-
-        await SendPacket(new PacketGetBasicInfoScRsp(this));
-        if (hero != null)
-        {
-            await SendPacket(new PacketAvatarPathChangedNotify(8001, (MultiPathAvatarType)newId));
-            await SendPacket(new PacketPlayerSyncScNotify(hero));
-        }
-
-        // Reload in place so the client rebuilds the Trailblazer with the new model.
-        if (SceneInstance != null && Data.Pos != null && Data.Rot != null)
-            await LoadScene(Data.PlaneId, Data.FloorId, Data.EntryId, Data.Pos, Data.Rot, true);
-    }
-
-    public ValueTask<Retcode> ChangeAvatarSkin(int avatarId, int skinId) =>
-        AvatarManager!.ChangeSkin(avatarId, skinId);
-
-    public async ValueTask<FormalAvatarInfo> MarkAvatar(int avatarId, bool isMarked, bool sendPacket = true)
-    {
-        var avatar = AvatarManager!.GetFormalAvatar(avatarId)!;
-        avatar.IsMarked = isMarked;
-        if (sendPacket) await SendPacket(new PacketPlayerSyncScNotify(avatar));
-        return avatar;
-    }
-
-    public async ValueTask AddAvatar(int avatarId, bool sync = true, bool notify = true)
-    {
-        await AvatarManager!.AddAvatar(avatarId, sync, notify);
-    }
-
     public async ValueTask SpendStamina(int staminaCost)
     {
         Data.Stamina -= staminaCost;
         await SendPacket(new PacketStaminaInfoScNotify(this));
-        // Spent Trailblaze Power counts as using item 11 ("Consume 120 Trailblaze Power").
+        // Spent Trailblaze Power counts as using its virtual item ("Consume 120 Trailblaze Power").
         if (staminaCost > 0 && MissionManager != null)
             await MissionManager.HandleFinishType(MissionFinishTypeEnum.UseItem,
-                new ItemData { ItemId = 11, Count = staminaCost });
+                new ItemData { ItemId = (int)VirtualItemEnum.Stamina, Count = staminaCost });
     }
 
     public void OnAddExp()

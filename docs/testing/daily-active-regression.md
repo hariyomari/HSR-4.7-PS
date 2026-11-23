@@ -1,24 +1,85 @@
-# 每日实训回归
+# Daily training regression
 
-测试项目：[`scripts/DailyActiveRegression/`](../../scripts/DailyActiveRegression/)
+English | [简体中文](daily-active-regression.zh-CN.md)
 
-从仓库根目录运行：
+`DailyActiveRegression` checks daily training (每日实训), the activity tiers, daily missions and the event-driven completion conditions of daily training quests. Run it after changing any of these, or the daily reset.
+
+Project: [`scripts/DailyActiveRegression/`](../../scripts/DailyActiveRegression/)
+
+## How to run
+
+From the repository root:
 
 ```powershell
 dotnet run --project scripts/DailyActiveRegression/DailyActiveRegression.csproj -c Release
 ```
 
-测试使用临时 SQLite 数据库与隔离配置，不启动网络服务，不读取运营配置或玩家数据库。默认读取当前 `Config/Resource.bin` 的副本；缓存必须包含 `DailyQuest`、`DailyMissionData`、`DailyMissionCount` 三张表以及 `CocoonConfig` 的 `CocoonType`/`FarmType` 字段，否则第一项检查失败并退出。可用 `--cache <路径>` 指定其他缓存；同时给出 `--stale-cache <旧缓存> --resources <原始资源目录>` 时，额外验证缺少上述表的旧缓存在原始 `DailyQuest.json` 可用时被拒绝。
+Options:
 
-覆盖范围：
+- `--cache <path>` reads another resource cache instead of `Config/Resource.bin`.
+- `--stale-cache <older cache> --resources <raw resource directory>`, given together, also checks that an older cache without the daily tables is rejected when the raw `DailyQuest.json` is available.
 
-- 日期键：服务器时区 03:59 属于前一天、04:00 开始新一天；刷新时刻 0 与跨月边界；`ServerOption.DailyResetHour` 越界时钳制到 0–23。
-- 抽取：FNV-1a-64 + SplitMix64 + Fisher–Yates，结果与运行时无关；同一 (uid, 日期, nonce) 得到同一组 8 个，池顺序不影响结果，nonce 递增得到不同组合；已删除的 `DailyQuest` 行不会入池；QuestType 5 不再被条件自动接取。
-- 活跃度与档位：领取实训任务奖励发放物品 23 并计入当日活跃度，`GetItem(23)` 返回当前值；未知档位 4101、重复领取 4102、活跃度不足 4103；一键领取按档位升序、奖励合并，重复一键领取不发放任何奖励。
-- 跨日：新周期清空活跃度与已领档位；前一天未入选的实训任务关闭（未领奖励作废），当天入选的任务（含之前已领取的）重置为进行中、进度 0；`/daily reset` 等价的 nonce 重抽；`FinishQuest` 型实训（2100156/2100159）入选时其子任务重新激活，不会被昨日完成状态直接满足。
-- 事件型完成条件：心跳（空参数）与无关参数不推进任何事件型实训；`AnyRelicLevelUp`、`AnyEquipmentLevelUp`、`AnyAvatarLevelUp`、`RogueFinishCnt`、`ResolveRelic`、`AnyItemComposeCount`、`ExpeditionSetOrTakeReward` 只由各自事件推进；`ChallengeFinishCnt` 按挑战类型过滤。
-- 花萼与副本：战斗失败与凝滞虚影战斗（仅有 `CocoonWave`、无 `CocoonId`）不计数；金色花萼完成 `CocoonFinish` 与 `FarmTypeCocoonFinish [6,7,8]`，赤色花萼完成 `[5]`，侵蚀隧洞完成 `AnyCocoonFinish [3]`。
-- 每日委托：`FinishTodayDailyMissionCnt` 在完成每日委托后达成，同一委托同一周期只计一次；跨日当日计数清零、累计计数保留。开启任务系统的玩家：未满足解锁任务时不发放，强制发放按 `DailyMissionCount.DailyCount` 补足，同日重复发放不追加；完成委托计入计数，跨日后已完成委托恢复为可接取并重新发放。
-- 每日实训数据写入独立的 `DailyActive` 表。
+## Prerequisites
 
-边界：这不是客户端测试。面板显示、领取动画、任务追踪以及 `DailyActiveInfoNotify` 与 `GetDailyActiveInfoScRsp` 的客户端取值需要实机验证；`UseMazeSkill`（秘技施放）、`PropDestruct`（可破坏物）、`WinBattleWithAssistAvatarCnt`（携带支援角色获胜）、`RogueExploreRoomFinishCnt`（模拟宇宙房间）已接入计数事件，`AnyFarmElementFinish` 只计凝滞虚影胜利（排除花萼），`UseItem` 按实际消耗数量计（消耗开拓力计为物品 11）；`ExcellentEnterBattleAndWin`、`ItemCompose`、`TakePictureCnt`、`UseItemWithType` 等实训条件尚未实现，入选后无法完成；2100156 的货币战争子任务（`GridFightFinishGamePlay`）同样未实现，只能通过差分宇宙子任务完成。
+- The regression reads a copy of the current `Config/Resource.bin` by default and never modifies it.
+- The cache must contain the `DailyQuest`, `DailyMissionData` and `DailyMissionCount` tables and the `CocoonType`/`FarmType` fields of `CocoonConfig`. Otherwise the first check fails and the program exits.
+- It uses a temporary SQLite database and an isolated configuration. It starts no network service and reads neither the operator configuration nor any player database.
+
+## What it covers
+
+### Day boundary
+
+- At 03:59 server time the date still belongs to the previous day; a new day starts at 04:00.
+- A reset hour of 0 and month boundaries.
+- `ServerOption.DailyResetHour` outside the range is clamped to 0–23.
+
+### Quest draw
+
+- FNV-1a-64 + SplitMix64 + Fisher–Yates, so the result does not depend on the runtime.
+- The same (uid, date, nonce) draws the same 8 quests; the order of the pool does not matter; incrementing the nonce draws a different set.
+- Deleted `DailyQuest` rows do not enter the pool. QuestType 5 is no longer accepted automatically by its condition.
+
+### Activity points and tiers
+
+- Claiming a daily training reward grants item 23 and adds to the day's activity; `GetItem(23)` returns the current value.
+- Unknown tier: 4101; repeated claim: 4102; not enough activity: 4103.
+- Claim-all goes through the tiers in ascending order and merges the rewards; a repeated claim-all grants nothing.
+- `TakeQuestOptionalReward` rejects a non-zero optional reward id (an unrelated reward id or a raw item id) with `RetReqParaInvalid`, grants nothing and leaves the quest finished; with id 0 it pays only the quest's `RewardID`, once.
+
+### Day rollover
+
+- A new period clears activity points and claimed tiers.
+- Quests not drawn for the previous day are closed and their unclaimed rewards are forfeited. Quests drawn for the new day, including ones claimed earlier, are reset to in progress with progress 0.
+- A nonce redraw, equivalent to `/daily reset`.
+- `FinishQuest` quests (2100156/2100159) reactivate their child quests when drawn, so yesterday's completion does not satisfy them directly.
+
+### Event-driven completion conditions
+
+- A heartbeat (empty parameters) and unrelated parameters advance no event-driven quest.
+- `AnyRelicLevelUp`, `AnyEquipmentLevelUp`, `AnyAvatarLevelUp`, `RogueFinishCnt`, `ResolveRelic`, `AnyItemComposeCount` and `ExpeditionSetOrTakeReward` advance only on their own events.
+- `ChallengeFinishCnt` filters by challenge type.
+
+### Calyxes and other domains
+
+- A lost battle and a Stagnant Shadow battle (only `CocoonWave`, no `CocoonId`) do not count.
+- A Golden Calyx completes `CocoonFinish` and `FarmTypeCocoonFinish [6,7,8]`; a Crimson Calyx completes `[5]`; a Cavern of Corrosion completes `AnyCocoonFinish [3]`.
+
+### Daily missions
+
+- `FinishTodayDailyMissionCnt` is reached after completing daily missions; the same mission counts once per period. At rollover the daily count resets and the cumulative count is kept.
+- For players with the mission system enabled: no missions are issued before the unlock mission is met; a forced issue fills up to `DailyMissionCount.DailyCount`; issuing again on the same day adds nothing. Completed missions count, and after rollover completed missions become acceptable again and are reissued.
+
+### Storage
+
+- Daily training data is written to its own `DailyActive` table.
+
+## Expected result
+
+The run ends with `Daily active regression checks: <n>, failures: 0` and exits with code 0. Failed checks are listed under that line.
+
+## Known gaps
+
+- This is not a client test. The panel, claim animation, quest tracking, and the values the client reads from `DailyActiveInfoNotify` and `GetDailyActiveInfoScRsp` need verification on a real client.
+- Conditions that are wired to counting events: `UseMazeSkill` (casting a technique), `PropDestruct` (destructible objects), `WinBattleWithAssistAvatarCnt` (winning with a support character), `RogueExploreRoomFinishCnt` (Simulated Universe rooms). `AnyFarmElementFinish` counts only Stagnant Shadow wins (Calyxes excluded). `UseItem` counts the quantity actually consumed (spending Trailblaze Power counts as item 11).
+- Not implemented, so these quests cannot be completed once drawn: `ExcellentEnterBattleAndWin`, `ItemCompose`, `TakePictureCnt`, `UseItemWithType` and similar conditions.
+- The Currency Wars child quest of 2100156 (`GridFightFinishGamePlay`) is not implemented either; 2100156 can only be completed through its Divergent Universe child quest.

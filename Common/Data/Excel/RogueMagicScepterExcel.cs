@@ -21,7 +21,6 @@ public partial class RogueMagicScepterExcel : ExcelResource
     [JsonConverter(typeof(StringEnumConverter))]
     public RogueMagicStyleTypeEnum StyleType { get; set; }
 
-    //public FixPoint ScepterBasicPower { get; set; }
     public int StaffMazeBuffID { get; set; }
 
     [JsonConverter(typeof(StringEnumConverter))]

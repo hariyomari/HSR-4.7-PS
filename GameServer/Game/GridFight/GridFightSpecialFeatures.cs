@@ -203,8 +203,7 @@ public static class GridFightSpecialFeatures
     public static bool CanMaterializeOrb(uint orbItemId)
     {
         // These Currency War orb IDs are capture-confirmed in 4.4 but can be absent from an
-        // older server Resource.bin. Keep the compatibility knowledge in code so it also works
-        // on the binary-cache startup path where Config/Custom is not re-read.
+        // older server Resource.bin, and GridFightBasicOrbRewards.json need not list them.
         if (orbItemId is 103 or 303 or 200002 or 200003 or 200004 or 200006 or 200019) return true;
         if (orbItemId is >= 101000 and < 102000 &&
             GameData.GridFightRoleBasicInfoData.ContainsKey(orbItemId - 100000)) return true;
@@ -213,9 +212,10 @@ public static class GridFightSpecialFeatures
     }
 
     /// <summary>
-    ///     Orbs whose BonusID has no row in any shipped bonus table (GridFightOrb 121006/121007/121008 -> bonus
-    ///     21006-21008, the 爆裂矿石 kill drops): they open like the generic orb of the same colour. The real contents are
-    ///     server-side; before this they could be granted but every open failed with "消息获取失败".
+    ///     Orbs whose BonusID has no row in any shipped bonus table: GridFightOrb 121006/121007/121008 -> bonus
+    ///     21006-21008, the kill drops of the loot orb augments (爆晶矿). They open like the generic orb of the same
+    ///     colour. The real contents are server-side; without the alias such an orb can be granted but every open fails
+    ///     with "消息获取失败".
     /// </summary>
     private static readonly Dictionary<uint, uint> OrbRecipeAliases = new()
     {
@@ -431,6 +431,8 @@ public static class GridFightSpecialFeatures
                         GridFightBonusTypeEnum.SpecificAvatar, role.ID, 1, randomStar));
                 }
                 return true;
+            case GridFightBonusTypeEnum.AllAvatarByRarity:
+                return AddAllAvatarsByRarity(firstParam, basic.BonusTypeParamList.ElementAtOrDefault(1), multiplier, result);
             case GridFightBonusTypeEnum.Item:
                 if (!IsValidItemReward(firstParam)) return false;
                 result.Add(new GridFightRewardEntry(GridFightBonusTypeEnum.Item, firstParam, multiplier));
@@ -441,7 +443,8 @@ public static class GridFightSpecialFeatures
                 return true;
             case GridFightBonusTypeEnum.SpotLightReplaceCnt:
             case GridFightBonusTypeEnum.SpotLightFreeRefreshCnt:
-                // 主角光环 charges (e.g. 幻月游戏 orb 123156 -> bonus 23156: 1 replace + 8 free spotlight rerolls).
+                // Spotlight (主角光环) charges, e.g. the MoonGame (幻月游戏) orb 123156 -> bonus 23156: 1 replace + 8 free
+                // spotlight rerolls.
                 result.Add(new GridFightRewardEntry(basic.BonusType, 0, multiplier));
                 return true;
             case GridFightBonusTypeEnum.RandomEquipByCategory:
@@ -504,6 +507,9 @@ public static class GridFightSpecialFeatures
                     count,
                     randomStar));
                 return true;
+            case GridFightBonusTypeEnum.AllAvatarByRarity:
+                // Like the RandomAvatar rows above, Value repeats the rarity in these rows, so it is not a count here.
+                return AddAllAvatarsByRarity(firstParam, reward.BonusTypeParamList.ElementAtOrDefault(1), 1, result);
             case GridFightBonusTypeEnum.Item:
                 if (!IsValidItemReward(firstParam)) return false;
                 result.Add(new GridFightRewardEntry(reward.BonusType, firstParam, count));
@@ -536,7 +542,7 @@ public static class GridFightSpecialFeatures
             GridFightBonusTypeEnum.SpecificAvatar =>
                 IsValidRoleReward(GridFightSeasonScope.ResolveRoleId(firstParam, GridFightSeasonScope.CurrentSeason),
                     reward.BonusTypeParamList.ElementAtOrDefault(1)),
-            GridFightBonusTypeEnum.RandomAvatar =>
+            GridFightBonusTypeEnum.RandomAvatar or GridFightBonusTypeEnum.AllAvatarByRarity =>
                 RandomAvatarPool(firstParam, reward.BonusTypeParamList.ElementAtOrDefault(1)).Count > 0,
             GridFightBonusTypeEnum.Item => IsValidItemReward(firstParam),
             GridFightBonusTypeEnum.Orb => CanMaterializeOrb(firstParam),
@@ -579,11 +585,32 @@ public static class GridFightSpecialFeatures
         return true;
     }
 
-    // Random role rewards draw only from the running season; 4.6.51 tables hold both seasons' roles.
+    /// <summary>
+    ///     AllAvatarByRarity (OSBETAWin4.7.51, BasicBonusPoolV2 116-130): BonusTypeParamList is [rarity, star] exactly
+    ///     like the RandomAvatar rows 101-115 next to it, and the type hands out every role of that rarity instead of a
+    ///     random one. "Every role" is read as the pool RandomAvatar draws from (so without the roles that are never
+    ///     handed out on their own); the official pool is server-side. No CombinationBonus or Orb row of that export
+    ///     points at these rows, so nothing in the tables reaches them yet.
+    /// </summary>
+    private static bool AddAllAvatarsByRarity(uint rarity, uint star, uint copies, List<GridFightRewardEntry> result)
+    {
+        if (rarity == 0 || star == 0 || copies == 0) return false;
+        var roles = RandomAvatarPool(rarity, star);
+        if (roles.Count == 0) return false;
+        result.AddRange(roles.Select(role =>
+            new GridFightRewardEntry(GridFightBonusTypeEnum.SpecificAvatar, role.ID, copies, star)));
+        return true;
+    }
+
+    // Random role rewards draw only from the running season; 4.6.51 tables hold both seasons' roles. They also leave
+    // out the roles a run never hands out on their own (GridFightSeasonScope.RewardExcludedRoleIds), which IsInPool
+    // does not tell apart: a random 5-cost reward could otherwise be Tenglong (丹恒•腾荒) or a 5-/7-cost Aha (星神★阿哈).
     private static List<GridFightRoleBasicInfoExcel> RandomAvatarPool(uint rarity, uint star)
     {
-        return GridFightSeasonScope.Roles(GridFightSeasonScope.CurrentSeason)
-            .Where(role => role.IsInPool && role.Rarity == rarity &&
+        var season = GridFightSeasonScope.CurrentSeason;
+        var excluded = GridFightSeasonScope.RewardExcludedRoleIds(season);
+        return GridFightSeasonScope.Roles(season)
+            .Where(role => role.IsInPool && role.Rarity == rarity && !excluded.Contains(role.ID) &&
                            GameData.GridFightRoleStarData.ContainsKey(role.ID << 4 | star))
             .OrderBy(role => role.ID)
             .ToList();

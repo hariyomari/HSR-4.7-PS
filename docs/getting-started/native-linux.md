@@ -1,5 +1,7 @@
 # Native Linux Setup
 
+English | [简体中文](native-linux.zh-CN.md)
+
 This is the simple deployment path: one checkout, one server process, no Docker,
 and no split dispatch/game node setup. After .NET is installed, Linux can run it
 directly from source just like Windows.
@@ -11,7 +13,7 @@ Install the server dependencies once:
 ```bash
 sudo apt-get update
 sudo apt-get install -y git
-git clone --recurse-submodules <repo-url> March7thHoney
+git clone <repo-url> March7thHoney
 cd March7thHoney
 bash scripts/setup-debian.sh
 ```
@@ -75,7 +77,6 @@ From the checkout:
 
 ```bash
 git pull --ff-only
-git submodule update --init --recursive
 dotnet run --project Program/Program.csproj
 ```
 
@@ -146,7 +147,7 @@ Expose the HTTP dispatch/gateway port from `Config.json`:
 ```json
 "HttpServer": {
   "BindAddress": "0.0.0.0",
-  "PublicAddress": "hsr.hoyotoon.com",
+  "PublicAddress": "example.com",
   "Port": 21000,
   "UseSSL": false
 }
@@ -157,7 +158,7 @@ Expose the UDP game port from `Config.json`:
 ```json
 "GameServer": {
   "BindAddress": "0.0.0.0",
-  "PublicAddress": "hsr.hoyotoon.com",
+  "PublicAddress": "example.com",
   "Port": 23300
 }
 ```

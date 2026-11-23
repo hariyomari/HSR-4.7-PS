@@ -10,7 +10,7 @@ public class PacketSyncLineupNotify : BasePacket
         CmdIds.SyncLineupNotify)
     {
         var lineupProto = info.ToProto();
-        // ToProto 会把 MaxMp 写成默认 5，这里用 LineupManager 维护的 ExtraMpCount 覆盖
+        // MaxMp is the default 5 plus the ExtraMpCount that LineupManager maintains; Mp is capped to it.
         var extra = info.LineupData?.ExtraMpCount ?? 0;
         lineupProto.MaxMp = (uint)(5 + extra);
         if (lineupProto.Mp > lineupProto.MaxMp)

@@ -42,7 +42,7 @@ public class MazeBuff(int buffID, int buffLevel, int owner)
 
         if (OwnerAvatarId != -1)
         {
-            // 多命途角色 owner 传的是命途 id, 映射回基础 id 才能在 lineup 中匹配槽位
+            // A multi-path avatar passes its path id as the owner; map it back to the base id to match a lineup slot.
             var ownerBaseId = GameData.MultiplePathAvatarConfigData.TryGetValue(OwnerAvatarId, out var mp)
                 ? mp.BaseAvatarID
                 : OwnerAvatarId;

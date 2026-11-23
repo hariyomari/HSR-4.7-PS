@@ -1,5 +1,7 @@
 # Gameplay Name Mapping
 
+English | [简体中文](gameplay-name-map.zh-CN.md)
+
 This table separates user-facing names from technical module names.
 
 | EN | 简中 | 繁中 | 日本語 | Technical Module |

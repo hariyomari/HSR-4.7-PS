@@ -1,6 +1,4 @@
 using MemoryPack;
-using March7thHoney.Data;
-using March7thHoney.Proto;
 
 namespace March7thHoney.Database.TrainParty;
 
@@ -22,48 +20,43 @@ public class TrainData : BaseDatabaseDataHelper
     public int GameplayType { get; set; }
     public int GameplayQueuePosition { get; set; }
     public int LastUsedCardId { get; set; }
+
+    // Unlocked build areas, keyed by TrainPartyAreaConfig ID.
     public Dictionary<int, TrainAreaInfo> Areas { get; set; } = [];
+
+    // Exhibit-room display wall (TrainPartyBuildSelfDisplayAreaDiy): photos, placed props and badges.
     public List<TrainSelfDisplayEntry> SelfDisplay { get; set; } = [];
+
+    // Owned DIY props (TrainPartyDynamicConfig IDs) and the time each was acquired.
     public Dictionary<int, long> PropTimes { get; set; } = [];
+
+    // No longer read: held the captured display-wall badge timers before the wall was persisted per player.
     public Dictionary<int, long> TimedDynamicPropTimes { get; set; } = [];
+
+    // Version of the Areas layout; below TrainPartyManager.AreaDataVersion the step lists still hold the captured
+    // static prop IDs written by the old defaults and are converted to real step IDs on load.
+    public int AreaDataVersion { get; set; }
+
+    // Current gameplay turn: a TrainPartyProgress ID, which the client looks up and throws on when absent.
+    public int TurnId { get; set; }
+
+    public Dictionary<int, int> SelfDisplayDynamics { get; set; } = [];
+    public List<TrainSelfDisplayBadge> SelfDisplayBadges { get; set; } = [];
+
+    // Highest TrainPartyRewardConfig level whose reward has been taken.
+    public int TakenBuildLevel { get; set; }
 }
 
 [MemoryPackable]
 public partial class TrainAreaInfo
 {
     public int AreaId { get; set; }
+
+    // Finished TrainPartyStepConfig IDs of the area's goal.
     public List<int> StepList { get; set; } = [];
+
+    // DIY slot ID -> placed TrainPartyDynamicConfig ID.
     public Dictionary<int, int> DynamicInfo { get; set; } = [];
-
-    public TrainPartyArea ToProto()
-    {
-        var info = new TrainPartyArea
-        {
-            AreaId = (uint)AreaId,
-            AreaStepInfo = new AreaStepInfo(),
-            StepIdList = { StepList.Select(x => (uint)x) },
-            VerifyStepIdList = { StepList.Select(x => (uint)x) },
-            Progress = 100,
-            DynamicInfo =
-            {
-                DynamicInfo.Select(x => new AreaDynamicInfo
-                {
-                    DiceSlotId = (uint)x.Key,
-                    DiyDynamicId = (uint)x.Value
-                })
-            }
-        };
-
-        foreach (var step in StepList)
-        {
-            GameData.TrainPartyStepConfigData.TryGetValue(step, out var stepExcel);
-            if (stepExcel == null) continue;
-
-            info.StaticPropIdList.AddRange(stepExcel.StaticPropIDList.Select(x => (uint)x));
-        }
-
-        return info;
-    }
 }
 
 [MemoryPackable]
@@ -72,6 +65,14 @@ public partial class TrainSelfDisplayEntry
     public uint Slot { get; set; }
     public uint Id { get; set; }
     public uint Type { get; set; }
+}
+
+[MemoryPackable]
+public partial class TrainSelfDisplayBadge
+{
+    public uint Slot { get; set; }
+    public uint BadgeId { get; set; }
+    public long ExpireTime { get; set; }
 }
 
 [MemoryPackable]

@@ -29,3 +29,10 @@ public partial class MechCraftExamExcel : ExcelResource
         GameData.MechCraftExamData.TryAdd(ID, this);
     }
 }
+
+[MemoryPackable]
+public partial class MechCraftChipCount
+{
+    [JsonProperty("PFDHNIJBGKO")] public int ChipID { get; set; }
+    [JsonProperty("HCDEOKNIGKG")] public int Count { get; set; }
+}

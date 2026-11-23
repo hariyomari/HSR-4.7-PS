@@ -5,9 +5,8 @@ using March7thHoney.Util;
 namespace March7thHoney.WebServer.Pages;
 
 /// <summary>
-///     Renders the player self-service console at /player. Like the admin page, everything (styles,
-///     translations, scripts) is inlined so it works with no static file directory and no external
-///     dependencies — the game client's embedded browser can open it too.
+///     Renders /player with inline styles, translations and scripts for the embedded game browser,
+///     without static files or external dependencies.
 /// </summary>
 public static class PlayerConsolePage
 {

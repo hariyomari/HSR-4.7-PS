@@ -20,6 +20,12 @@ internal sealed class KcpSocketTransportForMultiplexConnection<T> : KcpSocketTra
         _disposeAction = disposeAction;
     }
 
+    internal KcpSocketTransportForMultiplexConnection(UdpClient listener, int mtu, int handshakeSize,
+        Func<UdpReceiveResult, Task> handshakeHandler)
+        : base(listener, mtu, handshakeSize, handshakeHandler)
+    {
+    }
+
     IKcpMultiplexConnection<T> IKcpTransport<IKcpMultiplexConnection<T>>.Connection => Connection;
 
     public void SetExceptionHandler(Func<Exception, IKcpTransport<IKcpMultiplexConnection<T>>, object?, bool> handler,

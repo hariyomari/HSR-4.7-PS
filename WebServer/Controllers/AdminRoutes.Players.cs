@@ -10,26 +10,23 @@ using March7thHoney.Kcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
-    private static void MapPlayerRoutes(IEndpointRouteBuilder app)
+    private static void MapPlayerRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/sessions", GetSessions);
-        app.MapPost("/admin/api/sessions/kick-all", KickAllSessions);
-        app.MapPost("/admin/api/sessions/{uid:int}/kick", KickSession);
-        app.MapGet("/admin/api/players/{uid:int}", GetPlayerDetail);
+        api.MapGet("/sessions", GetSessions);
+        api.MapPost("/sessions/kick-all", KickAllSessions);
+        api.MapPost("/sessions/{uid:int}/kick", KickSession);
+        api.MapGet("/players/{uid:int}", GetPlayerDetail);
     }
 
-    private static IResult GetSessions(HttpContext ctx)
+    private static IResult GetSessions()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
-        var sessions = March7thHoneyListener.GetSnapshot()
-            .OfType<Connection>()
+        var sessions = Listener.GetConnections()
             .Select(ToSessionInfo)
             .OrderByDescending(session => session.has_player)
             .ThenBy(session => session.uid)
@@ -38,13 +35,10 @@ public static partial class AdminRoutes
         return Success(new SessionsData(sessions, sessions.Count, sessions.Count(session => session.has_player)));
     }
 
-    private static IResult KickAllSessions(HttpContext ctx)
+    private static IResult KickAllSessions()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var kicked = 0;
-        foreach (var connection in March7thHoneyListener.GetSnapshot().OfType<Connection>())
+        foreach (var connection in Listener.GetConnections())
         {
             if (connection.Player == null) continue;
             ConnectionDisconnectHelper.KickByGm(connection);
@@ -54,11 +48,8 @@ public static partial class AdminRoutes
         return Success(new KickAllData(kicked));
     }
 
-    private static IResult KickSession(HttpContext ctx, int uid)
+    private static IResult KickSession(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var connection = Listener.GetActiveConnection(uid);
         if (connection == null)
             return Error("Player is not online", statusCode: StatusCodes.Status404NotFound);
@@ -67,11 +58,8 @@ public static partial class AdminRoutes
         return Success(new KickAllData(1));
     }
 
-    private static IResult GetPlayerDetail(HttpContext ctx, int uid)
+    private static IResult GetPlayerDetail(int uid)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var database = DatabaseHelper.Instance;
         if (database == null)
             return Error("Database is not initialized");

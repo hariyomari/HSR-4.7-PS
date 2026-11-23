@@ -6,8 +6,10 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Server.Packet.Recv.Pet;
 
 /// <summary>
-///     设置盲盒宠物随行编队。官服顺序：先 PetDataChangeScNotify{blind_box_lineup}，再 ScRsp，两者都回显请求里的
-///     来源枚举。非法请求（未拥有 / 重复实例、超过 3 槽）不改存档，只回失败码。
+///     Sets the blind box pet (盲盒宠物) companion lineup. The official server sends
+///     PetDataChangeScNotify{blind_box_lineup} first and the ScRsp second; both echo the source enum of the request.
+///     An invalid request (an instance that is not owned or is repeated, more than 3 slots) leaves the save untouched
+///     and only returns a failure code.
 /// </summary>
 [Opcode(CmdIds.SetBlindBoxPetLineupCsReq)]
 public class HandlerSetBlindBoxPetLineupCsReq : Handler<SetBlindBoxPetLineupCsReq>

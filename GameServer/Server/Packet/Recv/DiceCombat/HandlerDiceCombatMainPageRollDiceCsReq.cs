@@ -8,8 +8,7 @@ public class HandlerDiceCombatMainPageRollDiceCsReq : Handler
 {
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
-        var rsp = new BasePacket(CmdIds.DiceCombatMainPageRollDiceScRsp);
-        rsp.SetData(new BPNGPLHJHBE { Retcode = 0 });
+        var rsp = BasePacket.Create(CmdIds.DiceCombatMainPageRollDiceScRsp, new BPNGPLHJHBE { Retcode = 0 });
         await connection.SendPacket(rsp);
     }
 }

@@ -1,10 +1,11 @@
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     爆晶矿 (102601 银 / 202001 金 / 301501 彩, EffectParamList [chance, 21006, 21007, 21008]): "我方小队消灭敌方目标时，有
-///     X%概率获得一个战利品晶矿". 21006-21008 are the bonus ids of the white/blue/gold loot orbs 121006-121008. Kills come
-///     from the battle statistics; the colour weights (6:3:1) are an estimate, the client data does not give them.
-///     Several 爆晶矿 tiers do not stack: the best chance applies.
+///     Loot orb augments (爆晶矿): 102601 silver / 202001 gold / 301501 prismatic, EffectParamList [chance, 21006, 21007,
+///     21008]. Their description: each enemy the squad kills has an X% chance to yield a loot orb (战利品晶矿).
+///     21006-21008 are the bonus ids of the white/blue/gold loot orbs 121006-121008. Kills come from the battle
+///     statistics; the colour weights (6:3:1) are an estimate, the client data does not give them. Several tiers do
+///     not stack: the best chance applies.
 /// </summary>
 public sealed partial class GridFightSession
 {

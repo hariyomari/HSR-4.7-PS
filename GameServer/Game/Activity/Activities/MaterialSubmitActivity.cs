@@ -1,7 +1,9 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Activity;
 using March7thHoney.Database;
 using March7thHoney.Database.Activity;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Proto;
@@ -84,7 +86,7 @@ public class MaterialSubmitActivity(PlayerInstance player)
         if (reward.Hcoin > 0)
         {
             player.Data.Hcoin += reward.Hcoin;
-            granted.Add(new ItemData { ItemId = 1, Count = reward.Hcoin });
+            granted.Add(new ItemData { ItemId = (int)VirtualItemEnum.Hcoin, Count = reward.Hcoin });
         }
 
         foreach (var (itemId, count) in reward.GetItems())

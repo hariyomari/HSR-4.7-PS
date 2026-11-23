@@ -2,7 +2,6 @@ using March7thHoney.GameServer.Game.Lobby.Player;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
 using March7thHoney.GameServer.Server.Packet.Send.Lobby;
-using March7thHoney.GameServer.Server.Packet.Send.Multiplayer;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 
@@ -15,7 +14,6 @@ public class LobbyRoomInstance(PlayerInstance owner, long roomId, FightGameMode 
     public FightGameMode GameMode { get; set; } = gameMode;
     public List<LobbyPlayerInstance> Players { get; set; } = [];
     public int LobbyMode { get; set; } = lobbyMode;
-    public bool IsInGame { get; set; }
 
     public async ValueTask BroadCastToRoom(BasePacket packet)
     {
@@ -50,10 +48,6 @@ public class LobbyRoomInstance(PlayerInstance owner, long roomId, FightGameMode 
 
     public async ValueTask<Retcode> LobbyStartFight()
     {
-        // check status
-        if (IsInGame)
-            return Retcode.RetLobbyRoomPalyerFighting;
-
         if (Players.Count(x => x.CharacterType != LobbyProtoValues.CharacterWatcher) != 2)
             return Retcode.RetLobbyRoomPalyerNotReady;
 
@@ -73,35 +67,6 @@ public class LobbyRoomInstance(PlayerInstance owner, long roomId, FightGameMode 
 
         await BroadCastToRoom(new PacketLobbySyncInfoScNotify(leader.Player.Uid, this,
             LobbyProtoValues.ModifyLobbyStartFight));
-        return Retcode.RetSucc;
-    }
-
-    public async ValueTask<Retcode> StartFight()
-    {
-        // alrdy check status in lobby start fight
-        if (IsInGame)
-            return Retcode.RetLobbyRoomPalyerFighting;
-
-        // create fight room (null until a 4.4 fight-room implementation is registered)
-        var fightRoom = ServerUtils.MultiPlayerGameServerManager.CreateRoom(this);
-        if (fightRoom == null) return Retcode.RetLobbyRoomNotExist;
-
-        IsInGame = true;
-        await BroadCastToRoom(new PacketMultiplayerFightGameStartScNotify(fightRoom));
-
-        // start fight
-        foreach (var instance in Players) instance.CharacterStatus = LobbyProtoValues.StatusFighting;
-
-        await BroadCastToRoom(new PacketLobbySyncInfoScNotify(0, this, LobbyProtoValues.ModifyFightStart));
-        return Retcode.RetSucc;
-    }
-
-    public async ValueTask<Retcode> EndFight(LobbyPlayerInstance player)
-    {
-        // alrdy check status in lobby start fight
-        IsInGame = false;
-        player.CharacterStatus = LobbyProtoValues.StatusIdle;
-        await BroadCastToRoom(new PacketLobbySyncInfoScNotify(player.Player.Uid, this, LobbyProtoValues.ModifyFightEnd));
         return Retcode.RetSucc;
     }
 

@@ -10,6 +10,7 @@ using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Activity.FinalityBattle;
 using March7thHoney.Proto;
 using LineupInfo = March7thHoney.Database.Lineup.LineupInfo;
+using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Activity.FinalityBattle;
 
@@ -56,7 +57,7 @@ public class FinalityBattleManager(PlayerInstance player) : BasePlayerManager(pl
 
         foreach (var entry in avatarList)
         {
-            if ((int)entry.Id == leadingRoleId || lineupOverride.Count >= 4) continue;
+            if ((int)entry.Id == leadingRoleId || lineupOverride.Count >= GameConstants.MAX_LINEUP_AVATAR_COUNT) continue;
             BaseAvatarInfo? avatar = entry.AvatarType == AvatarType.AvatarTrialType
                 ? Player.AvatarManager.GetTrialAvatarByWorldLevel(entry.Id, Player.Data.WorldLevel)
                 : Player.AvatarManager.GetFormalAvatar(entry.Id);
