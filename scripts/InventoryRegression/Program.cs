@@ -240,6 +240,37 @@ Check("city shop spending levels up, validates level/duplicate claims, and updat
     cityProto2.CityTakenLevelReward == (1UL << 2) &&
     cityProto3 is { CityLevel: 4, CityExp: 0 });
 
+// Legacy Resource.bin compatibility: 7-member ShopGoodsConfigExcel (before LimitTimes/RefreshType were appended).
+var legacyGoodsBuf = new System.Buffers.ArrayBufferWriter<byte>();
+var legacyWriterState = MemoryPack.MemoryPackWriterOptionalStatePool.Rent(MemoryPack.MemoryPackSerializerOptions.Default);
+try
+{
+    var writer = new MemoryPack.MemoryPackWriter<System.Buffers.ArrayBufferWriter<byte>>(ref legacyGoodsBuf, legacyWriterState);
+    writer.WriteCollectionHeader(2);
+    for (var i = 0; i < 2; i++)
+    {
+        writer.WriteObjectHeader(7);
+        writer.WriteUnmanaged(102001 + i, 102, 102 - i, 1);
+        writer.WriteValue(new List<int> { 251 });
+        writer.WriteValue(new List<int> { 90 });
+        writer.WriteValue(new Dictionary<int, int> { [251] = 90 });
+    }
+    writer.Flush();
+}
+finally
+{
+    legacyWriterState.Reset();
+}
+var legacyDecoded = MemoryPack.MemoryPackSerializer.Deserialize<List<ShopGoodsConfigExcel>>(legacyGoodsBuf.WrittenSpan);
+Check("legacy 7-member ShopGoodsConfigExcel binaries deserialize without shifting CostList",
+    legacyDecoded is { Count: 2 } &&
+    legacyDecoded[0] is { GoodsID: 102001, ShopID: 102, LimitTimes: 0 } &&
+    legacyDecoded[0].CostList.GetValueOrDefault(251) == 90 &&
+    string.IsNullOrEmpty(legacyDecoded[0].RefreshType) &&
+    legacyDecoded[1] is { GoodsID: 102002, ShopID: 102, LimitTimes: 0 } &&
+    legacyDecoded[1].CostList.GetValueOrDefault(251) == 90 &&
+    string.IsNullOrEmpty(legacyDecoded[1].RefreshType));
+
 // AvatarCard shop purchases: new unlock, duplicate eidolon, and E6 starlight conversion.
 SetBalance(1000, 0);
 (retcode, bought, _) = await player.ShopManager.BuyItem(StarlightShop, StarlightAvatarGoods, 1);
