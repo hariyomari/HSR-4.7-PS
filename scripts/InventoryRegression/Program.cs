@@ -64,6 +64,7 @@ Item(Mcoin, ItemMainTypeEnum.Virtual);
 foreach (var id in new[] { Hertareum, Starlight, AvatarEidolonId, Material, OtherMaterial, Output, Resin, WishfulResin, RewardMaterial })
     Item(id, ItemMainTypeEnum.Material);
 Item(AvatarCardId, ItemMainTypeEnum.AvatarCard);
+Item(AvatarManager.PromotionRewardItemId, ItemMainTypeEnum.Material);
 Item(AvatarHeadIconId, ItemMainTypeEnum.Usable, ItemSubTypeEnum.HeadIcon);
 Item(GiftPack, ItemMainTypeEnum.Usable, ItemSubTypeEnum.Gift);
 Item(Relic, ItemMainTypeEnum.Relic);
@@ -301,7 +302,24 @@ var addEquipProto = AddEquipmentScRsp.Parser.ParseFrom(addEquipPacket.Data);
 Check("buying a 5* Light Cone grants the equipment and PacketAddEquipmentScNotify encodes CmdId 528",
     retcode == Retcode.RetSucc && bought.Single() is { ItemId: 23013, Count: 1 } &&
     inventory.Data.EquipmentItems.Any(e => e.ItemId == 23013) &&
-    addEquipPacket.CmdId == CmdIds.AddEquipmentScRsp && addEquipProto.KAJCFPKEGBP == 23013);
+    addEquipPacket.CmdId == CmdIds.AddEquipmentScRsp && addEquipProto.BaseEquipmentId == 23013);
+
+// Avatar promotion rewards: valid tiers are 1, 3, and 5; reached tier must be claimable and synced.
+var promoAvatar = player.AvatarManager!.GetFormalAvatar(AvatarCardId)!;
+promoAvatar.Promotion = 1;
+SetBalance(0, 0);
+var (promoInvalidRet, _) = await player.AvatarManager.TakePromotionReward(AvatarCardId, 2);
+var (promoUnreachedRet, _) = await player.AvatarManager.TakePromotionReward(AvatarCardId, 3);
+var (promoOkRet, promoRewards) = await player.AvatarManager.TakePromotionReward(AvatarCardId, 1);
+var (promoDupRet, _) = await player.AvatarManager.TakePromotionReward(AvatarCardId, 1);
+var promoProto = promoAvatar.ToProto();
+Check("promotion reward accepts reached tier 1, syncs HasTakenPromotionRewardList, and rejects invalid/unreached/duplicate",
+    promoInvalidRet == Retcode.RetPromotionRewardConfigNotExist &&
+    promoUnreachedRet == Retcode.RetAvatarPromotionNotMeet &&
+    promoOkRet == Retcode.RetSucc && promoRewards.Single() is { ItemId: AvatarManager.PromotionRewardItemId, Num: 1 } &&
+    Owned(AvatarManager.PromotionRewardItemId) == 1 &&
+    promoDupRet == Retcode.RetPromotionRewardAlreadyTaken &&
+    promoProto.HasTakenPromotionRewardList.SequenceEqual([1u]));
 
 // Oneiric Pouch first-time 2x bonus persisted per player in ShopData.
 const string CoinProductId = "rpgglbcoin300tier5";

@@ -913,7 +913,7 @@ message AddBlacklistScRsp {
 // Obf: MJEJCMECDDN
 // CmdID: 528
 message AddEquipmentScRsp {
-	uint32 KAJCFPKEGBP = 1;
+	uint32 base_equipment_id = 1;
 }
 
 // Obf: IPGLHOIFDAB

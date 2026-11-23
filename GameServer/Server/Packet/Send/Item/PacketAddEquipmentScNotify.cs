@@ -11,7 +11,7 @@ public class PacketAddEquipmentScNotify : BasePacket
     {
         SetData(new AddEquipmentScRsp
         {
-            KAJCFPKEGBP = (uint)baseEquipmentId
+            BaseEquipmentId = (uint)baseEquipmentId
         });
     }
 }

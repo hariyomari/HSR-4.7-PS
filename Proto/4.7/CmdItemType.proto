@@ -5,7 +5,7 @@ option csharp_namespace = "March7thHoney.Proto";
 import "Common.proto";
 
 message AddEquipmentScRsp {
-	uint32 KAJCFPKEGBP = 1;
+	uint32 base_equipment_id = 1;
 }
 
 message AddRelicFilterPlanCsReq {

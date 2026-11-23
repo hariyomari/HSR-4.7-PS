@@ -153,10 +153,12 @@ public partial class AvatarManager
     {
         var avatar = GetFormalAvatar(baseAvatarId);
         if (avatar == null) return (Retcode.RetAvatarNotExist, []);
-        if (promotion < 0 || promotion >= avatar.Promotion) return (Retcode.RetPromotionRewardConfigNotExist, []);
+        if (promotion is not (1 or 3 or 5)) return (Retcode.RetPromotionRewardConfigNotExist, []);
+        if (promotion > avatar.Promotion) return (Retcode.RetAvatarPromotionNotMeet, []);
         if (avatar.HasTakenReward(promotion)) return (Retcode.RetPromotionRewardAlreadyTaken, []);
 
         avatar.TakeReward(promotion);
+        MarkDirty();
         await Player.InventoryManager!.AddItem(PromotionRewardItemId, 1, false);
         await Player.SendPacket(new PacketPlayerSyncScNotify(avatar));
         return (Retcode.RetSucc, [new Proto.Item { ItemId = PromotionRewardItemId, Num = 1 }]);
