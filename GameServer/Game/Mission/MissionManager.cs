@@ -609,13 +609,14 @@ public partial class MissionManager(PlayerInstance player) : BasePlayerManager<M
             // Player.ChangeAvatarPathType(8001, Enums.Avatar.MultiPathAvatarTypeEnum.Knight);
             var list = Player.LineupManager!.GetCurLineup()!.BaseAvatars!
                 .Select(x => x.SpecialAvatarId > 0 ? x.SpecialAvatarId : x.BaseAvatarId).ToList();
-            // The Preservation trial takes the Trailblazer's slot; a party without the Trailblazer (a story trial
-            // lineup) gets it as leader instead of failing the whole sub-mission finish.
+            // The Preservation trial takes the Trailblazer's slot. When the story's trial lineup already fields it
+            // (slot 8001/1008004 from the earlier hero-trial task) the list is kept as is; the old code indexed -1
+            // there and threw out of FinishSubMission.
             var preservation = Player.Data.CurrentGender == Gender.Man ? 1008003 : 1008004;
             var hero = list.IndexOf(8001);
             if (hero >= 0) list[hero] = preservation;
-            else if (list.Count < 4) list.Insert(0, preservation);
-            else list[0] = preservation;
+            else if (!list.Contains(preservation)) list.Insert(0, preservation);
+            if (list.Count > 4) list.RemoveRange(4, list.Count - 4);
             Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupHeliobus, list);
         }
 

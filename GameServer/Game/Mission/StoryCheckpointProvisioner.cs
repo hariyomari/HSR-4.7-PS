@@ -145,13 +145,16 @@ public static class StoryCheckpointProvisioner
         try
         {
             var backup = DatabaseHelper.CloneUidGameplayData(uid);
+            var run = new Run(uid, request);
             try
             {
-                return await new Run(uid, request).Execute();
+                return await run.Execute();
             }
             catch
             {
-                if (backup.Count > 0) DatabaseHelper.ReplaceUidGameplayData(uid, backup);
+                // Only a save the run already wiped is put back; before that (a session that would not stop) the
+                // live rows are untouched and must stay the ones the online player writes to.
+                if (run.Wiped && backup.Count > 0) DatabaseHelper.ReplaceUidGameplayData(uid, backup);
                 throw;
             }
         }
@@ -170,6 +173,10 @@ public static class StoryCheckpointProvisioner
         };
 
         private PlayerInstance _player = null!;
+
+        /// <summary>Whether the previous save has been deleted.</summary>
+        public bool Wiped { get; private set; }
+
         private MissionManager Missions => _player.MissionManager!;
 
         public async ValueTask<StoryProvisionReport> Execute()
@@ -214,6 +221,7 @@ public static class StoryCheckpointProvisioner
             }
 
             DatabaseHelper.Instance!.DeleteUidGameplayData(uid);
+            Wiped = true;
             _player = new PlayerInstance(uid) { PendingMissionEnabledOverride = true };
             await _player.InitializeAsync();
             _player.Data.Level = ConfigManager.Config.ServerOption.StartTrailblazerLevel;
@@ -255,11 +263,15 @@ public static class StoryCheckpointProvisioner
                 .Where(sub => sub.TakeType == SubMissionTakeTypeEnum.CustomValue && sub.TakeParamStrList.Count >= 3)
                 .ToList();
 
-            List<(string Name, int Prerequisite)> Gates(Data.Config.SubMissionInfo sub)
+            List<(string Name, int Prerequisite)> Gates(Data.Config.SubMissionInfo sub) =>
+                Triples(sub).Select(gate => (gate.Name, gate.Prerequisite)).ToList();
+
+            static List<(string Name, uint Value, int Prerequisite)> Triples(Data.Config.SubMissionInfo sub)
             {
-                var gates = new List<(string, int)>();
+                var gates = new List<(string, uint, int)>();
                 for (var i = 0; i + 2 < sub.TakeParamStrList.Count; i += 3)
-                    gates.Add((sub.TakeParamStrList[i], int.TryParse(sub.TakeParamStrList[i + 2], out var p) ? p : 0));
+                    gates.Add((sub.TakeParamStrList[i], uint.TryParse(sub.TakeParamStrList[i + 1], out var v) ? v : 0,
+                        int.TryParse(sub.TakeParamStrList[i + 2], out var p) ? p : 0));
                 return gates;
             }
 
@@ -267,7 +279,8 @@ public static class StoryCheckpointProvisioner
             var answered = choices.Where(sub => Missions.GetSubMissionStatus(sub.ID) != MissionPhaseEnum.None)
                 .SelectMany(Gates).ToHashSet();
             var pick = choices
-                .Where(sub => Missions.GetSubMissionStatus(sub.ID) == MissionPhaseEnum.None && filter(sub.ID))
+                .Where(sub => Missions.GetSubMissionStatus(sub.ID) == MissionPhaseEnum.None &&
+                              (filter(sub.ID) || preferred.Contains(sub.ID)))
                 .Where(sub => Gates(sub).Any(gate =>
                     (gate.Prerequisite == 0 ||
                      Missions.GetSubMissionStatus(gate.Prerequisite) == MissionPhaseEnum.Finish) &&
@@ -276,7 +289,14 @@ public static class StoryCheckpointProvisioner
                 .FirstOrDefault();
             if (pick == null) return false;
 
-            await Guard($"accepting choice {pick.ID}", async () => await Missions.AcceptSubMission(pick.ID, false));
+            // Answer the way the client does (HandleCustomValue also records the choice on the main), falling back
+            // to a direct accept only if the gate is not one the custom-value path recognises.
+            var answer = Triples(pick).First(gate => !answered.Contains((gate.Name, gate.Prerequisite)) &&
+                                                     (gate.Prerequisite == 0 || Missions.GetSubMissionStatus(gate.Prerequisite) == MissionPhaseEnum.Finish));
+            await Guard($"answering choice {pick.ID}", () => Missions.HandleCustomValue(
+                [new MissionCustomValue { BGDFHBAANLB = answer.Name, CustomValue = answer.Value }], pick.ID));
+            if (Missions.GetSubMissionStatus(pick.ID) == MissionPhaseEnum.None)
+                await Guard($"accepting choice {pick.ID}", async () => await Missions.AcceptSubMission(pick.ID, false));
             return Missions.GetSubMissionStatus(pick.ID) != MissionPhaseEnum.None;
         }
 
@@ -407,10 +427,12 @@ public static class StoryCheckpointProvisioner
 
             // Only the sub's own prerequisites, so parallel objectives stay where a player would have left them.
             var ancestors = SubPrerequisites(subId);
-            if (!await ReachSub(mainId, ancestors.Contains, Reached, ancestors))
+            // The target itself may be a dialogue branch: it can be answered, never finished on the way.
+            var preferred = new HashSet<int>(ancestors) { subId };
+            if (!await ReachSub(mainId, ancestors.Contains, Reached, preferred))
             {
                 _report.Warnings.Add($"{subId}: not reached through its prerequisites, finishing other running sub-missions");
-                if (!await ReachSub(mainId, id => id != subId, Reached, ancestors))
+                if (!await ReachSub(mainId, id => id != subId, Reached, preferred))
                 {
                     _report.StalledMissions.Add(mainId);
                     _report.Warnings.Add($"{subId}: never accepted");
