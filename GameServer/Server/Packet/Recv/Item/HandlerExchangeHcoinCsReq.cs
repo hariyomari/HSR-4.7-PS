@@ -1,5 +1,4 @@
 using March7thHoney.GameServer.Server.Packet.Send.Item;
-using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 
@@ -16,7 +15,7 @@ public class HandlerExchangeHcoinCsReq : Handler<ExchangeHcoinCsReq>
     {
         if (player?.InventoryManager == null) return;
 
-        if (req.Num == 0)
+        if (req.Num == 0 || req.Num > int.MaxValue)
         {
             await connection.SendPacket(new PacketExchangeHcoinScRsp(0, Retcode.RetHcoinExchangeTooMuch));
             return;
@@ -31,7 +30,6 @@ public class HandlerExchangeHcoinCsReq : Handler<ExchangeHcoinCsReq>
 
         await player.InventoryManager.RemoveItem(SourceItemId, (int)req.Num, sync: false);
         await player.InventoryManager.AddItem(TargetItemId, (int)req.Num * ExchangeRate, notify: false, sync: false);
-        await player.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
 
         await connection.SendPacket(new PacketExchangeHcoinScRsp(req.Num));
     }

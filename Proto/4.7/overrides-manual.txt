@@ -14,3 +14,7 @@ NAHANHPHGGF = RogueEnhanceRogueBuffScRsp
 // (retail field 1978). Upstream f472d7a9:Proto/4.8/overrides-manual.txt assigns
 // game_data_item_info to this same property identity, at field 840 in the 4.8 dump.
 KFNCAIHIHCM.JDGIAMABEME = game_data_item_info
+
+// AddEquipmentScRsp (CmdId 528, obf MJEJCMECDDN) is a single-field server notify. Verified on
+// retail OSPRODWin4.7.0 that sending a Light Cone ID in field 1 plays its acquisition reveal screen.
+MJEJCMECDDN.KAJCFPKEGBP = base_equipment_id

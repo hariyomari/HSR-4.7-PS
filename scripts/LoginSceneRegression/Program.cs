@@ -3990,9 +3990,13 @@ using (var cardClientPeer = new KcpConversation(endpoint, cardInbound, options))
         && cardData.Hcoin == jadeBefore + 90);
 
     var shardsBeforeCoin = cardData.Mcoin;
-    var coinResult = await RechargeService.Purchase(cardPlayer, coinProduct!);
-    Check("Oneiric Shard tiers still grant their shards", coinResult == RechargeResult.Granted
-        && cardData.Mcoin == shardsBeforeCoin + coinProduct!.FirstCharge + coinProduct.NormalCharge);
+    var firstCoinResult = await RechargeService.Purchase(cardPlayer, coinProduct!);
+    var afterFirstCoin = cardData.Mcoin;
+    var secondCoinResult = await RechargeService.Purchase(cardPlayer, coinProduct!);
+    Check("Oneiric Shard tiers grant 2x on first purchase and normal bonus afterwards",
+        firstCoinResult == RechargeResult.Granted && afterFirstCoin == shardsBeforeCoin + coinProduct!.FirstCharge * 2 &&
+        secondCoinResult == RechargeResult.Granted &&
+        cardData.Mcoin == afterFirstCoin + coinProduct.FirstCharge + coinProduct.NormalCharge);
 
     config.ServerOption.EnableMonthCard = false;
     var disabledProducts = QueryProductInfoScRsp.Parser.ParseFrom(

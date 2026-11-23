@@ -126,6 +126,20 @@ public static class AdminSettingsRegistry
         yield return Int("ServerOption.DailyResetHour", "server", () => option.DailyResetHour, v => option.DailyResetHour = v, 0, 23);
         yield return Bool("ServerOption.EnableMonthCard", "server", () => option.EnableMonthCard, v => option.EnableMonthCard = v);
         yield return Bool("ServerOption.EnableFakeRecharge", "server", () => option.EnableFakeRecharge, v => option.EnableFakeRecharge = v);
+        yield return new SettingDef("ServerOption.RechargeDoubleBonusResetDate", "server", "string",
+            () => option.RechargeDoubleBonusResetDate, value =>
+            {
+                var trimmed = value.Trim();
+                if (trimmed.Length == 0)
+                {
+                    option.RechargeDoubleBonusResetDate = "";
+                    return null;
+                }
+                if (!ServerOption.TryParseMonthDay(trimmed, out var month, out var day))
+                    return "expected MM-DD (e.g. 04-26) or empty to disable annual resets";
+                option.RechargeDoubleBonusResetDate = $"{month:D2}-{day:D2}";
+                return null;
+            }, false, null, null);
         yield return Bool("ServerOption.AutoCreateUser", "server", () => option.AutoCreateUser, v => option.AutoCreateUser = v);
         yield return Choice("ServerOption.Language", "server", () => option.Language, v => option.Language = v, LanguageOptions, restart: true);
         yield return Choice("ServerOption.FallbackLanguage", "server", () => option.FallbackLanguage, v => option.FallbackLanguage = v, LanguageOptions, restart: true);

@@ -1,4 +1,4 @@
-using March7thHoney.Database.Inventory;
+using March7thHoney.GameServer.Game.Shop;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 
@@ -6,18 +6,17 @@ namespace March7thHoney.GameServer.Server.Packet.Send.Shop;
 
 public class PacketBuyGoodsScRsp : BasePacket
 {
-    public PacketBuyGoodsScRsp(BuyGoodsCsReq req, List<ItemData> items, Retcode retcode = Retcode.RetSucc)
-        : base(CmdIds.BuyGoodsScRsp)
+    public PacketBuyGoodsScRsp(BuyGoodsCsReq req, ShopBuyResult result) : base(CmdIds.BuyGoodsScRsp)
     {
         var proto = new BuyGoodsScRsp
         {
-            Retcode = (uint)retcode,
+            Retcode = (uint)result.Retcode,
             ShopId = req.ShopId,
-            GoodsBuyTimes = retcode == Retcode.RetSucc ? req.GoodsNum : 0,
+            GoodsBuyTimes = result.GoodsBuyTimes,
             GoodsId = req.GoodsId,
             ReturnItemList = new ItemList
             {
-                ItemList_ = { items.Select(item => item.ToProto()) }
+                ItemList_ = { result.Items.Select(item => item.ToProto()) }
             }
         };
 

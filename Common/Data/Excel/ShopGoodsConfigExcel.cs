@@ -14,8 +14,12 @@ public partial class ShopGoodsConfigExcel : ExcelResource
     public int ItemCount { get; set; }
     public List<int> CurrencyList { get; set; } = [];
     public List<int> CurrencyCostList { get; set; } = [];
-
     [JsonIgnore] public Dictionary<int, int> CostList { get; set; } = [];
+
+    // Appended after all existing MemoryPack-serialized members (including CostList) so an older
+    // Resource.bin still deserializes (with default 0 / null).
+    public int LimitTimes { get; set; }
+    public string RefreshType { get; set; } = "";
 
     public override int GetId()
     {

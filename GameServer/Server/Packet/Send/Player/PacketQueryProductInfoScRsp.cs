@@ -1,6 +1,8 @@
 using March7thHoney.Data;
 using March7thHoney.Data.Custom;
+using March7thHoney.Database;
 using March7thHoney.Database.Player;
+using March7thHoney.Database.Shop;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
@@ -26,6 +28,9 @@ public class PacketQueryProductInfoScRsp : BasePacket
     private static List<Product> BuildProducts(QueryProductInfoConfig config, PlayerData? playerData)
     {
         var now = ServerTimeProvider.GetServerUnixSec(playerData);
+        var shopData = playerData == null ? null : DatabaseHelper.Instance?.GetInstance<ShopData>(playerData.Uid);
+        if (shopData != null && playerData != null)
+            RechargeService.EnsureDoubleBonusWindow(shopData, playerData, playerData.Uid);
         List<Product> products = [];
         foreach (var item in config.ProductList)
         {
@@ -33,19 +38,27 @@ public class PacketQueryProductInfoScRsp : BasePacket
             if (!IsGiftTypeEnabled(giftType)) continue;
             if (item.EndTime > 0 && item.EndTime <= now) continue;
 
+            var productKey = item.ProductId ?? "";
+            var buyTimes = giftType == ProductGiftType.ProductGiftCoin
+                ? (uint)Math.Max(0, shopData?.RechargeProductBuyTimes.GetValueOrDefault(productKey) ?? 0)
+                : item.BuyTimes;
+            var doubleReward = giftType == ProductGiftType.ProductGiftCoin
+                ? buyTimes == 0
+                : item.DoubleReward;
+
             products.Add(new Product
             {
                 MaxBuyTimes = item.MaxBuyTimes,
                 GiftVersion = item.GiftVersion,
-                BuyTimes = item.BuyTimes,
+                BuyTimes = buyTimes,
                 BeginTime = item.BeginTime,
                 EndTime = item.EndTime,
                 GiftType = giftType,
                 // The 4.5v3 proto names these two strings the wrong way round: the client reads its
                 // ProductID (the RechargeConfig key) from price_tier.
-                PriceTier = item.ProductId ?? "",
+                PriceTier = productKey,
                 ProductId = item.PriceTier ?? "",
-                DoubleReward = item.DoubleReward
+                DoubleReward = doubleReward
             });
         }
 

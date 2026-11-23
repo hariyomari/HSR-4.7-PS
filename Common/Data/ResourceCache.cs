@@ -159,7 +159,15 @@ public static class ResourceCache
         new(null,
             () => GameData.EquipmentConfigData.Values
                 .Any(config => config.Release && (config.ExpProvide <= 0 || config.CoinCost <= 0)),
-            "EquipmentConfigData is missing Light Cone EXP/cost fields.")
+            "EquipmentConfigData is missing Light Cone EXP/cost fields."),
+
+        new("CityShopConfig.json",
+            () => GameData.CityShopConfigData.Count == 0 ||
+                  GameData.CityShopRewardListData.Count == 0 ||
+                  (GameData.ShopConfigData.Count > 0 &&
+                   GameData.ShopConfigData.Values.SelectMany(shop => shop.Goods)
+                       .All(goods => goods.LimitTimes == 0 && string.IsNullOrEmpty(goods.RefreshType))),
+            "CityShop tables and ShopGoodsConfig LimitTimes/RefreshType fields are missing.")
     ];
 
     private static bool ValidateLoadedCache()

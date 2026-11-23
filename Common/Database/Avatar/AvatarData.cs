@@ -179,7 +179,7 @@ public partial class FormalAvatarInfo : BaseAvatarInfo
 
         if (GetCurPathInfo().EquipId != 0) proto.EquipmentUniqueId = (uint)GetCurPathInfo().EquipId;
 
-        for (var i = 0; i < Promotion; i++)
+        for (var i = 0; i <= Promotion; i++)
             if (HasTakenReward(i))
                 proto.HasTakenPromotionRewardList.Add((uint)i);
 
