@@ -101,24 +101,10 @@ public static class PlayerDataEditor
         data.Stamina = edit.Stamina;
         data.StaminaReserve = edit.StaminaReserve;
         data.MonthCardExpireTime = edit.MonthCardExpireTime;
-        if (edit.Gender is Gender.Man or Gender.Woman && edit.Gender != data.CurrentGender) await SetGender(player, edit.Gender);
+        // The game's own switch: the path is kept and the model paired. Teams hold the base id 8001, so they follow.
+        if (edit.Gender is Gender.Man or Gender.Woman && edit.Gender != data.CurrentGender) await player.SetHeroGender(edit.Gender);
         // Missions gated on the new level open as they would on a level-up in play.
         if (levelledUp) await player.OnLevelUp();
-    }
-
-    // The game's own switch (path kept, model paired), then the teams follow the new Trailblazer id.
-    private static async ValueTask SetGender(PlayerInstance player, Gender gender)
-    {
-        await player.SetHeroGender(gender);
-        var heroId = player.Data.CurBasicType;
-        foreach (var lineup in player.LineupManager!.Data.Lineups.Values)
-        foreach (var slot in lineup.BaseAvatars ?? [])
-        {
-            if (slot.SpecialAvatarId != 0 ||
-                GameData.MultiplePathAvatarConfigData.GetValueOrDefault(slot.BaseAvatarId)?.BaseAvatarID != 8001) continue;
-            if (lineup.LeaderAvatarId == slot.BaseAvatarId) lineup.LeaderAvatarId = heroId;
-            slot.BaseAvatarId = heroId;
-        }
     }
 
     public static void SetPosition(PlayerInstance player, int entryId)

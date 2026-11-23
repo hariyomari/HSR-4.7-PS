@@ -15,6 +15,7 @@ using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Mission;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Proto;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.Util;
 using March7thHoney.WebServer;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -62,17 +63,22 @@ internal static class PlayerEditorRegression
                 stale.StatusCode == HttpStatusCode.Conflict && level.StatusCode == HttpStatusCode.BadRequest &&
                 name.StatusCode == HttpStatusCode.BadRequest && database.GetInstance<PlayerData>(Uid) is { Name: "Edited", Scoin: 123456 });
 
-        var genderVersion = (await Data(await client.GetAsync(basePath + "/profile")))!["version"]!.GetValue<string>();
-        using (var response = await client.PutAsJsonAsync(basePath + "/profile", Profile("Edited", 40, 123456, 3, genderVersion, "man")))
+        // Teams hold the Trailblazer's base id 8001 whatever the gender; only the hero's path id is paired.
+        foreach (var (gender, expected, parity) in new[] { ("man", Gender.Man, 1), ("woman", Gender.Woman, 0) })
         {
+            var genderVersion = (await Data(await client.GetAsync(basePath + "/profile")))!["version"]!.GetValue<string>();
+            using var response = await client.PutAsJsonAsync(basePath + "/profile", Profile("Edited", 40, 123456, 3, genderVersion, gender));
             var loaded = await Load();
             var heroSlots = loaded.LineupManager!.Data.Lineups.Values.SelectMany(lineup => lineup.BaseAvatars ?? [])
-                .Where(slot => slot.SpecialAvatarId == 0 && GameData.MultiplePathAvatarConfigData.GetValueOrDefault(slot.BaseAvatarId)?.BaseAvatarID == 8001)
+                .Where(slot => slot.SpecialAvatarId == 0 && AvatarManager.IsHeroPath(slot.BaseAvatarId))
                 .Select(slot => slot.BaseAvatarId).ToList();
-            check("editor: switching the Trailblazer to Caelus pairs the model and the teams",
-                response.StatusCode == HttpStatusCode.OK && loaded.Data is { CurrentGender: Gender.Man, IsGenderSet: true } &&
-                loaded.Data.CurBasicType % 2 == 1 && loaded.AvatarManager!.GetHero()?.AvatarId == loaded.Data.CurBasicType &&
-                heroSlots.Count > 0 && heroSlots.All(id => id == loaded.Data.CurBasicType));
+            var teamView = (await Data(await client.GetAsync(basePath + "/lineups")))!["lineups"]!.AsArray()
+                .SelectMany(lineup => lineup!["slots"]!.AsArray()).Select(slot => slot!["base_avatar_id"]!.GetValue<int>()).ToList();
+            check($"editor: switching the Trailblazer to {gender} pairs the hero path and leaves team slots on 8001",
+                response.StatusCode == HttpStatusCode.OK && loaded.Data.CurrentGender == expected &&
+                loaded.Data.CurBasicType % 2 == parity && loaded.AvatarManager!.GetHero()?.AvatarId == loaded.Data.CurBasicType &&
+                heroSlots.Count > 0 && heroSlots.All(id => id == 8001) && teamView.Contains(8001) &&
+                !loaded.AvatarManager.IsHeroGenderPending);
         }
 
         // --- characters ------------------------------------------------------------------------------------------
