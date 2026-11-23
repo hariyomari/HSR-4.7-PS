@@ -47,8 +47,9 @@ internal partial class AccountSnapshotJsonContext : JsonSerializerContext;
 
 /// <summary>
 ///     Copies a uid's whole gameplay save to another uid, or to and from named snapshot files under
-///     <c>Config/Snapshots</c>. Accounts (credentials, role, tokens, bans) are never copied. Every copy goes through
-///     the generated persistence round trip, so the target never shares an object with the source.
+///     <c>Snapshots/</c> next to the database (default <c>Config/Database/Snapshots</c>): they are player save data
+///     and share its location and handling. Accounts (credentials, role, tokens, bans) are never copied. Every copy
+///     goes through the generated persistence round trip, so the target never shares an object with the source.
 /// </summary>
 public static partial class AccountSnapshotService
 {
@@ -58,7 +59,7 @@ public static partial class AccountSnapshotService
     // Friendships and support-borrower rewards name other players' uids; a copied save starts without them.
     private static readonly HashSet<Type> SocialTables = [typeof(FriendData), typeof(AssistRewardData)];
 
-    public static string SnapshotDirectory => Path.Combine(ConfigManager.Config.Path.ConfigPath, "Snapshots");
+    public static string SnapshotDirectory => Path.Combine(ConfigManager.Config.Path.DatabasePath, "Snapshots");
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
     private static partial Regex SnapshotIdPattern();

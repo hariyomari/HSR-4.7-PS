@@ -390,9 +390,6 @@ CLAUDE.md
 # Local SQLite databases
 Config/Database/
 
-# Admin save snapshots (player data)
-Config/Snapshots/
-
 # Local environment files
 .env
 .env.*

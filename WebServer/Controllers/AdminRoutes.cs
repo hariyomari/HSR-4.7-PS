@@ -41,6 +41,7 @@ public static partial class AdminRoutes
         app.MapPost("/admin/api/registration-identity-limit", SetRegistrationIdentityLimit);
 
         MapAccountRoutes(app);
+        MapStoryRoutes(app);
         MapPlayerRoutes(app);
         MapMailRoutes(app);
         MapAnnounceRoutes(app);

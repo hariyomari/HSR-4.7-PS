@@ -21,7 +21,8 @@ public static partial class AdminPageScripts
         mode: "detail",
         tab: "profile",
         player: { uid: null, data: null, loading: false, error: "" },
-        mailbox: { uid: null, data: null, loading: false, error: "" }
+        mailbox: { uid: null, data: null, loading: false, error: "" },
+        storyCatalog: null
       };
 
       registerModule({
@@ -116,6 +117,7 @@ public static partial class AdminPageScripts
                   ${option("online", t("accounts.sort.online"), accountsState.sort)}
                 </select>
                 <button id="acc-new" class="btn primary" type="button">${t("accounts.new")}</button>
+                <button id="acc-story" class="btn ghost" type="button">${t("story.create")}</button>
                 <button id="acc-snapshots" class="btn ghost" type="button">${t("snapshots.open")}</button>
                 <button id="acc-export" class="btn ghost" type="button" title="${t("accounts.export_hint")}">${t("accounts.export")}</button>
               </div>
@@ -151,6 +153,7 @@ public static partial class AdminPageScripts
         });
         $("#acc-export").addEventListener("click", exportAccountsCsv);
         $("#acc-snapshots").addEventListener("click", () => openSnapshotsDialog());
+        $("#acc-story").addEventListener("click", () => openStoryDialog(null));
       }
 
       function renderAccountResults() {
@@ -660,6 +663,13 @@ public static partial class AdminPageScripts
             </div>
             <div class="danger-card">
               <div>
+                <strong>${t("story.jump_title")}</strong>
+                <p class="muted">${t("story.jump_message")}</p>
+              </div>
+              <button class="btn danger" type="button" id="acc-story-jump">${t("story.jump")}</button>
+            </div>
+            <div class="danger-card">
+              <div>
                 <strong>${t("accounts.reset_title")}</strong>
                 <p class="muted">${t("accounts.reset_message")}</p>
               </div>
@@ -874,6 +884,8 @@ public static partial class AdminPageScripts
             }, id => t("snapshots.saved", { id }));
           });
         }
+        const storyJumpButton = $("#acc-story-jump", host);
+        if (storyJumpButton) storyJumpButton.addEventListener("click", () => openStoryDialog(account));
         const restoreButton = $("#acc-snapshot-restore", host);
         if (restoreButton) {
           restoreButton.addEventListener("click", async () => {
@@ -1000,24 +1012,24 @@ public static partial class AdminPageScripts
           <h3>${t("snapshots.title")}</h3>
           <p class="modal-message">${t("snapshots.hint")}</p>
           ${snapshots.length ? html`
-            <div class="table-wrap short">
-              <table>
-                <thead><tr><th>${t("common.name")}</th><th class="w-uid">${t("snapshots.source")}</th><th class="w-sm">${t("common.level")}</th><th>${t("snapshots.mission")}</th><th>${t("snapshots.created")}</th><th></th></tr></thead>
-                <tbody>${snapshots.map(snapshot => html`
-                  <tr>
-                    <td><strong>${snapshot.name}</strong><div class="muted small mono">${snapshot.id}</div>${snapshot.description ? html`<div class="muted small">${snapshot.description}</div>` : ""}</td>
-                    <td class="mono">${snapshot.source_uid}</td>
-                    <td>${snapshot.player_level}</td>
-                    <td>${snapshot.frontier_main_mission ? handbook.label("MainMission", snapshot.frontier_main_mission) : "-"}<div class="muted small">${t("snapshots.floor", { floor: snapshot.floor_id })}</div></td>
-                    <td>${fmt.unix(snapshot.created_at)}<div class="muted small">${snapshot.game_version}</div></td>
-                    <td class="row-actions">
+            <div class="mail-list">
+              ${snapshots.map(snapshot => html`
+                <article class="mail-item">
+                  <div class="mail-head">
+                    <div>
+                      <strong>${snapshot.name}</strong>
+                      <div class="muted small">${t("snapshots.meta", { id: snapshot.id, uid: snapshot.source_uid, level: snapshot.player_level, floor: snapshot.floor_id, time: fmt.unix(snapshot.created_at), version: snapshot.game_version })}</div>
+                      ${snapshot.frontier_main_mission ? html`<div class="muted small">${t("snapshots.mission")}: ${handbook.label("MainMission", snapshot.frontier_main_mission)}</div>` : ""}
+                    </div>
+                    <div class="row">
                       <button class="btn primary small" type="button" data-snapshot-spawn="${snapshot.id}">${t("snapshots.spawn")}</button>
                       <button class="btn danger small" type="button" data-snapshot-delete="${snapshot.id}">${t("common.delete")}</button>
-                    </td>
-                  </tr>`)}</tbody>
-              </table>
+                    </div>
+                  </div>
+                  ${snapshot.description ? html`<p class="mail-content">${snapshot.description}</p>` : ""}
+                </article>`)}
             </div>` : emptyState(t("snapshots.empty"))}
-          <div class="modal-actions"><button class="btn ghost" type="button" data-snapshot-close>${t("common.cancel")}</button></div>`);
+          <div class="modal-actions"><button class="btn ghost" type="button" data-snapshot-close>${t("accounts.close")}</button></div>`);
         $("[data-snapshot-close]", modal.element).addEventListener("click", () => modal.close());
         on(modal.element, "[data-snapshot-spawn]", "click", async event => {
           const snapshot = snapshots.find(item => item.id === event.currentTarget.dataset.snapshotSpawn);
@@ -1038,6 +1050,198 @@ public static partial class AdminPageScripts
           await openSnapshotsDialog();
         });
         handbook.ensureDefault();
+      }
+
+      // ------------------------------------------------------- story checkpoints
+      async function loadStoryCatalog() {
+        if (!accountsState.storyCatalog) accountsState.storyCatalog = await api("/admin/api/story/catalog");
+        return accountsState.storyCatalog;
+      }
+
+      function storyMissionLabel(mission) {
+        const name = handbook.name("MainMission", mission.id);
+        return [mission.id, name, mission.chapter_name].filter(Boolean).join(" · ");
+      }
+
+      // Creates a new account at a story checkpoint, or (account set) resets that account to one.
+      async function openStoryDialog(account) {
+        const modal = accountModal(html`<h3>${t("story.title")}</h3>${loadingState()}`);
+        let catalog;
+        try {
+          catalog = await loadStoryCatalog();
+          await handbook.ensureDefault();
+        } catch (error) {
+          modal.close();
+          toast(errorMessage(error), "bad");
+          return;
+        }
+
+        const missions = new Map();
+        for (const version of catalog.versions) for (const mission of version.main_missions) missions.set(mission.id, mission);
+        const form = { version: catalog.versions[0]?.version || "", query: "", main: 0, sub: 0 };
+
+        modal.element.innerHTML = String(html`
+          <h3>${account ? t("story.jump_title_for", { user: account.username, uid: account.uid }) : t("story.title")}</h3>
+          <p class="modal-message">${account ? t("story.jump_hint") : t("story.hint")}</p>
+          <div class="field">
+            <span>${t("story.presets")}</span>
+            <span class="chip-list">${catalog.presets.map(preset => html`<button type="button" class="chip clickable" data-story-preset="${preset.id}">${t(`story.preset.${preset.id}`)}</button>`)}</span>
+          </div>
+          <form id="story-form" class="form-grid">
+            <label class="field"><span>${t("story.version")}</span><select id="story-version">${catalog.versions.map(version => option(version.version, `${version.version} · ${version.chapters.join(" / ")}`, form.version))}</select></label>
+            <label class="field"><span>${t("story.search")}</span><input id="story-search" type="search" placeholder="${t("story.search_placeholder")}" autocomplete="off"></label>
+            <label class="field wide"><span>${t("story.main_mission")}</span><select id="story-main" required></select></label>
+            <label class="field wide"><span>${t("story.sub_mission")}</span><select id="story-sub"></select></label>
+            ${account ? "" : html`
+              <label class="field"><span>${t("common.username")}</span><input id="story-username" placeholder="${t("accounts.auto_generate")}" autocomplete="off" spellcheck="false"></label>
+              <label class="field">
+                <span>${t("common.password")}</span>
+                <div class="input-row">
+                  <input id="story-password" placeholder="${t("accounts.auto_generate")}" autocomplete="new-password" spellcheck="false">
+                  <button class="btn ghost small" type="button" id="story-generate">${t("accounts.generate")}</button>
+                </div>
+              </label>`}
+            <label class="field"><span>${t("story.stop_mode")}</span><select id="story-stop">${option("before", t("story.stop.before"), "before")}${option("after", t("story.stop.after"), "before")}</select></label>
+            <label class="field"><span>${t("story.gender")}</span><select id="story-gender">${option("Woman", t("story.gender.woman"), "Woman")}${option("Man", t("story.gender.man"), "Woman")}</select></label>
+            <label class="field"><span>${t("story.name")}</span><input id="story-name" maxlength="32" placeholder="${t("story.name_placeholder")}" autocomplete="off"></label>
+            <label class="field"><span>${t("story.progression")}</span><select id="story-progression">${option("test_ready", t("story.progression.test_ready"), "test_ready")}${option("live_like", t("story.progression.live_like"), "test_ready")}</select></label>
+            <label class="field"><span>${t("story.tutorials")}</span><select id="story-tutorials">${option("finish_prior", t("story.tutorials.finish_prior"), "finish_prior")}${option("keep_open", t("story.tutorials.keep_open"), "finish_prior")}${option("finish_all", t("story.tutorials.finish_all"), "finish_prior")}</select></label>
+            <label class="field"><span>${t("story.teleports")}</span><select id="story-teleports">${option("reached_planes", t("story.teleports.reached_planes"), "reached_planes")}${option("all", t("story.teleports.all"), "reached_planes")}${option("none", t("story.teleports.none"), "reached_planes")}</select></label>
+            <div class="field"><span>${t("story.extras")}</span>${toggleSwitch("story-currency", false, t("story.grant_currency"))}${toggleSwitch("story-side", false, t("story.include_side"))}</div>
+            ${account ? html`<label class="field"><span>${t("common.type_to_confirm", { text: "RESET" })}</span><input id="story-confirm" autocomplete="off"></label>` : ""}
+            <div id="story-result" class="wide"></div>
+            <div class="modal-actions wide">
+              <button class="btn ghost" type="button" data-story-close>${t("accounts.close")}</button>
+              <button class="btn ${account ? "danger" : "primary"}" type="submit" id="story-submit" ${account ? "disabled" : ""}>${account ? t("story.jump") : t("story.provision")}</button>
+            </div>
+          </form>`);
+
+        const root = modal.element;
+        const mainSelect = $("#story-main", root);
+        const subSelect = $("#story-sub", root);
+
+        function renderMains() {
+          const query = form.query.trim().toLowerCase();
+          const rows = query
+            ? [...missions.values()].filter(mission => storyMissionLabel(mission).toLowerCase().includes(query)).slice(0, 200)
+            : catalog.versions.find(version => version.version === form.version)?.main_missions || [];
+          if (!rows.some(mission => mission.id === form.main)) form.main = rows[0]?.id || 0;
+          mainSelect.innerHTML = String(html`${rows.map(mission => option(mission.id, `${query ? `${mission.version} · ` : ""}${storyMissionLabel(mission)}`, form.main))}`);
+          renderSubs();
+        }
+
+        function renderSubs() {
+          const mission = missions.get(form.main);
+          const subs = mission?.sub_missions || [];
+          if (!subs.some(sub => sub.id === form.sub)) form.sub = 0;
+          subSelect.innerHTML = String(html`${option(0, t("story.no_sub"), form.sub)}${subs.map(sub => option(sub.id, `${sub.id} · ${sub.finish_type}${sub.way_point_floor_id ? ` · ${t("snapshots.floor", { floor: sub.way_point_floor_id })}` : ""}`, form.sub))}`);
+        }
+
+        renderMains();
+        $("#story-version", root).addEventListener("change", event => {
+          form.version = event.currentTarget.value;
+          renderMains();
+        });
+        $("#story-search", root).addEventListener("input", event => {
+          form.query = event.currentTarget.value;
+          renderMains();
+        });
+        mainSelect.addEventListener("change", event => {
+          form.main = Number(event.currentTarget.value);
+          renderSubs();
+        });
+        subSelect.addEventListener("change", event => {
+          form.sub = Number(event.currentTarget.value);
+        });
+        on(root, "[data-story-preset]", "click", event => {
+          const preset = catalog.presets.find(item => item.id === event.currentTarget.dataset.storyPreset);
+          const mission = missions.get(preset.main_mission_id);
+          form.query = "";
+          $("#story-search", root).value = "";
+          if (mission) {
+            form.version = mission.version;
+            $("#story-version", root).value = mission.version;
+          }
+          form.main = preset.main_mission_id;
+          form.sub = preset.sub_mission_id;
+          renderMains();
+          mainSelect.value = String(form.main);
+          renderSubs();
+          subSelect.value = String(form.sub);
+          $("#story-stop", root).value = preset.stop_mode;
+          for (const chip of $$("[data-story-preset]", root)) chip.classList.toggle("accent", chip === event.currentTarget);
+        });
+        $("[data-story-close]", root).addEventListener("click", () => modal.close());
+        $("#story-generate", root)?.addEventListener("click", () => {
+          $("#story-password", root).value = generatePassword();
+        });
+        $("#story-confirm", root)?.addEventListener("input", event => {
+          $("#story-submit", root).disabled = event.currentTarget.value.trim() !== "RESET";
+        });
+
+        $("#story-form", root).addEventListener("submit", async event => {
+          event.preventDefault();
+          if (!form.main) {
+            toast(t("story.pick_mission"), "bad");
+            return;
+          }
+          const body = {
+            target_main_mission_id: form.main,
+            target_sub_mission_id: form.sub || null,
+            stop_mode: $("#story-stop", root).value,
+            trailblazer_gender: $("#story-gender", root).value,
+            trailblazer_name: $("#story-name", root).value.trim() || null,
+            progression_preset: $("#story-progression", root).value,
+            tutorials_mode: $("#story-tutorials", root).value,
+            teleports_mode: $("#story-teleports", root).value,
+            grant_test_currency: $("#story-currency", root).checked,
+            include_side_missions: $("#story-side", root).checked
+          };
+          if (!account) {
+            body.username = $("#story-username", root).value.trim() || null;
+            body.password = $("#story-password", root).value || null;
+          }
+          const result = $("#story-result", root);
+          result.innerHTML = String(loadingState(t("story.running")));
+          const data = await run($("#story-submit", root), () => api(account ? `/admin/api/accounts/${account.uid}/provision-story` : "/admin/api/accounts/provision-story", { method: "POST", body }));
+          if (!data) {
+            result.innerHTML = "";
+            return;
+          }
+          result.innerHTML = String(storyReport(data));
+          accountsState.mode = "detail";
+          accountsState.tab = "profile";
+          await refreshAccounts(data.account.uid);
+        });
+      }
+
+      function storyReport(data) {
+        const report = data.report;
+        const problems = report.stalled_missions.length + report.warnings.length;
+        return html`
+          <div class="notice ${report.stalled_missions.length ? "warn" : "good"} stack">
+            <strong>${t("story.done", { user: data.account.username, uid: data.account.uid })}</strong>
+            ${data.generated_password ? html`<div>${t("accounts.test_ready_password", { password: data.generated_password })}</div>` : ""}
+            <div class="kv-grid">
+              ${kv(t("story.report.target"), report.target_sub_mission_id ? `${report.target_main_mission_id} / ${report.target_sub_mission_id}` : report.target_main_mission_id, { mono: true })}
+              ${kv(t("story.report.tracking"), handbook.label("MainMission", report.tracking_main_mission_id))}
+              ${kv(t("story.report.missions"), t("story.report.missions_value", { mains: report.missions_finished, subs: report.sub_missions_finished }))}
+              ${kv(t("story.report.spawn"), `${report.spawn_plane_id} / ${report.spawn_floor_id} / ${report.spawn_entry_id}`, { mono: true })}
+              ${kv(t("story.report.teleports"), report.teleports_unlocked)}
+              ${kv(t("story.report.tutorials"), report.tutorials_marked_finished)}
+              ${kv(t("story.report.level"), `${report.player_level} / ${report.world_level}`)}
+              ${kv(t("story.report.gender"), t(report.gender_set ? "story.report.gender_set" : "story.report.gender_unset"))}
+              ${kv(t("story.report.lineup"), report.lineup.map(id => handbook.label("Avatar", id)).join(", ") || t("common.none"), { mono: true })}
+              ${kv(t("story.report.elapsed"), `${fmt.number(report.elapsed_ms)} ms`)}
+            </div>
+            ${problems || report.bypassed_gates.length ? html`
+              <details>
+                <summary>${t("story.report.details", { stalled: report.stalled_missions.length, warnings: report.warnings.length, bypassed: report.bypassed_gates.length })}</summary>
+                ${report.stalled_missions.length ? html`<div><strong>${t("story.report.stalled")}</strong> <span class="mono">${report.stalled_missions.join(", ")}</span></div>` : ""}
+                ${report.warnings.length ? html`<ul>${report.warnings.map(warning => html`<li>${warning}</li>`)}</ul>` : ""}
+                ${report.bypassed_gates.length ? html`<div><strong>${t("story.report.bypassed")}</strong><ul>${report.bypassed_gates.map(gate => html`<li class="mono">${gate}</li>`)}</ul></div>` : ""}
+              </details>` : ""}
+          </div>`;
       }
 
       async function saveAccount(account, button, payload, successMessage) {

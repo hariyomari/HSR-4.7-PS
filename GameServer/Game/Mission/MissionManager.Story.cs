@@ -158,6 +158,84 @@ public partial class MissionManager
         return parts.Count == 0 ? "no gates" : string.Join(", ", parts);
     }
 
+    /// <summary>The take/begin gates of <paramref name="mainId" /> the player does not meet yet, described.</summary>
+    public List<string> UnmetGateList(int mainId)
+    {
+        return GameData.MainMissionData.TryGetValue(mainId, out var excel) ? UnmetGates(excel) : [];
+    }
+
+    /// <summary>
+    ///     Every main mission that has to be finished before <paramref name="mainId" /> can start, root first and
+    ///     <paramref name="mainId" /> excluded. Edges are the story graph's (MultiSequence take on a Main row, and
+    ///     NextTrackMainMission); <paramref name="includeSide" /> also follows MultiSequence takes on non-Main rows.
+    ///     A chain that stops short of the story root (a gap in TakeParam) is bridged with the mission listed just
+    ///     before it in Config/Custom/WarpStoryGates.json.
+    /// </summary>
+    public static List<int> StoryPrerequisites(int mainId, bool includeSide)
+    {
+        var index = StoryIndex.Current();
+        var gateOrder = GameData.WarpStoryGatesConfig.Gates.SelectMany(gate => gate.MainMissions)
+            .Where(IsMainType).Distinct().ToList();
+        var root = gateOrder.FirstOrDefault();
+
+        var predecessors = new Dictionary<int, HashSet<int>>();
+        var pending = new Stack<int>([mainId]);
+        while (pending.Count > 0)
+        {
+            var id = pending.Pop();
+            if (predecessors.ContainsKey(id)) continue;
+            var set = new HashSet<int>(index.PreviousOf(id));
+            if (includeSide && GameData.MainMissionData.TryGetValue(id, out var excel))
+                foreach (var param in excel.TakeParam)
+                    if (param.Type == MissionTakeTypeEnum.MultiSequence && param.Value != id &&
+                        GameData.MainMissionData.ContainsKey(param.Value))
+                        set.Add(param.Value);
+
+            if (set.Count == 0 && id != root)
+            {
+                var position = gateOrder.IndexOf(id);
+                if (position > 0) set.Add(gateOrder[position - 1]);
+            }
+
+            predecessors[id] = set;
+            foreach (var previous in set) pending.Push(previous);
+        }
+
+        // Kahn's order over the collected subgraph; ties (and any cycle remainder) fall back to chain depth.
+        int Rank(int id) => index.ChainDepth(id);
+        var remaining = predecessors.ToDictionary(pair => pair.Key, pair => new HashSet<int>(pair.Value));
+        var ordered = new List<int>();
+        while (remaining.Count > 0)
+        {
+            var ready = remaining.Where(pair => pair.Value.Count == 0).Select(pair => pair.Key)
+                .OrderBy(Rank).ThenBy(id => id).ToList();
+            if (ready.Count == 0)
+                ready = [remaining.Keys.OrderBy(Rank).ThenBy(id => id).First()];
+            foreach (var id in ready)
+            {
+                remaining.Remove(id);
+                ordered.Add(id);
+                foreach (var set in remaining.Values) set.Remove(id);
+            }
+        }
+
+        ordered.Remove(mainId);
+        return ordered;
+    }
+
+    /// <summary>
+    ///     The earliest story mission of <paramref name="mains" />: the Main row with the shortest chain. Manual-take
+    ///     rows (opened by an event, not by the story) have no chain and are skipped while another row qualifies.
+    /// </summary>
+    public static int StoryEntryMission(IEnumerable<int> mains)
+    {
+        var index = StoryIndex.Current();
+        var candidates = mains.Where(IsMainType).ToList();
+        var chained = candidates.Where(id => GameData.MainMissionData[id].TakeParam
+            .Any(param => param.Type != MissionTakeTypeEnum.Manual)).ToList();
+        return (chained.Count > 0 ? chained : candidates).OrderBy(index.ChainDepth).ThenBy(id => id).FirstOrDefault();
+    }
+
     private List<string> UnmetGates(MainMissionExcel excel)
     {
         var unmet = new List<string>();
@@ -334,6 +412,9 @@ file sealed class StoryIndex
 
         return best;
     }
+
+    public IReadOnlyCollection<int> PreviousOf(int id) =>
+        _previous.TryGetValue(id, out var list) ? list : [];
 
     private int TrackDepth(int id) => DepthOf(_trackDepth, id, trackOnly: true);
 

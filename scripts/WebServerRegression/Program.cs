@@ -80,6 +80,15 @@ if (serve)
     GameData.BannerHistoryConfig = warpHistory;
     GameData.WarpItemNamesConfig =
         ResourceManager.LoadCustomFile<WarpItemNamesConfig>("Warp item names", "WarpItemNames") ?? new WarpItemNamesConfig();
+    GameData.WarpStoryGatesConfig =
+        ResourceManager.LoadCustomFile<WarpStoryGatesConfig>("Warp story gates", "WarpStoryGates") ?? new WarpStoryGatesConfig();
+    // Story dialog: --with-resources reads Config/Resource.bin (never writes it) so a checkpoint replays the real
+    // story into this scratch database.
+    if (args.Contains("--with-resources"))
+    {
+        config.Path.ResourcePath = Path.Combine(scratch, "no-raw-resource-json");
+        if (!ResourceCache.LoadCache()) throw new InvalidOperationException("Config/Resource.bin could not be loaded");
+    }
     Console.WriteLine($"UI fixture: {address}/admin/index.html (key: local-web-regression-only)");
     Console.WriteLine($"UI fixture: {address}/player/index.html (uid: {fixtureUid}, password: {fixturePassword})");
     await app.WaitForShutdownAsync();
@@ -308,7 +317,8 @@ for (var i = 0; i < 3; i++)
 await WarpChecks.Run(client, address, Check);
 await ProgressionRewardSettingsChecks.Run(client, Check);
 await SecuritySessionChecks.Run(client, fixtureUid, fixturePassword, Check);
-await SnapshotChecks.Run(client, scratch, Check);
+await SnapshotChecks.Run(client, Check);
+await StoryChecks.Run(client, address, Check);
 Check("temporary command sessions are removed", MuipManager.Sessions.Count == 0);
 await app.StopAsync();
 Console.WriteLine($"Regression failures: {failures.Count}");

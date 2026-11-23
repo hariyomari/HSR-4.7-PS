@@ -164,7 +164,7 @@ public sealed record WarpPhaseView(string key, string version, int phase, long s
 public sealed record WarpPoolData(
     List<WarpPhaseView> phases, List<WarpBannerView> banners, Dictionary<string, Dictionary<int, string>> names);
 
-// Account clone & named save snapshots (Config/Snapshots)
+// Account clone & named save snapshots (Snapshots/ next to the database)
 public sealed record SnapshotView(
     string id, string name, string description, long created_at, int source_uid, string game_version,
     int player_level, int frontier_main_mission, int floor_id, int table_count);
@@ -177,3 +177,26 @@ public sealed record DeletedSnapshot(string id);
 
 // A test account created from another save. generated_password: set only when the request left the password empty.
 public sealed record TestAccountData(AccountSummary account, string? generated_password);
+
+// Story checkpoints. Mission names are not on the server (no TextMap); the console resolves them from the handbook.
+public sealed record StorySubMissionView(int id, string finish_type, int way_point_floor_id, int way_point_group_id);
+
+// chapter_id / chapter_name: the WarpStoryGates chapter gate listing the mission, else the version's single chapter.
+public sealed record StoryMainMissionView(
+    int id, int chapter_id, string chapter_name, string version, string type, int floor_id,
+    List<StorySubMissionView> sub_missions);
+
+public sealed record StoryVersionView(string version, List<string> chapters, List<StoryMainMissionView> main_missions);
+
+public sealed record StoryPresetView(string id, int main_mission_id, int sub_mission_id, string stop_mode);
+
+public sealed record StoryCatalogData(List<StoryVersionView> versions, List<StoryPresetView> presets);
+
+public sealed record StoryProvisionReportView(
+    int target_main_mission_id, int target_sub_mission_id, int tracking_main_mission_id, int prerequisite_count,
+    int missions_finished, int sub_missions_finished, int teleports_unlocked, int tutorials_marked_finished,
+    int prop_states_restored, int spawn_plane_id, int spawn_floor_id, int spawn_entry_id, bool gender_set,
+    int player_level, int world_level, List<int> lineup, List<string> bypassed_gates, List<int> stalled_missions,
+    List<string> warnings, bool was_online, long elapsed_ms);
+
+public sealed record StoryProvisionData(AccountSummary account, string? generated_password, StoryProvisionReportView report);

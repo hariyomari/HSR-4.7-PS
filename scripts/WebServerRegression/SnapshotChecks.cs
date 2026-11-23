@@ -12,27 +12,12 @@ using March7thHoney.Util;
 using Microsoft.Data.Sqlite;
 
 // Account clone and named save snapshots through the admin API: deep-copy isolation in memory and in SQLite,
-// snapshot CRUD, spawn/restore, and id validation. Snapshot files go to a scratch Config directory.
+// snapshot CRUD, spawn/restore, and id validation. Snapshot files live next to the scratch database.
 internal static class SnapshotChecks
 {
     private const int SourceUid = 20001;
 
-    public static async Task Run(HttpClient client, string scratch, Action<string, bool> check)
-    {
-        var config = ConfigManager.Config;
-        var savedConfigPath = config.Path.ConfigPath;
-        config.Path.ConfigPath = Path.Combine(scratch, "SnapshotConfig");
-        try
-        {
-            await Scenarios(client, check);
-        }
-        finally
-        {
-            config.Path.ConfigPath = savedConfigPath;
-        }
-    }
-
-    private static async Task Scenarios(HttpClient client, Action<string, bool> check)
+    public static async Task Run(HttpClient client, Action<string, bool> check)
     {
         var database = DatabaseHelper.Instance!;
         AccountHelper.CreateAccount("snapshot-source", "snapshot-source@example.invalid", "source-password-1", SourceUid, null);
@@ -77,7 +62,7 @@ internal static class SnapshotChecks
             database.GetInstance<FriendData>(cloneUid) is not { FriendList.Count: > 0 });
 
         clonePlayer!.Scoin = 1;
-        cloneMission.SetMainMissionStatus(1010002, MissionPhaseEnum.Finish);
+        cloneMission!.SetMainMissionStatus(1010002, MissionPhaseEnum.Finish);
         cloneMission.SetMainMissionStatus(1020101, MissionPhaseEnum.Accept);
         DatabaseHelper.MarkDirty(cloneUid);
         database.SaveUidData(cloneUid);
@@ -115,7 +100,7 @@ internal static class SnapshotChecks
                 snapshot.GetProperty("frontier_main_mission").GetInt32() == 1010002 &&
                 snapshot.GetProperty("floor_id").GetInt32() == 20101001 &&
                 snapshot.GetProperty("table_count").GetInt32() >= 2 &&
-                File.Exists(Path.Combine(ConfigManager.Config.Path.ConfigPath, "Snapshots", "jarilo-start.json")));
+                File.Exists(Path.Combine(ConfigManager.Config.Path.DatabasePath, "Snapshots", "jarilo-start.json")));
         }
 
         using (var response = await client.PostAsJsonAsync("/admin/api/snapshots",
@@ -175,7 +160,7 @@ internal static class SnapshotChecks
         using (var response = await client.PostAsJsonAsync("/admin/api/snapshots/no-such-snapshot/spawn", new { }))
             check("spawning a missing snapshot is a 404", response.StatusCode == HttpStatusCode.NotFound);
 
-        var directory = Path.Combine(ConfigManager.Config.Path.ConfigPath, "Snapshots");
+        var directory = Path.Combine(ConfigManager.Config.Path.DatabasePath, "Snapshots");
         File.WriteAllText(Path.Combine(directory, "damaged.json"), "{ not json");
         accounts = AccountCount();
         using (var response = await client.PostAsJsonAsync("/admin/api/snapshots/damaged/spawn", new { }))
