@@ -9,3 +9,8 @@ BMJPAPIDKKM = DisplayAvatarData
 // the names. The 4.4 real-name dump (Proto/4.4/Raw/packetIds.txt) names both obfs.
 CINMCBDCBMJ = SimulatedRogueEnhanceRogueBuffCsReq
 NAHANHPHGGF = RogueEnhanceRogueBuffScRsp
+
+// GridFightSyncData's oneof loses GOOCHGKBIPN (beta field 1384) and gains JDGIAMABEME
+// (retail field 1978). Upstream f472d7a9:Proto/4.8/overrides-manual.txt assigns
+// game_data_item_info to this same property identity, at field 840 in the 4.8 dump.
+KFNCAIHIHCM.JDGIAMABEME = game_data_item_info

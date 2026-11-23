@@ -1004,7 +1004,6 @@ public class CmdIds
     public const int GridFightOpenOrbResultScNotify = 8745;
     public const int GridFightSeasonTalentResetScRsp = 8747;
     public const int GridFightTrackTraitCsReq = 8748;
-    public const int GridFightLastTutorialFinishScNotify = 8751;
     public const int GridFightQuitSettleScRsp = 8755;
     public const int GridFightUpdateGameRefCsReq = 8760;
     public const int GridFightFinishTutorialScRsp = 8762;

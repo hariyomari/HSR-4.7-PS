@@ -6,10 +6,8 @@ import "CmdBattleType.proto";
 import "CmdChessRogueType.proto";
 import "CmdDiceCombatType.proto";
 import "CmdFightType.proto";
-import "CmdGridFightType.proto";
 import "CmdLobbyType.proto";
 import "CmdMultiplayerType.proto";
-import "CmdRogueCommonType.proto";
 import "CmdRogueTournType.proto";
 import "CmdTeamTowersType.proto";
 import "Common.proto";
@@ -398,15 +396,6 @@ message CABIEDFJFBI {
 	bool PMGEPADBKKK = 14;
 }
 
-enum CACGKIJHEMG {
-	CACGKIJHEMG_KFDEMFFJNKA = 0;
-	CACGKIJHEMG_DGAPMMELBPE = 1;
-	CACGKIJHEMG_MCBPEPHOOHK = 2;
-	CACGKIJHEMG_CCCHHGEMJGM = 3;
-	CACGKIJHEMG_HJGPMAMOABN = 4;
-	CACGKIJHEMG_ONBLMIFEHKK = 5;
-}
-
 message CACKKIOEOEF {
 	LMNCBIDKHLF OLJCAJMFJPO = 8;
 	uint32 JPPAGGPJOMO = 12;
@@ -533,6 +522,14 @@ message CPPENGOOHGN {
 message DABKPEFPBOL {
 	bytes IGHFGADJCMG = 11;
 	uint32 EIKOEBDEGGA = 12;
+}
+
+enum DAHCIBCIIAD {
+	DAHCIBCIIAD_MNEIHEIGLPO = 0;
+	DAHCIBCIIAD_BPILLPJGGGB = 1;
+	DAHCIBCIIAD_ANHFOPPEFAL = 2;
+	DAHCIBCIIAD_LEEOOMLKANM = 3;
+	DAHCIBCIIAD_HJOMKLAGMCM = 4;
 }
 
 message DBCBMJKOBPJ {
@@ -1047,13 +1044,6 @@ message FloorCustomValueSnapshot {
 	bool bool_val = 3;
 	float float_val = 4;
 	string str_val = 5;
-}
-
-message GANFMBPEJPF {
-	repeated JMJEIBGACMD CEPDOBEIEFG = 2;
-	repeated NPAJHGDEIDJ DPIKOCFILGP = 4;
-	repeated DIKBPKAKENO JFHKJOGEOND = 6;
-	repeated DGKLPPLJBNB PAKECMNPEJJ = 14;
 }
 
 enum GBAKLOAFCLP {
@@ -1789,11 +1779,6 @@ message KMGDCCNNGEE {
 	uint32 FOCAJAMHKKA = 15;
 	uint32 BKIKJGAFKJD = 16;
 	uint32 ICBIJEMFLPM = 17;
-}
-
-message KMHOLGAAGGI {
-	DFNHMOGNJGJ source = 5;
-	repeated uint32 JHGCJKCHNCO = 11;
 }
 
 message KNMGHLJKBDA {
@@ -4075,6 +4060,11 @@ enum Retcode {
 	ACJMHKAAICH = 7801;
 	BPANPKHAJPI = 7802;
 	GHANNBFCEDI = 7803;
+	Retcode_HOIMFGFNCBB = 7804;
+	Retcode_NCHPIDOFJFE = 7805;
+	Retcode_HGIADKEJMAA = 7806;
+	Retcode_NMEOFFNGMNJ = 7807;
+	Retcode_ACCNNBBEOFF = 7808;
 }
 
 message RotationMapInfoSnapshot {

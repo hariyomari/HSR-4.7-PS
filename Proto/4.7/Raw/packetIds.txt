@@ -2049,7 +2049,6 @@
 8745 = GridFightOpenOrbResultScNotify  // obf: GDHFMHKFEAL
 8747 = GridFightSeasonTalentResetScRsp  // obf: CBICBHJDHLO
 8748 = GridFightTrackTraitCsReq  // obf: MCDBJHOCGHI
-8751 = GridFightLastTutorialFinishScNotify  // obf: HHLIEDHOGGH
 8755 = GridFightQuitSettleScRsp  // obf: FLHIDBDFFKG
 8760 = GridFightUpdateGameRefCsReq  // obf: PHGFFOEJEBM
 8762 = GridFightFinishTutorialScRsp  // obf: ABCBKHAIEOG

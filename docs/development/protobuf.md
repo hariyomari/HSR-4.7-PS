@@ -8,7 +8,7 @@ Source: [`Proto/`](../../Proto/)
 
 Protobuf definitions are kept per game version and grouped by `Cmd*Type`. The active version is **4.7**: `ActiveProtocolVersion` in [`Proto/Proto.csproj`](../../Proto/Proto.csproj) selects it, and at build time the project generates C# from the top-level `*.proto` files of `Proto/4.7/` into `obj/<configuration>/<framework>/protobuf/4.7/` and compiles that. The generated C# is not under version control.
 
-This branch keeps the 4.7 protocol so that the server works with the retail OSPRODWin4.7 client. Upstream `main` has moved to the 4.8 protocol in a single `Proto/StarRail.proto`; its layout, its ProtoOrganizer commands (`carry`, `cmdids`) and its upgrade steps do not apply here.
+The active 4.7 schema follows the retail OSPRODWin4.7.0 client. Upstream `main` has moved to the 4.8 protocol in a single `Proto/StarRail.proto`; its layout, its ProtoOrganizer commands (`carry`, `cmdids`) and its upgrade steps do not apply here.
 
 ## Layout
 
@@ -22,6 +22,7 @@ Proto/
     CmdIds.cs                  command ID snapshot of the version
     Raw/                       flat master StarRail.proto, packetIds.txt and translations.txt
     dumper/Raw/                own raw dumper output, never mixed with reference material
+    dumper/Retail/             retail static dump, where one is available
     reference/                 optional external reference, kept only when one really exists for that version
     compat-types.txt           API types kept from the previous version during bring-up
     cmdid-aliases.txt          compatibility aliases from old server command names to current command ID names
@@ -32,7 +33,7 @@ Proto/
   Tool/ProtoOrganizer/         tool for version migration, grouping, command IDs and C# generation
 ```
 
-Only the top-level `*.proto` files of the active version are compiled. `Raw/`, `dumper/`, the text lists and the other version directories are ProtoOrganizer inputs and never part of the build. The files of `Proto/4.7/` are described in the section on the active 4.7 version below.
+Only the top-level `*.proto` files of the active version are compiled. ProtoOrganizer regenerates 4.7 from `Raw/` and the text lists; the `dumper/` files retain the evidence for those inputs. The files of `Proto/4.7/` are described in the section on the active 4.7 version below.
 
 Older versions used other layouts and are archived. 4.4, the compatibility baseline from before this layout, keeps its grouped definitions and `Raw/` at the version root, with its own dumper output in `4.4/dumper/Raw/`; 4.5 and 4.5v3 keep their grouped output under `dumper/`. No reference was invented for 4.5: until a real 4.5 reference is available, only the dumper output, the alignment with 4.4 (same obfuscation seed) and the explicit compatibility lists are used.
 
@@ -98,20 +99,23 @@ A command enum name is not necessarily the protobuf message type name: handlers 
 
 ## The active 4.7 version
 
-The raw 4.7 definitions come from a static dump (`demiurge proto`) of the client's `GameAssembly.dll` and `global-metadata.dat` made with [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp); a runtime dumper is no longer needed.
+The 4.7 beta definitions came from a static dump (`demiurge proto`) of the client's `GameAssembly.dll` and `global-metadata.dat` made with [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp). The active definitions now follow the retail OSPRODWin4.7.0 static schema dump. Neither requires a runtime dumper.
 
 ```text
 Proto/4.7/
-  dumper/Raw/StarRail.proto    raw Demiurge output: obfuscated type names (recovered real names carry // obf:), 4.7 field numbers and cmdIds
+  dumper/Raw/StarRail.proto     beta Demiurge output: obfuscated type names (recovered real names carry // obf:), field numbers and cmdIds
+  dumper/Retail/StarRail.proto  original retail schema dump from IL2CPP metadata; kept as evidence
   Raw/StarRail.proto           translated flat master the grouped files are generated from
   Raw/packetIds.txt            cmdid -> name (// obf: original obfuscated name)
   Raw/translations.txt         obfuscated type -> name
-  overrides-manual.txt         4.7 type names checked one by one, each with its evidence
-  migration-report.txt         record of the 4.6 -> 4.7 migration: additions, removals, disagreements between evidence sources
+  overrides-manual.txt         reviewed type and field names, with evidence
+  migration-report.txt         4.6 -> 4.7 beta and beta -> retail 4.7.0 changes, with naming decisions
   cmdid-aliases.txt            the 4.6 aliases, followed through cmdid -> obfuscated name to the 4.7 names
 ```
 
-The migration relies on obfuscated identities being stable between versions: a type's obfuscated name, its property names and its `XxxFieldNumber` constant names are the same in every version; only field numbers, cmdIds and backing field names change. Demiurge therefore names fields after their properties, and the type, field and enum member names reviewed for 4.6 were carried one by one, by obfuscated identity, onto the 4.7 field numbers. Field identity is matched by decreasing strength of evidence: fields pinned by hand in 4.6 and obfuscated names kept as they are → the 4.4/4.5 Mar7thDumper constant names matched by field number to the readable definitions of the same version → the same field number in the 4.6 master → the automatic 4.6 overrides → the 4.6 dumper raw output (original name or `nt.txt` translation). `nt.txt` comes from matching storage slots, so adjacent fields of the same type can be swapped (SceneInfo's `world_id` / `leader_entity_id` and `lighten_section_list` / `opened_chests_list` are such cases); it only identifies a field and never decides a name on its own.
+The 4.6-to-beta migration carried reviewed type, field and enum member names by obfuscated identity onto the beta field numbers. Demiurge names fields after their properties, whose names generally stay stable even as field numbers, cmdIds and backing field names change. Field identity was matched by decreasing strength of evidence: fields pinned by hand in 4.6 and obfuscated names kept as they are → the 4.4/4.5 Mar7thDumper constant names matched by field number to the readable definitions of the same version → the same field number in the 4.6 master → the automatic 4.6 overrides → the 4.6 dumper raw output (original name or `nt.txt` translation). `nt.txt` comes from matching storage slots, so adjacent fields of the same type can be swapped (SceneInfo's `world_id` / `leader_entity_id` and `lighten_section_list` / `opened_chests_list` are such cases); it only identifies a field and never decides a name on its own.
+
+The retail update keeps beta-master names for the same obfuscated type or property. For new identities, it uses an upstream 4.8 name only where the obfuscated identity matches; otherwise it keeps the obfuscated name. The retail dump infers scalars from C# `int` and `long`, which cannot distinguish `int32` from `sint32` or `int64` from `sint64`; the beta master's encoding is kept where that is the only difference. See `Proto/4.7/migration-report.txt` for the per-type changes and evidence.
 
 To maintain the 4.7 definitions, edit `Raw/StarRail.proto`, then rebuild the grouped definitions and the command IDs with the command below. `--cs-out Proto/Generated` is an optional output for checking the tool; it is ignored by Git and not compiled into the server. Afterwards build normally so that MSBuild generates the C# from the active grouped definitions into `obj/`:
 
@@ -134,13 +138,13 @@ The Light Cone quick level-up identity is `EOBJKAMNNPI → AMNBMKEMMFL`. The 4.6
 `GameServer/GameServer.csproj` removes some sources from the build with explicit `<Compile Remove>` items, each with a comment that gives the reason:
 
 - The DiceCombat handler `HandlerDiceCombatFinishPveStageCsReq`: 4.6 left only two `uint32` candidates of the same type, and the old mapping was an unverified guess, so it is not guessed again.
-- The 4.8-only activities merged from upstream, currently ActivityBangboo, DiceyDungeon and RealityShow: their game logic, request handlers, send packets and mission finish handlers. Their commands and messages are missing from the 4.7 protocol, or the 4.7 messages of the same name carry different fields, and the mapping is not guessed. [ActivityBangboo](activity-bangboo.md), [DiceyDungeon](dicey-dungeon.md) and [RealityShow](reality-show.md) describe their 4.8 protocol. While they are excluded, their player components are not wired up and battles carry no RealityShow context.
+- The two 4.8-only activities merged from upstream, [ActivityBangboo](activity-bangboo.md) and [DiceyDungeon](dicey-dungeon.md): their game logic, request handlers, send packets and mission finish handlers. Neither has verified command or message mappings in the retail schema dump or its IL2CPP metadata. [RealityShow](reality-show.md) is built against the retail 4.7 schema and is not excluded.
 
-`LoginSceneRegression` leaves the matching cases out as well: `<Compile Remove>` in its project file for the activity regressions, and `#if PROTOCOL_48_ACTIVITIES` around the inline cases. Before re-enabling an excluded file, resolve its protocol evidence and compatibility problems against the active version, and re-enable its regression cases with it; do not simply delete the exclusion to make it compile again. Never copy 4.8 command IDs or field numbers into 4.7.
+`LoginSceneRegression` also leaves out the ActivityBangboo and DiceyDungeon cases: its project file excludes `ActivityBangbooRegression.cs`, and `#if PROTOCOL_48_ACTIVITIES` guards the corresponding calls and inline cases. It runs the RealityShow cases. Before re-enabling an excluded file, resolve its protocol evidence and compatibility problems against the active version, and re-enable its regression cases with it. Never copy 4.8 command IDs or field numbers into 4.7.
 
 ## Constraints for a new version
 
-- Own dumper output always goes into the version's `dumper/Raw/` and is never mixed into a reference.
+- Keep raw dumps under the version's `dumper/` directory, separate from `reference/`. Keep dumps of different builds in separate subdirectories, as with `dumper/Raw/` and `dumper/Retail/` in 4.7.
 - `reference/` holds only reference definitions of the same game version. While none is available, leave it absent or keep the old version's directory; never fake a reference for a new version.
 - Compatibility types and command aliases go into the lists of the version they belong to; never write an old version's cmdId numbers over a new version.
 - Never decide a mapping from fields having the same type alone.

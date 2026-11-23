@@ -1,4 +1,4 @@
-syntax = "proto3"; // Demiurge static dump | Game Version: 4.7 (GameAssembly link 2026-09-23)
+syntax = "proto3"; // OSPRODWin4.7.0 layout (dumper/Retail/StarRail.proto), with names carried from the 4.7 beta master
 
 message AAAKPGJDCFJ {
 	uint32 OOCOFCBJOJD = 4;
@@ -1913,6 +1913,7 @@ message BBIPCFPDEJN {
 }
 
 message BCAJNMLLIED {
+	repeated DOLMCHMNEIL EIKKALADEHM = 5;
 	uint32 id = 8;
 	uint32 panel_id = 10;
 	repeated uint32 OLHODIFNABL = 12;
@@ -2593,6 +2594,10 @@ message BODEMOLDHAA {
 	uint32 teleport_id = 5;
 }
 
+message BODGPACJIDJ {
+	uint32 AFEDCLCMIPE = 7;
+}
+
 message BOFHHEBDEOD {
 	uint32 GDBNHOJPKIE = 1;
 }
@@ -2909,6 +2914,7 @@ message BattleGridFightTraitEffectInfo {
 		BDIIMNDEADO GIKNCJMJLFE = 108;
 		GHCEOIMHKJI MCCMPFENGCD = 109;
 		LFNNCOMFBMD KDBKIPPHMFI = 110;
+		CPNNACGJFHC MBFPDONDIEM = 111;
 	}
 }
 
@@ -3342,15 +3348,6 @@ message CABKLLAKHKO {
 	AJCFOLGANFC GMEPGCODKKE = 8;
 }
 
-enum CACGKIJHEMG {
-	CACGKIJHEMG_KFDEMFFJNKA = 0;
-	CACGKIJHEMG_DGAPMMELBPE = 1;
-	CACGKIJHEMG_MCBPEPHOOHK = 2;
-	CACGKIJHEMG_CCCHHGEMJGM = 3;
-	CACGKIJHEMG_HJGPMAMOABN = 4;
-	CACGKIJHEMG_ONBLMIFEHKK = 5;
-}
-
 message CACKKIOEOEF {
 	LMNCBIDKHLF OLJCAJMFJPO = 8;
 	uint32 JPPAGGPJOMO = 12;
@@ -3491,6 +3488,7 @@ message CCHMHOONEGG {
 
 message CCKJAEDDDCL {
 	oneof KKNBOACNCON {
+		GANFMBPEJPF ABPOOCOOKCF = 8;
 		AHLALEEJOEG BBEKBJPHEJK = 10;
 		KPIHDPGDMKB BMGOLFNGHGH = 13;
 		CDDEIPOBBCN MECOEFEJANE = 15;
@@ -3597,10 +3595,20 @@ message CEFEIJFPCKE {
 	uint32 MNLAMKJIAOC = 12;
 }
 
+message CEGNNCDOEPL {
+	repeated uint32 HJIOELDCANJ = 7;
+}
+
 message CEHDAMJJFOE {
 	uint32 JNJBMFJHBHD = 3;
 	uint32 MDNAGANGNKK = 4;
 	uint32 ENNOJCBAJEN = 8;
+}
+
+message CEHMHNJPDGC {
+	repeated uint32 PNHBEHLICFL = 2;
+	uint32 MOEACNEIGJK = 12;
+	uint32 COPNJMBGNDO = 13;
 }
 
 // CmdID: 4557
@@ -3666,8 +3674,8 @@ message CFFDCICDAKK {
 }
 
 message CFIIJJEGKHC {
-	uint32 KICHNDEDGIO = 4;
-	uint32 LIHEPONEGOB = 7;
+	repeated uint32 OEOPMBHFBBP = 2;
+	double LIHEPONEGOB = 7;
 	uint32 CNEJKLABHDG = 13;
 	uint32 uid = 15;
 }
@@ -3750,6 +3758,7 @@ message CGMCMAKMJDK {
 
 message CGNAHGDKAFC {
 	uint32 EMLBKOKEAOH = 1;
+	bool FACDMAKFOCH = 5;
 	repeated MLGNKOCLDCO BCGOAIPKGIK = 11;
 }
 
@@ -4243,6 +4252,10 @@ message CPKCMMPFCGE {
 
 message CPMNHNHKLBK {
 	uint32 role_id = 1;
+}
+
+message CPNNACGJFHC {
+	uint32 JHJJPIAPPHO = 1;
 }
 
 message CPOHGANENDF {
@@ -7741,7 +7754,6 @@ enum CmdGridFightType {
 	CmdGridFightType_JOJPCNMJHII = 8745;
 	CmdGridFightType_IDANBPEEJLP = 8747;
 	CmdGridFightType_DPBJLFGBHGB = 8748;
-	CmdGridFightType_EHKIBGFFMEL = 8751;
 	CmdGridFightType_PACOMBKLOJF = 8755;
 	CmdGridFightType_PDHIJCNALBB = 8760;
 	CmdGridFightType_ENJEOMLGPHH = 8762;
@@ -10144,6 +10156,14 @@ message DAGGFIOGHGE {
 	int64 MGHNNENOOGB = 15;
 }
 
+enum DAHCIBCIIAD {
+	DAHCIBCIIAD_MNEIHEIGLPO = 0;
+	DAHCIBCIIAD_BPILLPJGGGB = 1;
+	DAHCIBCIIAD_ANHFOPPEFAL = 2;
+	DAHCIBCIIAD_LEEOOMLKANM = 3;
+	DAHCIBCIIAD_HJOMKLAGMCM = 4;
+}
+
 message DAMNNJKJOMM {
 	repeated uint32 first_lineup = 1;
 	repeated uint32 second_lineup = 2;
@@ -10913,6 +10933,11 @@ message DOIBLFFDHDG {
 
 message DOIPOJANKGI {
 	repeated HNBOHDBLMBE DFLEOIGPLNM = 13;
+}
+
+message DOLMCHMNEIL {
+	uint32 GMDBHJKEAEI = 7;
+	uint32 EEPDDGPEPKO = 15;
 }
 
 message DOMKCMJFAID {
@@ -13471,6 +13496,9 @@ enum ExtraLineupType {
 	OGCOPOIMJIM = 21;
 }
 
+message FAEAEFEECCA {
+}
+
 message FAFBDGCEAHD {
 	uint32 trait_id = 8;
 	uint32 AFKKLDMAEDJ = 12;
@@ -14301,6 +14329,11 @@ message FPDCINMDJCE {
 	}
 	PlayerSimpleInfo player_info = 12;
 	string remark_name = 15;
+}
+
+message FPGNLIEPKCA {
+	uint32 FMNPBOJGLFI = 2;
+	map<string, uint32> POCKGKDFLKK = 8;
 }
 
 message FPHPFJLAJDK {
@@ -16414,6 +16447,7 @@ message GNNGLBEGIKB {
 message GNOBLNOCEHA {
 	repeated FMBACDOFCAL FNNEPMAPOOF = 1;
 	uint32 GAACGAMLFDN = 2;
+	bool IJCOONGGKNF = 5;
 	uint32 JGEHHFCJOCL = 8;
 	uint32 GOIIFKKGGBJ = 9;
 	repeated uint32 HJIOELDCANJ = 10;
@@ -19527,6 +19561,7 @@ message GridFightArchiveData {
 // Obf: IPFFLNPMCEG
 message GridFightAugmentActionInfo {
 	repeated GridFightPendingAugmentInfo pending_investment_list = 3;
+	bool AABLMNPFBCO = 4;
 }
 
 // Obf: HFKKKFJHPHJ
@@ -19932,6 +19967,7 @@ message GridFightFinishInfo {
 	bool is_overlock = 308;
 	repeated GridFightAugmentDamageStatistics augment_statistics = 402;
 	GridFightContextData context_data = 526;
+	FPGNLIEPKCA FFCBOJAACMD = 619;
 	uint32 MBMJNEDIFFC = 623;
 	repeated FPHPFJLAJDK KCOMPKMJCMC = 645;
 	repeated AFCBKJEFKPG IBBKKFGEEPH = 728;
@@ -19998,17 +20034,17 @@ message GridFightGameAugmentUpdate {
 
 // Obf: NIHNGPKHEPC
 message GridFightGameBasicInfo {
-	uint32 bench_overflow_size = 1;
+	uint32 max_lineup_hp = 1;
 	uint32 max_interest_gold = 2;
-	uint32 deposit_per_interest = 3;
+	uint32 max_player_level = 3;
 	uint32 off_field_max_count = 4;
-	uint32 max_lineup_hp = 5;
+	uint32 keep_win_count = 5;
 	uint32 max_avatar_count = 6;
-	uint32 max_active_role_count = 7;
+	uint32 player_level = 7;
 	uint32 gold = 8;
 	uint32 level_exp = 9;
 	uint32 lineup_hp = 10;
-	uint32 player_level = 11;
+	uint32 max_active_role_count = 11;
 	uint32 buy_exp_cost = 12;
 	repeated RoleTrackEquipmentInfo MIIDIMOCPEB = 13;
 	repeated uint32 ONHDKLIMLNM = 14;
@@ -20084,6 +20120,7 @@ message GridFightGameItemDescriptor {
 message GridFightGameItemInfo {
 	uint32 unique_id = 1;
 	GridFightGameItemDescriptor descriptor = 5;
+	bool PNJCLPNFIGA = 8;
 	oneof FMEKLFFDPGG {
 		EBBKABIIOJB PKKEMDFHBCD = 61;
 		CNBHPJFFLEF PDHEDGGOPGL = 134;
@@ -20098,6 +20135,7 @@ message GridFightGameItemInfo {
 		EHALAAICMKI ALEIDFMKMHD = 330;
 		GridFightEmptyGameItemInfo empty_info = 332;
 		ILEPGGBNADM GLLNPIHFOFP = 358;
+		NCGOAFOBAFJ MGHJGHMNBAH = 422;
 		IDEDIHLMEHL GEKCCCPGBGJ = 448;
 		IEOMGIBLHJB INDGPPMDFND = 471;
 		KPMOCBIIMHH NIOCABOLGLO = 574;
@@ -20121,6 +20159,7 @@ message GridFightGameItemInfo {
 		PIKKAEBHIKF NPHCPBDKLCH = 1130;
 		FBFBMMAAFCP IJAFFOCBKJI = 1166;
 		CDEFMKKDEHH KCPCJHHEBCH = 1239;
+		NCPLNIMCJGO IIKHFCNBAHD = 1240;
 		OPJALEIKFAC EJEEHDPBHLI = 1247;
 		FBDLJKEBPHM AOGFFCECKPK = 1262;
 		KCLMHIOBNLA BLKNIKDBHHK = 1291;
@@ -20302,6 +20341,7 @@ message GridFightHandlePendingActionCsReq {
 		JGHCHCCMCBM JACEOLDFKDD = 258;
 		NIJPHAAONFB DKDFDGJGIHM = 263;
 		PDKGKIDCBKA HOKCPPPLJIO = 269;
+		OCABBNOOBJL CPDDOGMLFLA = 376;
 		KCCPHHGCPMP IOHJGOENAPF = 462;
 		FKILNIGOKBF LFIDNOAECMN = 582;
 		GridFightPortalBuffRerollAction portal_reroll_action = 637;
@@ -20328,12 +20368,14 @@ message GridFightHandlePendingActionCsReq {
 		BGABEIOCONI PFEBKFJOGKO = 1651;
 		CAMIICJDOBO IIDBLCFAAPC = 1659;
 		GridFightReturnPreparationActionRequest return_preparation_action = 1667;
+		JKNGGJGFFPN BMFKPELKAJF = 1717;
 		PGGJPHKJJON FKEAHOKGDPO = 1765;
 		LPAENEHIBJP DPBFGOMKGMB = 1804;
 		EFDODBOLHGK ENMJFJGIOEM = 1840;
 		DPMFDKPNHDA FMHPKKDEHNC = 1841;
 		IDOJADMFGKF NFBJINKLLLK = 1883;
 		FNNFHNKHIDD CFDIPFKBFJB = 1890;
+		PIGDLDBFEMI FJGGFOJBAKF = 1898;
 		GHMKAOJPAPO PBEJCFAJLGE = 1930;
 	}
 }
@@ -20393,12 +20435,6 @@ message GridFightInvestmentSelectActionRequest {
 message GridFightKilledMonsterInfo {
 	uint32 monster_index = 1;
 	uint32 monster_id = 2;
-}
-
-// Obf: HHLIEDHOGGH
-// CmdID: 8751
-message GridFightLastTutorialFinishScNotify {
-	uint32 ENECKKGPKHI = 15;
 }
 
 // Obf: MDJBBILMHLC
@@ -20471,6 +20507,7 @@ enum GridFightLockReason {
 	GridFightLockReason_Reserved1 = 1;
 	GridFightLockReason_Reserved2 = 2;
 	GridFightLockReason_PendingAction = 3;
+	GridFightLockReason_IPHCCJFGFEK = 4;
 }
 
 // Obf: CFHEKNFNMIP
@@ -20491,6 +20528,7 @@ enum GridFightLockType {
 	GridFightLockType_Gameplay = 6;
 	GridFightLockType_Reserved7 = 7;
 	GridFightLockType_Reserved8 = 8;
+	GridFightLockType_KBGPCLEPFPN = 9;
 }
 
 // Obf: HNEBODEBELG
@@ -20570,6 +20608,8 @@ message GridFightPendingAction {
 		FOCOJIDPAGO PFEBKFJOGKO = 1125;
 		HADBACOKEJN FMHPKKDEHNC = 1190;
 		CHAIHAICBCE OKPMJOCEKBC = 1240;
+		INGKACKDMMK FJGGFOJBAKF = 1390;
+		CEHMHNJPDGC BMFKPELKAJF = 1506;
 		GridFightTraitEffectSelectEnhanceActionInfo trait_effect_select_enhance_action = 1576;
 		AKDPLDPGGKF GEPGMIEPBMB = 1592;
 		GridFightReturnPreparationActionInfo return_preparation_action = 1612;
@@ -20592,8 +20632,8 @@ message GridFightPendingAugmentInfo {
 // Obf: CKPOBLIFMGN
 message GridFightPermanentGameInfo {
 	GridFightTalentInfo talent = 1;
+	bool PMFHAPIFFPO = 3;
 	map<uint32, GLHCHCJMFGA> FBJMBJKMAJA = 6;
-	uint32 ENECKKGPKHI = 11;
 }
 
 // Obf: CKIKMLCGLFK
@@ -20969,6 +21009,7 @@ enum GridFightSettleReason {
 	GridFightSettleReason_Defeat = 2;
 	GridFightSettleReason_Victory = 3;
 	GridFightSettleReason_Complete = 4;
+	GridFightSettleReason_CFPDDLEOLKJ = 5;
 }
 
 // Obf: HDEIAANGMDB
@@ -20978,6 +21019,7 @@ message GridFightShopGoodsInfo {
 	uint32 price = 13;
 	oneof AELHFLGJMJN {
 		CCKPBIKOIBB INBCCAIFHNL = 179;
+		FAEAEFEECCA EPKLGNNBPGM = 291;
 		GridFightSpecialGoodsInfo special_goods_info = 391;
 		CHDNPFMOKKI IFDICIIOHHI = 859;
 		GridFightRoleGoodsInfo role_goods_info = 1403;
@@ -21115,6 +21157,7 @@ message GridFightSyncData {
 		uint32 remove_role_unique_id = 730;
 		HJCAJKHNCDH CKNDFNACIPO = 793;
 		CPOHGANENDF DPJKDMKADCD = 811;
+		CEGNNCDOEPL FKIEANINPCJ = 825;
 		uint32 JLOCMDIDPCI = 833;
 		GridFightSavedValueUpdate saved_value_update = 914;
 		GridFightGameItemSyncInfo update_game_item_info = 1029;
@@ -21128,7 +21171,6 @@ message GridFightSyncData {
 		uint32 CPKLHPJMMDO = 1286;
 		GridFightDamageSttInfo damage_stat = 1310;
 		GridFightPortalBuffUpdateInfo portal_update = 1318;
-		GridFightGameItemInfo game_data_item_info = 1384;
 		GridFightPlayerLevelSyncInfo player_level = 1399;
 		GridFightGameItemSyncInfo add_game_item_info = 1415;
 		uint32 LOGJNAICJPA = 1423;
@@ -21155,7 +21197,9 @@ message GridFightSyncData {
 		EMOGKOKPCAC JNIGCDNHHLK = 1827;
 		GridFightLineupHpSyncInfo lineup_hp = 1884;
 		GridFightOrbSyncInfo orb_info = 1948;
+		GridFightGameItemInfo game_data_item_info = 1978;
 		uint32 KALKCJFFJIK = 1986;
+		bool IJCOONGGKNF = 1991;
 		GridFightSettleAvatarInfo PPJFPNMIFHL = 2033;
 	}
 }
@@ -21253,6 +21297,8 @@ message GridFightTraitEffectInfo {
 		GGHAADPCOAA AMOIMOHMBEM = 104;
 		MAKPILEOKNC CPGCCCAKACO = 125;
 		uint32 IJBCFCMIJNK = 375;
+		BODGPACJIDJ BMFKPELKAJF = 424;
+		LIAMDCIDHLO MBFPDONDIEM = 482;
 		BJFLPMNPFFK MPHGIPCONLF = 592;
 		CGNAHGDKAFC GIKNCJMJLFE = 664;
 		JADHHGHGMPH GDAMHENIIDJ = 766;
@@ -21349,6 +21395,7 @@ message GridFightTraitUpdateCsReq {
 		AFPJPEABFKH JLCLHAKNMLL = 227;
 		KDGHLGHJDMC KDBKIPPHMFI = 367;
 		KMPNJFLNBJG IJBCFCMIJNK = 441;
+		OOBHMHFHLDA BMFKPELKAJF = 606;
 		MHKNPBJDFIC LFIDNOAECMN = 856;
 		GPCFHMLMDHC FFBEPFLBHPL = 956;
 		NMDCNICFKGF MCCMPFENGCD = 1278;
@@ -21710,9 +21757,8 @@ message HAHEOGIBNHL {
 }
 
 message HAIEHHIHIGC {
-	uint32 JEGBEFMNKIB = 7;
 	uint32 NKIIHODEFBP = 8;
-	uint32 FMBFAPOCIDF = 14;
+	double FMBFAPOCIDF = 14;
 }
 
 message HAIFIDAHGJG {
@@ -22017,6 +22063,7 @@ message HFBJNFJHKPO {
 }
 
 message HFCFMFONGIE {
+	repeated uint32 MDGKNEIKGIJ = 11;
 }
 
 message HFEOGNAMHCG {
@@ -22369,6 +22416,7 @@ message HKOEAOPNEAC {
 }
 
 message HLBNJJNHCIE {
+	uint32 KGHDNKONLNH = 12;
 	uint32 pos = 15;
 }
 
@@ -23323,6 +23371,7 @@ message IFMNCFKBEGL {
 	uint32 retcode = 9;
 	uint32 challenge_id = 11;
 	SceneBattleInfo battle_info = 12;
+	LFIKNHJBDBJ NEMJKLMIJOL = 14;
 }
 
 message IFPAJBFOHLN {
@@ -23627,6 +23676,11 @@ message IMHOJPDMOJI {
 message IMIHIMCHHIP {
 	uint32 item_value = 6;
 	uint32 OIDJFIFJDHL = 8;
+}
+
+message INGKACKDMMK {
+	uint32 MOEACNEIGJK = 1;
+	uint32 COPNJMBGNDO = 12;
 }
 
 message INGKNDHECNF {
@@ -24599,6 +24653,10 @@ message JKLKCKNBHCI {
 
 message JKLLLNDHJHI {
 	uint32 PGDEHMAGGLF = 14;
+}
+
+message JKNGGJGFFPN {
+	uint32 KGHDNKONLNH = 13;
 }
 
 message JKPOIHGIFFG {
@@ -25576,11 +25634,6 @@ message KMGDCCNNGEE {
 	uint32 ICBIJEMFLPM = 17;
 }
 
-message KMHOLGAAGGI {
-	DFNHMOGNJGJ source = 5;
-	repeated uint32 JHGCJKCHNCO = 11;
-}
-
 enum KMJMHDPPAKH {
 	KMJMHDPPAKH_POMADDDKFHN = 0;
 	KMJMHDPPAKH_HLLKDFFMIEN = 1;
@@ -26063,8 +26116,7 @@ message LFIKNHJBDBJ {
 	uint32 challenge_id = 3;
 	uint32 CNEJKLABHDG = 5;
 	uint32 MNIBAEDPCHA = 6;
-	uint32 KICHNDEDGIO = 7;
-	uint32 LIHEPONEGOB = 9;
+	double LIHEPONEGOB = 9;
 	bool LMINNGCDDOK = 10;
 	uint32 HAGDKKBAAKK = 13;
 	repeated KPNHGDGLICN KHBJOAHCCCE = 14;
@@ -26223,6 +26275,10 @@ message LHMLIGPHOKP {
 message LHNMDFOPMKN {
 	string BLDMFDKDJDM = 6;
 	JFCPFBLKJAB return_data = 9;
+}
+
+message LIAMDCIDHLO {
+	uint32 JHJJPIAPPHO = 9;
 }
 
 message LIELJCGKNJN {
@@ -26630,11 +26686,10 @@ message LPJOINCGBBP {
 message LPLCFFGANFC {
 	repeated uint32 BCFDEEIPJGN = 1;
 	uint32 DCPEFPPGCAA = 4;
-	uint32 FADDHEIHGOO = 5;
 	uint32 FNIAAEAFGDE = 8;
-	uint32 LOPOLKEKKLB = 9;
+	uint32 FADDHEIHGOO = 9;
 	repeated ICOCIJEBKKD HLOMPMOHJHO = 10;
-	uint32 CCJMAOIJPLD = 11;
+	uint32 LOPOLKEKKLB = 11;
 	uint32 LENMCGCGBOA = 13;
 	uint32 retcode = 14;
 	repeated uint32 HNOCFELOAFJ = 15;
@@ -27362,6 +27417,7 @@ message MAFJLIIKIIF {
 
 message MAKPILEOKNC {
 	uint32 NBDNMNBPCHB = 5;
+	bool DKDFBABKLCM = 9;
 	uint32 INHOMJEKBCO = 12;
 	bool ILIMKMBPEHH = 13;
 	uint32 DCICMKFAOBC = 14;
@@ -29750,6 +29806,10 @@ message NCGFPOKHMBL {
 	uint32 retcode = 9;
 }
 
+message NCGOAFOBAFJ {
+	uint32 GOLPAJOAGFE = 6;
+}
+
 message NCGPLAFMDCJ {
 	repeated LIELJCGKNJN IKJDCGHHAEM = 2;
 }
@@ -29764,6 +29824,11 @@ message NCPJGBCCGGI {
 
 message NCPKKIAJKHJ {
 	repeated uint32 DGAPHMMGJDC = 10;
+}
+
+message NCPLNIMCJGO {
+	bool HCOFMFKFMDK = 3;
+	uint32 JFNDJEPDJDC = 15;
 }
 
 message NDAPFIGHKMO {
@@ -30567,6 +30632,9 @@ message OBIMHNFFLEM {
 
 message OBNEOHHDAIP {
 	JDFNPICGCGI IFPBFMOAJOP = 7;
+}
+
+message OCABBNOOBJL {
 }
 
 message OCBPHIBFFAC {
@@ -31449,6 +31517,10 @@ message OOAJJMEGIFO {
 	AvatarType avatar_type = 10;
 }
 
+message OOBHMHFHLDA {
+	uint32 KGHDNKONLNH = 1;
+}
+
 message OOBKAONOBAK {
 	uint32 KNDIIBJEIDG = 1;
 	uint32 GBDEBOBKKHK = 2;
@@ -32171,6 +32243,10 @@ enum PIDAHABFLBL {
 
 message PIFMLFKCOOG {
 	uint32 MJGCDMOFALP = 9;
+}
+
+message PIGDLDBFEMI {
+	uint32 PECPBEOHOJC = 4;
 }
 
 // CmdID: 10218
@@ -36630,6 +36706,11 @@ enum Retcode {
 	ACJMHKAAICH = 7801;
 	BPANPKHAJPI = 7802;
 	GHANNBFCEDI = 7803;
+	Retcode_HOIMFGFNCBB = 7804;
+	Retcode_NCHPIDOFJFE = 7805;
+	Retcode_HGIADKEJMAA = 7806;
+	Retcode_NMEOFFNGMNJ = 7807;
+	Retcode_ACCNNBBEOFF = 7808;
 }
 
 // Obf: IAOCHINIPGK
@@ -40997,6 +41078,7 @@ message TakeQuestRewardScRsp {
 // CmdID: 8366
 message TakeRechargeBenefitRewardCsReq {
 	uint32 id = 1;
+	repeated DOLMCHMNEIL EIKKALADEHM = 5;
 }
 
 // Obf: JINIOBBNJPF
