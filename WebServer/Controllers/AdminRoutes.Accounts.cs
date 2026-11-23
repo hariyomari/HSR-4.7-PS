@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using March7thHoney.Database;
 using March7thHoney.Database.Account;
+using March7thHoney.Database.Player;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
 using March7thHoney.Kcp;
@@ -13,6 +15,8 @@ namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
+    private static readonly Logger AccountsLogger = new("AdminAccounts");
+
     private static void MapAccountRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/admin/api/accounts", GetAccounts);
@@ -31,6 +35,12 @@ public static partial class AdminRoutes
         app.MapPost("/admin/api/accounts/{uid:int}/gameplay/reset", ResetAccountGameplay);
         app.MapDelete("/admin/api/accounts/{uid:int}/identity-keys", ClearIdentityKeys);
         app.MapDelete("/admin/api/accounts/{uid:int}", DeleteAccount);
+        app.MapPost("/admin/api/accounts/{uid:int}/clone", CloneAccount);
+        app.MapPost("/admin/api/accounts/{uid:int}/snapshot/restore", RestoreAccountSnapshot);
+        app.MapGet("/admin/api/snapshots", GetSnapshots);
+        app.MapPost("/admin/api/snapshots", SaveSnapshot);
+        app.MapPost("/admin/api/snapshots/{id}/spawn", SpawnSnapshot);
+        app.MapDelete("/admin/api/snapshots/{id}", DeleteSnapshot);
     }
 
     private static IResult GetAccounts(HttpContext ctx)
@@ -338,6 +348,211 @@ public static partial class AdminRoutes
     {
         public List<int>? uids { get; set; }
         public string? confirm { get; set; }
+    }
+
+    private static async Task<IResult> CloneAccount(HttpContext ctx, int uid, AdminTestAccountRequest? request)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
+
+        request ??= new AdminTestAccountRequest();
+        var source = AccountData.GetAccountByUid(uid);
+        if (source == null) return Error("Account not found", statusCode: StatusCodes.Status404NotFound);
+        if (DatabaseHelper.Instance.GetInstance<PlayerData>(uid) == null) return Error($"UID {uid} has no gameplay data");
+
+        AccountData account;
+        string? password;
+        try
+        {
+            account = CreateTestAccount(request, $"{source.Username}_clone", out password);
+        }
+        catch (Exception ex)
+        {
+            return Error(ex.Message);
+        }
+
+        try
+        {
+            await AccountSnapshotService.CloneGameplayAsync(uid, account.Uid, request.nickname);
+        }
+        catch (Exception ex)
+        {
+            await DiscardTestAccount(account);
+            return SnapshotError(ex);
+        }
+
+        return Success(new TestAccountData(ToAccountSummary(account), password));
+    }
+
+    private static async Task<IResult> RestoreAccountSnapshot(HttpContext ctx, int uid, AdminSnapshotRestoreRequest? request)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
+
+        var account = AccountData.GetAccountByUid(uid);
+        if (account == null) return Error("Account not found", statusCode: StatusCodes.Status404NotFound);
+
+        try
+        {
+            var wasOnline = await AccountSnapshotService.RestoreAsync(request?.id ?? "", uid, request?.nickname);
+            return Success(new AccountOnlineWrap(ToAccountSummary(account), wasOnline));
+        }
+        catch (Exception ex)
+        {
+            return SnapshotError(ex);
+        }
+    }
+
+    private static IResult GetSnapshots(HttpContext ctx)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        return Success(new SnapshotsData(AccountSnapshotService.List().Select(ToSnapshotView).ToList()));
+    }
+
+    private static IResult SaveSnapshot(HttpContext ctx, AdminSaveSnapshotRequest? request)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        request ??= new AdminSaveSnapshotRequest();
+        if (AccountData.GetAccountByUid(request.uid) == null)
+            return Error("Account not found", statusCode: StatusCodes.Status404NotFound);
+
+        try
+        {
+            var meta = AccountSnapshotService.Save(request.uid, request.name ?? "", request.description);
+            return Success(new SnapshotWrap(ToSnapshotView(meta)));
+        }
+        catch (Exception ex)
+        {
+            return SnapshotError(ex);
+        }
+    }
+
+    private static async Task<IResult> SpawnSnapshot(HttpContext ctx, string id, AdminTestAccountRequest? request)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        if (DatabaseHelper.Instance == null) return Error("Database is not initialized");
+
+        request ??= new AdminTestAccountRequest();
+        try
+        {
+            AccountSnapshotService.Get(id);
+        }
+        catch (Exception ex)
+        {
+            return SnapshotError(ex);
+        }
+
+        AccountData account;
+        string? password;
+        try
+        {
+            account = CreateTestAccount(request, $"snap_{id}", out password);
+        }
+        catch (Exception ex)
+        {
+            return Error(ex.Message);
+        }
+
+        try
+        {
+            await AccountSnapshotService.RestoreAsync(id, account.Uid, request.nickname);
+        }
+        catch (Exception ex)
+        {
+            await DiscardTestAccount(account);
+            return SnapshotError(ex);
+        }
+
+        return Success(new TestAccountData(ToAccountSummary(account), password));
+    }
+
+    private static IResult DeleteSnapshot(HttpContext ctx, string id)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        try
+        {
+            return AccountSnapshotService.Delete(id)
+                ? Success(new DeletedSnapshot(id))
+                : Error($"Snapshot {id} not found", statusCode: StatusCodes.Status404NotFound);
+        }
+        catch (Exception ex)
+        {
+            return SnapshotError(ex);
+        }
+    }
+
+    /// <summary>
+    ///     Creates the account a clone, snapshot spawn or story provision lands on. An empty username gets a random
+    ///     suffix on <paramref name="usernamePrefix" />, an empty password is generated (and returned once), an empty
+    ///     email defaults to <c>username@local.test</c>.
+    /// </summary>
+    private static AccountData CreateTestAccount(AdminTestAccountRequest request, string usernamePrefix,
+        out string? generatedPassword)
+    {
+        var username = request.username?.Trim();
+        if (string.IsNullOrEmpty(username))
+        {
+            var prefix = usernamePrefix.Length > 48 ? usernamePrefix[..48] : usernamePrefix;
+            username = $"{prefix}_{RandomNumberGenerator.GetHexString(6, true)}";
+        }
+
+        var email = string.IsNullOrWhiteSpace(request.email) ? $"{username}@local.test" : request.email.Trim();
+        generatedPassword = string.IsNullOrWhiteSpace(request.password)
+            ? RandomNumberGenerator.GetString("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 16)
+            : null;
+        var account = AccountHelper.CreateAccount(username, email, generatedPassword ?? request.password,
+            request.uid.GetValueOrDefault(), NormalizeRole(request.role));
+        account.SyncPermissionsWithRole();
+        return account;
+    }
+
+    // Retires an account whose save could not be written, so a failed request leaves no half-made account behind.
+    private static async Task DiscardTestAccount(AccountData account)
+    {
+        try
+        {
+            await DeleteAccountData(account);
+        }
+        catch (Exception ex)
+        {
+            AccountsLogger.Warn($"Could not remove test account {account.Uid} after a failed copy: {ex.Message}");
+        }
+    }
+
+    private static IResult SnapshotError(Exception ex)
+    {
+        return ex is AccountSnapshotException { NotFound: true }
+            ? Error(ex.Message, statusCode: StatusCodes.Status404NotFound)
+            : Error(ex.Message);
+    }
+
+    private static SnapshotView ToSnapshotView(AccountSnapshotMeta meta)
+    {
+        return new SnapshotView(meta.Id, meta.Name, meta.Description, meta.CreatedAt, meta.SourceUid,
+            meta.GameVersion, meta.PlayerLevel, meta.FrontierMainMission, meta.FloorId, meta.TableCount);
+    }
+
+    public class AdminTestAccountRequest
+    {
+        public string? username { get; set; }
+        public string? email { get; set; }
+        public string? password { get; set; }
+        public int? uid { get; set; }
+        public string? role { get; set; }
+        public string? nickname { get; set; }
+    }
+
+    public class AdminSnapshotRestoreRequest
+    {
+        public string? id { get; set; }
+        public string? nickname { get; set; }
+    }
+
+    public class AdminSaveSnapshotRequest
+    {
+        public int uid { get; set; }
+        public string? name { get; set; }
+        public string? description { get; set; }
     }
 
     private static bool TryResolveBanExpireAt(AdminBanAccountRequest request, out long expireAt, out string error)

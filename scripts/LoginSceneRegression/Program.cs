@@ -3033,6 +3033,7 @@ Check("banner config loads every captured 4.6 pool and the Departure Warp with k
         .All(id => GameData.AvatarConfigData.ContainsKey(id) || GameData.EquipmentConfigData.ContainsKey(id))));
 await WarpGachaRegression.Run(Check, repository, scratch);
 await ProgressionRewardsRegression.Run(Check);
+await AccountSnapshotRegression.Run(Check);
 
 var fakeRaw = Path.Combine(scratch, "fake-raw");
 Directory.CreateDirectory(Path.Combine(fakeRaw, "ExcelOutputGameCore"));

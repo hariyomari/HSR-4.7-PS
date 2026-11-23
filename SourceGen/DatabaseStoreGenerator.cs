@@ -236,6 +236,17 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
         sb.AppendLine("            global::March7thHoney.Database.DatabaseHelper.logger.Info($\"Table {table}: added missing column {name}\");");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
+        sb.AppendLine();
+        // Snapshot text form of one row column: base64 for BLOB-backed columns, invariant text for scalars.
+        sb.AppendLine("    public static string? Text(object? v) => v switch");
+        sb.AppendLine("    {");
+        sb.AppendLine("        null => null,");
+        sb.AppendLine("        byte[] b => Convert.ToBase64String(b),");
+        sb.AppendLine("        string s => s,");
+        sb.AppendLine("        Enum en => Convert.ToInt64(en, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),");
+        sb.AppendLine("        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),");
+        sb.AppendLine("        _ => Convert.ToString(v, CultureInfo.InvariantCulture)");
+        sb.AppendLine("    };");
         sb.AppendLine("}");
         sb.AppendLine();
 
@@ -248,7 +259,10 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
             "global::System.Func<DbConnection, List<global::March7thHoney.Database.BaseDatabaseDataHelper>> LoadAll, " +
             "global::System.Action<DbConnection, global::March7thHoney.Database.BaseDatabaseDataHelper> Insert, " +
             "global::System.Action<DbConnection, global::March7thHoney.Database.BaseDatabaseDataHelper> Update, " +
-            "global::System.Action<DbConnection, int> Delete);");
+            "global::System.Action<DbConnection, int> Delete, " +
+            "global::System.Func<global::March7thHoney.Database.BaseDatabaseDataHelper, global::March7thHoney.Database.BaseDatabaseDataHelper> DeepCopy, " +
+            "global::System.Func<global::March7thHoney.Database.BaseDatabaseDataHelper, Dictionary<string, string?>> Export, " +
+            "global::System.Func<IReadOnlyDictionary<string, string?>, global::March7thHoney.Database.BaseDatabaseDataHelper> Import);");
         sb.AppendLine();
         sb.AppendLine("public static class EntityStores");
         sb.AppendLine("{");
@@ -263,7 +277,10 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
                 $"            c => {{ var r = new List<global::March7thHoney.Database.BaseDatabaseDataHelper>(); foreach (var x in {e.ClassName}Store.LoadAll(c)) r.Add(x); return r; }},");
             sb.AppendLine($"            (c, e) => {e.ClassName}Store.Insert(c, ({e.Fqn})e),");
             sb.AppendLine($"            (c, e) => {e.ClassName}Store.Update(c, ({e.Fqn})e),");
-            sb.AppendLine($"            {e.ClassName}Store.Delete),");
+            sb.AppendLine($"            {e.ClassName}Store.Delete,");
+            sb.AppendLine($"            e => {e.ClassName}Store.DeepCopy(({e.Fqn})e),");
+            sb.AppendLine($"            e => {e.ClassName}Store.Export(({e.Fqn})e),");
+            sb.AppendLine($"            {e.ClassName}Store.Import),");
         }
 
         sb.AppendLine("    };");
@@ -405,6 +422,35 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
 
+        // DeepCopy: the persistence round trip in memory (MemoryPack/proto columns re-serialized), so the copy shares
+        // no reference with the source - exactly what a save followed by a reload would produce.
+        sb.AppendLine($"    public static {e.Fqn} DeepCopy({e.Fqn} e) => ToEntity(ToRow(e));");
+        sb.AppendLine();
+
+        // Export / Import: column name -> text (BLOB columns base64). Unknown keys are ignored and missing columns
+        // read back like a column added by a later schema migration.
+        sb.AppendLine($"    public static Dictionary<string, string?> Export({e.Fqn} e)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var row = ToRow(e);");
+        sb.AppendLine("        return new Dictionary<string, string?>");
+        sb.AppendLine("        {");
+        foreach (var c in cols)
+            sb.AppendLine($"            [\"{c.Name}\"] = DbSchema.Text(row.{c.Name}),");
+        sb.AppendLine("        };");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine($"    public static {e.Fqn} Import(IReadOnlyDictionary<string, string?> d)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        string? s;");
+        sb.AppendLine($"        var r = new {e.ClassName}Row");
+        sb.AppendLine("        {");
+        foreach (var c in cols)
+            sb.AppendLine($"            {c.Name} = {TextToRowExpr(c)},");
+        sb.AppendLine("        };");
+        sb.AppendLine("        return ToEntity(r);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
         // ToEntity
         sb.AppendLine($"    private static {e.Fqn} ToEntity({e.ClassName}Row r) => new {e.Fqn}");
         sb.AppendLine("    {");
@@ -432,9 +478,33 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
         if (c.Kind != ColumnKind.Scalar || c.Prim == Prim.Blob)
             return $"rd.IsDBNull({o}) ? null : (byte[])rd.GetValue({o})";
 
-        var v = $"rd.GetValue({o})";
+        var baseExpr = ScalarConvertExpr(c, $"rd.GetValue({o})");
+
+        // string is a reference type; null reads back as null. Value types pick the matching null literal.
+        if (c.Prim == Prim.Str)
+            return $"rd.IsDBNull({o}) ? null : {baseExpr}";
+
+        var nullBranch = c.Nullable ? $"({c.FqType})null" : $"default({c.FqType})";
+        return $"rd.IsDBNull({o}) ? {nullBranch} : {baseExpr}";
+    }
+
+    // Snapshot column text (see DbSchema.Text) -> row property; an absent or null column reads like a DB NULL.
+    private static string TextToRowExpr(Column c)
+    {
+        var present = $"d.TryGetValue(\"{c.Name}\", out s) && s != null";
+        if (c.Kind != ColumnKind.Scalar || c.Prim == Prim.Blob)
+            return $"{present} ? Convert.FromBase64String(s) : null";
+        if (c.Prim == Prim.Str)
+            return $"{present} ? s : null";
+
+        var nullBranch = c.Nullable ? $"({c.FqType})null" : $"default({c.FqType})";
+        return $"{present} ? {ScalarConvertExpr(c, "s")} : {nullBranch}";
+    }
+
+    private static string ScalarConvertExpr(Column c, string v)
+    {
         const string inv = "CultureInfo.InvariantCulture";
-        var baseExpr = c.Prim switch
+        return c.Prim switch
         {
             Prim.Str => $"Convert.ToString({v}, {inv})",
             Prim.Bool => $"Convert.ToBoolean({v}, {inv})",
@@ -450,15 +520,8 @@ public sealed class DatabaseStoreGenerator : IIncrementalGenerator
             Prim.F64 => $"Convert.ToDouble({v}, {inv})",
             Prim.Dec => $"Convert.ToDecimal({v}, {inv})",
             Prim.Enum => $"({c.UnderlyingFq})Convert.ToInt64({v}, {inv})",
-            _ => $"(byte[])rd.GetValue({o})"
+            _ => $"(byte[]){v}"
         };
-
-        // string is a reference type; null reads back as null. Value types pick the matching null literal.
-        if (c.Prim == Prim.Str)
-            return $"rd.IsDBNull({o}) ? null : {baseExpr}";
-
-        var nullBranch = c.Nullable ? $"({c.FqType})null" : $"default({c.FqType})";
-        return $"rd.IsDBNull({o}) ? {nullBranch} : {baseExpr}";
     }
 
     // Row property -> DbParameter.Value. Enums persist as their integer value (INTEGER column); everything else binds

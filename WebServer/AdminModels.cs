@@ -163,3 +163,17 @@ public sealed record WarpPhaseView(string key, string version, int phase, long s
 // names: Config/Custom/WarpItemNames.json as loaded, language ("en", "zh-CN") -> item id -> name.
 public sealed record WarpPoolData(
     List<WarpPhaseView> phases, List<WarpBannerView> banners, Dictionary<string, Dictionary<int, string>> names);
+
+// Account clone & named save snapshots (Config/Snapshots)
+public sealed record SnapshotView(
+    string id, string name, string description, long created_at, int source_uid, string game_version,
+    int player_level, int frontier_main_mission, int floor_id, int table_count);
+
+public sealed record SnapshotsData(List<SnapshotView> snapshots);
+
+public sealed record SnapshotWrap(SnapshotView snapshot);
+
+public sealed record DeletedSnapshot(string id);
+
+// A test account created from another save. generated_password: set only when the request left the password empty.
+public sealed record TestAccountData(AccountSummary account, string? generated_password);

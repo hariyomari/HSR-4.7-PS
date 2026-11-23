@@ -308,6 +308,7 @@ for (var i = 0; i < 3; i++)
 await WarpChecks.Run(client, address, Check);
 await ProgressionRewardSettingsChecks.Run(client, Check);
 await SecuritySessionChecks.Run(client, fixtureUid, fixturePassword, Check);
+await SnapshotChecks.Run(client, scratch, Check);
 Check("temporary command sessions are removed", MuipManager.Sessions.Count == 0);
 await app.StopAsync();
 Console.WriteLine($"Regression failures: {failures.Count}");

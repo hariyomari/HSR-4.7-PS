@@ -433,6 +433,72 @@ public class DatabaseHelper
         }
     }
 
+    /// <summary>Whether rows of this type are a uid's gameplay save (the rows a reset, clone or restore replaces).</summary>
+    public static bool IsGameplayType(Type type) =>
+        type != typeof(AccountData) && type != typeof(IdentityBlockData) && type != typeof(AuthAttemptData) &&
+        type != typeof(DeletedAccountData);
+
+    /// <summary>
+    ///     Deep copies of a uid's gameplay rows, made with the persistence round trip so no copy shares an object with
+    ///     the live save. The copies keep the source uid.
+    /// </summary>
+    public static List<BaseDatabaseDataHelper> CloneUidGameplayData(int uid)
+    {
+        lock (PersistenceLock)
+        {
+            if (!UidInstanceMap.TryGetValue(uid, out var list)) return [];
+            lock (list)
+                return list.Where(row => IsGameplayType(row.GetType()) && EntityStores.Map.ContainsKey(row.GetType()))
+                    .Select(row => EntityStores.Map[row.GetType()].DeepCopy(row))
+                    .ToList();
+        }
+    }
+
+    /// <summary>
+    ///     Replaces every gameplay row of <paramref name="uid" /> with <paramref name="rows" /> (rewritten to the uid) in
+    ///     one transaction. Memory is swapped only after the commit, so a failed write leaves the old save in place. The
+    ///     caller owns the rows and must not keep references to them.
+    /// </summary>
+    public static void ReplaceUidGameplayData(int uid, IReadOnlyCollection<BaseDatabaseDataHelper> rows)
+    {
+        if (rows.Any(row => !IsGameplayType(row.GetType()) || !EntityStores.Map.ContainsKey(row.GetType())))
+            throw new InvalidOperationException("Only gameplay rows can replace a save");
+        if (rows.Select(row => row.GetType()).Distinct().Count() != rows.Count)
+            throw new InvalidOperationException("A save holds one row per table");
+
+        lock (PersistenceLock)
+        {
+            var list = UidInstanceMap.GetOrAdd(uid, static _ => []);
+            lock (list)
+            {
+                if (list.OfType<DeletedAccountData>().Any()) throw new InvalidOperationException("Account has been deleted");
+                foreach (var row in rows) row.Uid = uid;
+
+                using var conn = Open();
+                Exec(conn, "BEGIN");
+                try
+                {
+                    foreach (var (type, store) in EntityStores.Map)
+                        if (IsGameplayType(type))
+                            store.Delete(conn, uid);
+                    foreach (var row in rows) EntityStores.Map[row.GetType()].Insert(conn, row);
+                    Exec(conn, "COMMIT");
+                }
+                catch
+                {
+                    try { Exec(conn, "ROLLBACK"); }
+                    catch (Exception error) { logger.Error("Transaction rollback failed", error); }
+                    throw;
+                }
+
+                list.RemoveAll(row => IsGameplayType(row.GetType()));
+                list.AddRange(rows);
+            }
+
+            ClearDirty(uid);
+        }
+    }
+
     public void DeleteInstance<T>(T instance) where T : BaseDatabaseDataHelper
     {
         lock (PersistenceLock)

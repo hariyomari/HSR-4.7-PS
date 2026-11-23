@@ -116,6 +116,7 @@ public static partial class AdminPageScripts
                   ${option("online", t("accounts.sort.online"), accountsState.sort)}
                 </select>
                 <button id="acc-new" class="btn primary" type="button">${t("accounts.new")}</button>
+                <button id="acc-snapshots" class="btn ghost" type="button">${t("snapshots.open")}</button>
                 <button id="acc-export" class="btn ghost" type="button" title="${t("accounts.export_hint")}">${t("accounts.export")}</button>
               </div>
               <div id="acc-results"></div>
@@ -149,6 +150,7 @@ public static partial class AdminPageScripts
           renderAccountEditor();
         });
         $("#acc-export").addEventListener("click", exportAccountsCsv);
+        $("#acc-snapshots").addEventListener("click", () => openSnapshotsDialog());
       }
 
       function renderAccountResults() {
@@ -643,6 +645,19 @@ public static partial class AdminPageScripts
       function renderAccountDangerTab(account) {
         return html`
           <div class="stack">
+            <div class="section-title">${t("accounts.test_tools")}</div>
+            <p class="muted">${t("accounts.test_tools_hint")}</p>
+            <div class="actions">
+              <button class="btn ghost" type="button" id="acc-clone">${t("accounts.clone")}</button>
+              <button class="btn ghost" type="button" id="acc-snapshot-save">${t("snapshots.save")}</button>
+            </div>
+            <div class="danger-card">
+              <div>
+                <strong>${t("snapshots.restore_title")}</strong>
+                <p class="muted">${t("snapshots.restore_message")}</p>
+              </div>
+              <button class="btn danger" type="button" id="acc-snapshot-restore">${t("snapshots.restore")}</button>
+            </div>
             <div class="danger-card">
               <div>
                 <strong>${t("accounts.reset_title")}</strong>
@@ -827,6 +842,202 @@ public static partial class AdminPageScripts
             }, t("accounts.deleted"));
           });
         }
+
+        const cloneButton = $("#acc-clone", host);
+        if (cloneButton) {
+          cloneButton.addEventListener("click", async () => {
+            const values = await formDialog({ title: t("accounts.clone_title", { user: account.username, uid: account.uid }), message: t("accounts.clone_message"), fields: testAccountFields(), confirmLabel: t("accounts.clone") });
+            if (!values) return;
+            await run(cloneButton, async () => {
+              const data = await api(`/admin/api/accounts/${account.uid}/clone`, { method: "POST", body: testAccountBody(values) });
+              await showTestAccount(data);
+            });
+          });
+        }
+        const saveSnapshotButton = $("#acc-snapshot-save", host);
+        if (saveSnapshotButton) {
+          saveSnapshotButton.addEventListener("click", async () => {
+            const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+            const values = await formDialog({
+              title: t("snapshots.save_title", { user: account.username, uid: account.uid }),
+              message: t("snapshots.save_message"),
+              fields: [
+                { name: "name", label: t("snapshots.name"), value: `${account.username}-${stamp}`, required: true },
+                { name: "description", label: t("snapshots.description"), type: "textarea" }
+              ],
+              confirmLabel: t("snapshots.save")
+            });
+            if (!values) return;
+            await run(saveSnapshotButton, async () => {
+              const data = await api("/admin/api/snapshots", { method: "POST", body: { uid: account.uid, name: values.name.trim(), description: values.description.trim() } });
+              return data.snapshot.id;
+            }, id => t("snapshots.saved", { id }));
+          });
+        }
+        const restoreButton = $("#acc-snapshot-restore", host);
+        if (restoreButton) {
+          restoreButton.addEventListener("click", async () => {
+            const snapshots = await run(restoreButton, async () => (await api("/admin/api/snapshots")).snapshots || []);
+            if (!snapshots) return;
+            if (!snapshots.length) {
+              toast(t("snapshots.empty"), "bad");
+              return;
+            }
+            const values = await formDialog({
+              title: t("snapshots.restore_title"),
+              fields: [{ name: "id", label: t("snapshots.pick"), type: "select", value: snapshots[0].id, options: snapshots.map(snapshot => [snapshot.id, `${snapshot.name} (UID ${snapshot.source_uid}, ${fmt.unix(snapshot.created_at)})`]) }],
+              confirmLabel: t("snapshots.restore"),
+              danger: true
+            });
+            if (!values) return;
+            if (!await confirmDialog({ title: t("snapshots.restore_title"), message: t("snapshots.restore_confirm", { user: account.username, uid: account.uid, id: values.id }), danger: true, requireText: "RESTORE", confirmLabel: t("snapshots.restore") })) return;
+            await run(restoreButton, async () => {
+              await api(`/admin/api/accounts/${account.uid}/snapshot/restore`, { method: "POST", body: { id: values.id } });
+              await refreshAccounts(account.uid);
+            }, t("snapshots.restored"));
+          });
+        }
+      }
+
+      // A modal owned by the accounts module. close(result) hands result to onClose; Escape and the backdrop close
+      // with no result.
+      function accountModal(content, options = {}) {
+        const host = $("#modal-host");
+        host.innerHTML = String(html`
+          <div class="modal-backdrop">
+            <div class="modal ${options.wide === false ? "" : "wide"}" role="dialog" aria-modal="true">${content}</div>
+          </div>`);
+        const element = $(".modal", host);
+        let open = true;
+        const close = result => {
+          if (!open) return;
+          open = false;
+          host.innerHTML = "";
+          document.removeEventListener("keydown", onKey);
+          options.onClose?.(result);
+        };
+        const onKey = event => {
+          if (event.key === "Escape") close();
+        };
+        document.addEventListener("keydown", onKey);
+        $(".modal-backdrop", host).addEventListener("click", event => {
+          if (event.target === event.currentTarget) close();
+        });
+        return { element, close };
+      }
+
+      // formDialog({ title, message, fields: [{ name, label, type, value, placeholder, options, required }],
+      // confirmLabel, danger }) -> Promise<{ [name]: string } | null>
+      function formDialog(options) {
+        return new Promise(resolve => {
+          const modal = accountModal(html`
+            <h3>${options.title}</h3>
+            ${options.message ? html`<p class="modal-message">${options.message}</p>` : ""}
+            <form id="form-dialog" class="stack">
+              ${(options.fields || []).map(field => html`
+                <label class="field">
+                  <span>${field.label}</span>
+                  ${field.type === "select"
+                    ? html`<select name="${field.name}">${(field.options || []).map(([value, label]) => option(value, label, field.value))}</select>`
+                    : field.type === "textarea"
+                      ? html`<textarea name="${field.name}" placeholder="${field.placeholder || ""}" spellcheck="false">${field.value || ""}</textarea>`
+                      : html`<input name="${field.name}" type="${field.type || "text"}" value="${field.value ?? ""}" placeholder="${field.placeholder || ""}" autocomplete="off" spellcheck="false" ${field.required ? "required" : ""}>`}
+                </label>`)}
+              <div class="modal-actions">
+                <button class="btn ghost" type="button" data-form-cancel>${t("common.cancel")}</button>
+                <button class="btn ${options.danger ? "danger" : "primary"}" type="submit">${options.confirmLabel || t("common.confirm")}</button>
+              </div>
+            </form>`, { wide: false, onClose: result => resolve(result ?? null) });
+          const form = $("#form-dialog", modal.element);
+          $("[data-form-cancel]", form).addEventListener("click", () => modal.close());
+          form.addEventListener("submit", event => {
+            event.preventDefault();
+            modal.close(Object.fromEntries(new FormData(form).entries()));
+          });
+          $("input, select, textarea", form)?.focus();
+        });
+      }
+
+      function testAccountFields() {
+        return [
+          { name: "username", label: t("common.username"), placeholder: t("accounts.auto_generate") },
+          { name: "password", label: t("common.password"), placeholder: t("accounts.auto_generate") },
+          { name: "nickname", label: t("accounts.nickname_optional") }
+        ];
+      }
+
+      function testAccountBody(values) {
+        return {
+          username: (values.username || "").trim() || null,
+          password: values.password || null,
+          nickname: (values.nickname || "").trim() || null
+        };
+      }
+
+      // Selects a freshly created test account and shows its login once (a generated password is not stored anywhere).
+      async function showTestAccount(data, extra) {
+        const account = data.account;
+        accountsState.mode = "detail";
+        accountsState.tab = "profile";
+        await refreshAccounts(account.uid);
+        const lines = [t("accounts.test_ready_user", { username: account.username, uid: account.uid })];
+        if (data.generated_password) lines.push(t("accounts.test_ready_password", { password: data.generated_password }));
+        if (extra) lines.push("", extra);
+        await confirmDialog({ title: t("accounts.test_ready"), message: lines.join("\n"), confirmLabel: t("common.ok") });
+      }
+
+      async function openSnapshotsDialog() {
+        const modal = accountModal(html`<h3>${t("snapshots.title")}</h3>${loadingState()}`);
+        let snapshots;
+        try {
+          snapshots = (await api("/admin/api/snapshots")).snapshots || [];
+        } catch (error) {
+          modal.close();
+          toast(errorMessage(error), "bad");
+          return;
+        }
+        modal.element.innerHTML = String(html`
+          <h3>${t("snapshots.title")}</h3>
+          <p class="modal-message">${t("snapshots.hint")}</p>
+          ${snapshots.length ? html`
+            <div class="table-wrap short">
+              <table>
+                <thead><tr><th>${t("common.name")}</th><th class="w-uid">${t("snapshots.source")}</th><th class="w-sm">${t("common.level")}</th><th>${t("snapshots.mission")}</th><th>${t("snapshots.created")}</th><th></th></tr></thead>
+                <tbody>${snapshots.map(snapshot => html`
+                  <tr>
+                    <td><strong>${snapshot.name}</strong><div class="muted small mono">${snapshot.id}</div>${snapshot.description ? html`<div class="muted small">${snapshot.description}</div>` : ""}</td>
+                    <td class="mono">${snapshot.source_uid}</td>
+                    <td>${snapshot.player_level}</td>
+                    <td>${snapshot.frontier_main_mission ? handbook.label("MainMission", snapshot.frontier_main_mission) : "-"}<div class="muted small">${t("snapshots.floor", { floor: snapshot.floor_id })}</div></td>
+                    <td>${fmt.unix(snapshot.created_at)}<div class="muted small">${snapshot.game_version}</div></td>
+                    <td class="row-actions">
+                      <button class="btn primary small" type="button" data-snapshot-spawn="${snapshot.id}">${t("snapshots.spawn")}</button>
+                      <button class="btn danger small" type="button" data-snapshot-delete="${snapshot.id}">${t("common.delete")}</button>
+                    </td>
+                  </tr>`)}</tbody>
+              </table>
+            </div>` : emptyState(t("snapshots.empty"))}
+          <div class="modal-actions"><button class="btn ghost" type="button" data-snapshot-close>${t("common.cancel")}</button></div>`);
+        $("[data-snapshot-close]", modal.element).addEventListener("click", () => modal.close());
+        on(modal.element, "[data-snapshot-spawn]", "click", async event => {
+          const snapshot = snapshots.find(item => item.id === event.currentTarget.dataset.snapshotSpawn);
+          modal.close();
+          const values = await formDialog({ title: t("snapshots.spawn_title", { name: snapshot.name }), message: t("accounts.test_account_hint"), fields: testAccountFields(), confirmLabel: t("snapshots.spawn") });
+          if (!values) return;
+          await run(null, async () => {
+            const data = await api(`/admin/api/snapshots/${encodeURIComponent(snapshot.id)}/spawn`, { method: "POST", body: testAccountBody(values) });
+            await showTestAccount(data);
+          });
+        });
+        on(modal.element, "[data-snapshot-delete]", "click", async event => {
+          const snapshot = snapshots.find(item => item.id === event.currentTarget.dataset.snapshotDelete);
+          modal.close();
+          if (await confirmDialog({ title: t("snapshots.delete_title", { name: snapshot.name }), danger: true, confirmLabel: t("common.delete") })) {
+            await run(null, () => api(`/admin/api/snapshots/${encodeURIComponent(snapshot.id)}`, { method: "DELETE" }), t("snapshots.deleted"));
+          }
+          await openSnapshotsDialog();
+        });
+        handbook.ensureDefault();
       }
 
       async function saveAccount(account, button, payload, successMessage) {
