@@ -82,6 +82,8 @@ NuGet pins `Google.Protobuf.Tools 3.33.1` (protoc 33.1), matching the existing `
 
 The build target detects added, removed and modified schemas and missing generated files; when nothing has changed, generation is skipped. Building again after `dotnet clean` restores all generated code. Change the grouped definitions; do not edit `obj/` by hand.
 
+Alongside the generated code the target writes `ProtocolDescriptors.g.cs`, whose `ProtocolDescriptors.BuildAll()` lists the `<File>Reflection.Descriptor` of every compiled schema (each schema keeps `option csharp_namespace = "March7thHoney.Proto"`) so that the server builds all descriptors at startup without reflection, which NativeAOT trimming could silently defeat.
+
 `scripts/test-proto-generation.py` runs the generation in a temporary directory whose path contains spaces, on copies of `Proto.csproj`, `Build/` and the active version's schemas next to the repository's `global.json`, `Directory.Build.props` and `Directory.Packages.props`. It checks fresh and incremental generation, the repair of a missing output, the addition, modification and removal of a schema, and that a target runtime does not change the host compiler.
 
 The checkout is much smaller before a build, but the generated code and the NuGet cache still take space at build time. Old Git history is not rewritten; a full clone may still download large historical files.

@@ -37,17 +37,26 @@ def main():
         generate('-restore')
         output = project / 'obj' / 'Release' / 'net10.0' / 'protobuf' / version
         baseline = {p.name: p.read_bytes() for p in output.glob('*.cs')}
-        assert len(baseline) == len(list(schemas.glob('*.proto')))
+        # One C# file per schema, plus the generated list of every file descriptor.
+        descriptors = output / 'ProtocolDescriptors.g.cs'
+
+        def listed():
+            return sorted(line.strip()[len('global::March7thHoney.Proto.'):-len('Reflection.Descriptor,')]
+                          for line in descriptors.read_text().splitlines() if line.strip().endswith('.Descriptor,'))
+
+        assert len(baseline) == len(list(schemas.glob('*.proto'))) + 1
+        assert listed() == sorted(p.stem for p in schemas.glob('*.proto')), 'Descriptor list differs from schemas'
         stamp = output / 'generation.stamp'
         timestamp = stamp.stat().st_mtime_ns
         generate()
         assert stamp.stat().st_mtime_ns == timestamp, 'No-op build regenerated files'
         print('PASS: fresh generation in path with spaces and incremental skip')
 
-        missing = output / next(iter(baseline))
-        missing.unlink()
-        generate()
-        assert missing.read_bytes() == baseline[missing.name]
+        schema_output = next(name for name in baseline if name != descriptors.name)
+        for missing in (output / schema_output, descriptors):
+            missing.unlink()
+            generate()
+            assert missing.read_bytes() == baseline[missing.name]
         print('PASS: missing generated output is repaired')
 
         probe = schemas / 'RepositorySlimmingProbe.proto'
@@ -56,6 +65,7 @@ def main():
         generate()
         generated_probe = output / 'RepositorySlimmingProbe.cs'
         assert generated_probe.exists()
+        assert 'RepositorySlimmingProbe' in listed(), 'Added schema missing from the descriptor list'
         probe.write_text(probe.read_text().replace('int32', 'int64'))
         generate()
         assert 'long value_' in generated_probe.read_text()

@@ -16,7 +16,6 @@ using March7thHoney.WebServer;
 using March7thHoney.WebServer.Server;
 using March7thHoney.WebServer.Services;
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace March7thHoney.Program.Program;
@@ -286,16 +285,13 @@ public class EntryPoint
     }
 
     /// <summary>
-    ///     Builds the descriptor of every generated .proto file (the static <c>Descriptor</c> of each
-    ///     <c>*Reflection</c> class). The active protocol is split across many .proto files, each built on the first
-    ///     access to one of its messages; without this the first login pays for them while the client waits on its
-    ///     replies.
+    ///     Builds the descriptor of every generated .proto file. The active protocol is split across many .proto files,
+    ///     each built on the first access to one of its messages; without this the first login pays for them while the
+    ///     client waits on its replies. The build generates the list, so no reflection is involved (NativeAOT-safe).
     /// </summary>
     private static void BuildProtoDescriptors()
     {
-        foreach (var type in typeof(March7thHoney.Proto.Retcode).Assembly.GetTypes())
-            if (type.Name.EndsWith("Reflection", StringComparison.Ordinal))
-                type.GetProperty("Descriptor", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+        _ = March7thHoney.Proto.ProtocolDescriptors.BuildAll();
     }
 
     public static ConfigContainer GetConfig()

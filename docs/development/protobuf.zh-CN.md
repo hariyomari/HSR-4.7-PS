@@ -82,6 +82,8 @@ NuGet 固定 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），与现有 `Google
 
 目标检测 schema 的新增、删除、修改和缺失的生成文件；无变化时跳过生成。`dotnet clean` 后再次构建会恢复全部生成代码。修改分组定义，不手改 `obj/`。
 
+目标还会在生成代码旁写出 `ProtocolDescriptors.g.cs`，其中 `ProtocolDescriptors.BuildAll()` 列出每个已编译 schema 的 `<File>Reflection.Descriptor`（每个 schema 都保留 `option csharp_namespace = "March7thHoney.Proto"`），服务器启动时据此构建全部描述符而无需反射，避免 NativeAOT 裁剪使其悄然失效。
+
 `scripts/test-proto-generation.py` 在路径含空格的临时目录里，用 `Proto.csproj`、`Build/` 和活动版本 schema 的副本，加上仓库的 `global.json`、`Directory.Build.props` 和 `Directory.Packages.props` 运行生成，检查首次与增量生成、缺失输出的恢复、schema 的新增/修改/删除，以及目标运行时不会改变宿主编译器的选择。
 
 构建前的检出体积明显减少，但构建时生成代码和 NuGet 缓存仍占空间。旧 Git 历史没有改写；完整克隆仍可能下载历史大文件。
