@@ -15,12 +15,19 @@ using Newtonsoft.Json;
 
 namespace March7thHoney.GameServer.Game.Player;
 
+/// <summary>Gender: Man/Woman switches the created Trailblazer; None keeps it.</summary>
 public sealed record ProfileEdit(
     string Name, string Signature, int HeadIcon, int Level, int Exp, int WorldLevel, int Scoin, int Hcoin, int Mcoin,
-    int Stamina, double StaminaReserve, long MonthCardExpireTime);
+    int Stamina, double StaminaReserve, long MonthCardExpireTime, Gender Gender = Gender.None);
 
 /// <summary>Promotion -1 picks the lowest ascension the level allows. MaxTraces raises every trace to its cap.</summary>
 public sealed record AvatarEdit(int Level, int Promotion, int Rank, bool MaxTraces);
+
+/// <summary>
+///     A character's gear on its current path. LightCone: a light cone unique id, 0 takes it off, null keeps it.
+///     Relics: slot (1-6) → relic unique id, 0 empties the slot; slots not named are kept.
+/// </summary>
+public sealed record GearEdit(int? LightCone, IReadOnlyDictionary<int, int> Relics);
 
 public sealed record LightConeEdit(int Level, int Promotion, int Rank);
 
@@ -77,6 +84,8 @@ public static class PlayerDataEditor
         if (edit.StaminaReserve < 0 || edit.StaminaReserve > GameConstants.MAX_STAMINA_RESERVE)
             Invalid($"Reserved Trailblaze Power must be 0-{GameConstants.MAX_STAMINA_RESERVE}");
         if (edit.HeadIcon <= 0) Invalid("Profile picture id must be positive");
+        if (edit.Gender != Gender.None && edit.Gender != player.Data.CurrentGender && player.AvatarManager!.IsHeroGenderPending)
+            Invalid("The Trailblazer is created in the prologue's receptacle room; finish that step first");
 
         var data = player.Data;
         var levelledUp = edit.Level > data.Level;
@@ -92,8 +101,24 @@ public static class PlayerDataEditor
         data.Stamina = edit.Stamina;
         data.StaminaReserve = edit.StaminaReserve;
         data.MonthCardExpireTime = edit.MonthCardExpireTime;
+        if (edit.Gender is Gender.Man or Gender.Woman && edit.Gender != data.CurrentGender) await SetGender(player, edit.Gender);
         // Missions gated on the new level open as they would on a level-up in play.
         if (levelledUp) await player.OnLevelUp();
+    }
+
+    // The game's own switch (path kept, model paired), then the teams follow the new Trailblazer id.
+    private static async ValueTask SetGender(PlayerInstance player, Gender gender)
+    {
+        await player.SetHeroGender(gender);
+        var heroId = player.Data.CurBasicType;
+        foreach (var lineup in player.LineupManager!.Data.Lineups.Values)
+        foreach (var slot in lineup.BaseAvatars ?? [])
+        {
+            if (slot.SpecialAvatarId != 0 ||
+                GameData.MultiplePathAvatarConfigData.GetValueOrDefault(slot.BaseAvatarId)?.BaseAvatarID != 8001) continue;
+            if (lineup.LeaderAvatarId == slot.BaseAvatarId) lineup.LeaderAvatarId = heroId;
+            slot.BaseAvatarId = heroId;
+        }
     }
 
     public static void SetPosition(PlayerInstance player, int entryId)
@@ -161,7 +186,9 @@ public static class PlayerDataEditor
         }
 
         var inventory = player.InventoryManager!.Data;
-        foreach (var item in inventory.EquipmentItems.Concat(inventory.RelicItems).Where(item => item.EquipAvatar == baseId))
+        // Worn gear names the wearer's path id (the base id for single-path characters).
+        foreach (var item in inventory.EquipmentItems.Concat(inventory.RelicItems)
+                     .Where(item => item.EquipAvatar == baseId || avatar.PathInfos.ContainsKey(item.EquipAvatar)))
             item.EquipAvatar = 0;
 
         manager.Data.FormalAvatars.RemoveAll(item => item.BaseAvatarId == baseId);
@@ -178,6 +205,39 @@ public static class PlayerDataEditor
         if (promotion < min || promotion > max)
             Invalid(min == max ? $"Level {level} needs ascension {min}" : $"Level {level} needs ascension {min} or {max}");
         return promotion;
+    }
+
+    /// <summary>Equips through the inventory's own dress logic (taking gear off another wearer swaps it).</summary>
+    public static async ValueTask SetGear(PlayerInstance player, int avatarId, GearEdit edit)
+    {
+        var avatar = player.AvatarManager!.GetFormalAvatar(avatarId) ??
+                     NotFound<Database.Avatar.FormalAvatarInfo>($"Character {avatarId} is not owned");
+        var pathId = avatar.PathInfos.ContainsKey(avatar.AvatarId) ? avatar.AvatarId : avatar.PathInfos.Keys.First();
+        var inventory = player.InventoryManager!;
+
+        if (edit.LightCone is { } coneId)
+        {
+            if (coneId == 0) await inventory.UnequipEquipment(pathId);
+            else if (inventory.Data.EquipmentItems.Find(item => item.UniqueId == coneId) == null)
+                Invalid($"Light cone {coneId} is not owned");
+            else await inventory.EquipAvatar(pathId, coneId);
+        }
+
+        foreach (var (slot, relicId) in edit.Relics)
+        {
+            if (slot is < 1 or > 6) Invalid($"Relic slot must be 1-6, not {slot}");
+            if (relicId == 0)
+            {
+                await inventory.UnequipRelic(pathId, slot);
+                continue;
+            }
+
+            var relic = inventory.Data.RelicItems.Find(item => item.UniqueId == relicId) ??
+                        NotFound<ItemData>($"Relic {relicId} is not owned");
+            if ((int?)GameData.RelicConfigData.GetValueOrDefault(relic.ItemId)?.Type != slot)
+                Invalid($"Relic {relicId} does not fit slot {slot}");
+            await inventory.EquipRelic(pathId, relicId, slot);
+        }
     }
 
     #endregion

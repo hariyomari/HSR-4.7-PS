@@ -12,6 +12,7 @@ using March7thHoney.Database.Scene;
 using March7thHoney.Database.Tutorial;
 using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Mission;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
@@ -44,6 +45,7 @@ public static partial class AdminRoutes
         app.MapPost(EditorPrefix + "/avatars", AddEditorAvatar);
         app.MapPut(EditorPrefix + "/avatars/{avatarId:int}", EditEditorAvatar);
         app.MapDelete(EditorPrefix + "/avatars/{avatarId:int}", RemoveEditorAvatar);
+        app.MapPut(EditorPrefix + "/avatars/{avatarId:int}/gear", SetEditorAvatarGear);
         app.MapGet(EditorPrefix + "/inventory", GetEditorInventory);
         app.MapPost(EditorPrefix + "/inventory/grant", GrantEditorItem);
         app.MapPut(EditorPrefix + "/inventory/items/{itemId:int}", SetEditorItemCount);
@@ -137,10 +139,13 @@ public static partial class AdminRoutes
     {
         if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null) return Error("Missing profile");
+        if (!TryParseOption(request.gender, "keep", out var gender, ("keep", Gender.None), ("man", Gender.Man),
+                ("woman", Gender.Woman)))
+            return Error("Invalid gender");
 
         var edit = new ProfileEdit(request.name ?? "", request.signature ?? "", request.head_icon, request.level,
             request.exp, request.world_level, request.scoin, request.hcoin, request.mcoin, request.stamina,
-            request.stamina_reserve, request.month_card_expire);
+            request.stamina_reserve, request.month_card_expire, gender);
         return await EditorEdit(uid, "profile", async player =>
         {
             await PlayerDataEditor.SetProfile(player, edit);
@@ -156,7 +161,19 @@ public static partial class AdminRoutes
             ? null
             : new EditorProfileView(data.Name ?? "", data.Signature ?? "", data.HeadIcon, data.Level, data.Exp,
                 data.WorldLevel, data.Scoin, data.Hcoin, data.Mcoin, data.Stamina, data.StaminaReserve,
-                data.MonthCardExpireTime, data.IsGenderSet, data.CurrentGender.ToString());
+                data.MonthCardExpireTime, !HeroGenderPending(uid), data.CurrentGender.ToString());
+    }
+
+    // AvatarManager.IsHeroGenderPending read from the stored rows (the view has no loaded player): story mode, the
+    // opening mission running before its name and gender step, and no team holding the Trailblazer.
+    private static bool HeroGenderPending(int uid)
+    {
+        var missions = DatabaseHelper.Instance?.GetInstance<MissionData>(uid);
+        var lineups = DatabaseHelper.Instance?.GetInstance<LineupData>(uid);
+        return missions is { MissionEnabled: true } &&
+               missions.GetMainMissionStatus(AvatarManager.OpeningMainMissionId) == MissionPhaseEnum.Accept &&
+               missions.GetSubMissionStatus(AvatarManager.NameAndGenderSubMissionId) != MissionPhaseEnum.Finish &&
+               lineups?.Lineups.Values.Any(lineup => lineup.BaseAvatars?.Any(slot => slot.BaseAvatarId == 8001) == true) != true;
     }
 
     #endregion
@@ -206,6 +223,27 @@ public static partial class AdminRoutes
         }, null, (saved, _) => new EditorSaved(saved));
     }
 
+    private static async Task<IResult> SetEditorAvatarGear(HttpContext ctx, int uid, int avatarId,
+        AdminEditorGearRequest? request)
+    {
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        if (request == null) return Error("Missing gear");
+
+        var relics = new Dictionary<int, int>();
+        foreach (var (slot, relicId) in request.relics ?? [])
+        {
+            if (!int.TryParse(slot, out var number)) return Error($"Invalid relic slot {slot}");
+            relics[number] = relicId;
+        }
+
+        var edit = new GearEdit(request.light_cone_unique_id, relics);
+        return await EditorEdit(uid, $"gear of character {avatarId}", async player =>
+        {
+            await PlayerDataEditor.SetGear(player, avatarId, edit);
+            return true;
+        }, null, (saved, _) => new EditorSaved(saved));
+    }
+
     private static List<EditorAvatarView> AvatarsView(int uid)
     {
         var avatars = DatabaseHelper.Instance?.GetInstance<AvatarData>(uid);
@@ -220,7 +258,11 @@ public static partial class AdminRoutes
                 var lightCone = path == null ? null : inventory?.EquipmentItems.Find(item => item.UniqueId == path.EquipId);
                 return new EditorAvatarView(avatar.BaseAvatarId, avatar.AvatarId, avatar.Level, avatar.Promotion,
                     path?.Rank ?? 0, avatar.PathInfos.Keys.Order().ToList(), lightCone?.UniqueId ?? 0,
-                    lightCone?.ItemId ?? 0, path?.Relic.Count ?? 0, path != null && TracesMaxed(path));
+                    lightCone?.ItemId ?? 0, path?.Relic.Count ?? 0, path != null && TracesMaxed(path),
+                    (path?.Relic ?? []).Where(pair => pair.Value > 0).OrderBy(pair => pair.Key)
+                    .Select(pair => new EditorWornRelic(pair.Key, pair.Value,
+                        inventory?.RelicItems.Find(item => item.UniqueId == pair.Value)?.ItemId ?? 0))
+                    .ToList());
             })
             .OrderBy(avatar => avatar.id)
             .ToList();
@@ -245,7 +287,8 @@ public static partial class AdminRoutes
         if (inventory == null) return Error("Player has no inventory", statusCode: StatusCodes.Status404NotFound);
 
         static EditorGearView Gear(ItemData item) => new(item.UniqueId, item.ItemId, item.Level, item.Promotion,
-            item.Rank, item.MainAffix, item.SubAffixes.Count, item.EquipAvatar, item.Locked);
+            item.Rank, item.MainAffix, item.SubAffixes.Count, item.EquipAvatar, item.Locked,
+            (int?)GameData.RelicConfigData.GetValueOrDefault(item.ItemId)?.Type ?? 0);
         return Success(new EditorInventoryData(
             inventory.MaterialItems.Select(item => new EditorMaterialView(item.ItemId, item.Count)).OrderBy(item => item.item_id).ToList(),
             inventory.EquipmentItems.Select(Gear).OrderBy(item => item.unique_id).ToList(),
@@ -534,6 +577,9 @@ public static partial class AdminRoutes
         public int stamina { get; set; }
         public double stamina_reserve { get; set; }
         public long month_card_expire { get; set; }
+
+        /// <summary>keep (default), man or woman; only once the Trailblazer is created.</summary>
+        public string? gender { get; set; }
         public string? version { get; set; }
     }
 
@@ -545,6 +591,13 @@ public static partial class AdminRoutes
         public int rank { get; set; }
         public bool max_traces { get; set; }
         public string? version { get; set; }
+    }
+
+    /// <summary>light_cone_unique_id: 0 takes it off, null keeps it. relics: slot "1"-"6" → relic unique id, 0 empties.</summary>
+    public class AdminEditorGearRequest
+    {
+        public int? light_cone_unique_id { get; set; }
+        public Dictionary<string, int>? relics { get; set; }
     }
 
     public class AdminEditorItemRequest

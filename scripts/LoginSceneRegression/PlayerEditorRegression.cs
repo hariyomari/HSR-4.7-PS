@@ -14,6 +14,7 @@ using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Mission;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.Proto;
 using March7thHoney.Util;
 using March7thHoney.WebServer;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -60,6 +61,19 @@ internal static class PlayerEditorRegression
             check("editor: a stale profile is a 409 and an invalid one a 400, both changing nothing",
                 stale.StatusCode == HttpStatusCode.Conflict && level.StatusCode == HttpStatusCode.BadRequest &&
                 name.StatusCode == HttpStatusCode.BadRequest && database.GetInstance<PlayerData>(Uid) is { Name: "Edited", Scoin: 123456 });
+
+        var genderVersion = (await Data(await client.GetAsync(basePath + "/profile")))!["version"]!.GetValue<string>();
+        using (var response = await client.PutAsJsonAsync(basePath + "/profile", Profile("Edited", 40, 123456, 3, genderVersion, "man")))
+        {
+            var loaded = await Load();
+            var heroSlots = loaded.LineupManager!.Data.Lineups.Values.SelectMany(lineup => lineup.BaseAvatars ?? [])
+                .Where(slot => slot.SpecialAvatarId == 0 && GameData.MultiplePathAvatarConfigData.GetValueOrDefault(slot.BaseAvatarId)?.BaseAvatarID == 8001)
+                .Select(slot => slot.BaseAvatarId).ToList();
+            check("editor: switching the Trailblazer to Caelus pairs the model and the teams",
+                response.StatusCode == HttpStatusCode.OK && loaded.Data is { CurrentGender: Gender.Man, IsGenderSet: true } &&
+                loaded.Data.CurBasicType % 2 == 1 && loaded.AvatarManager!.GetHero()?.AvatarId == loaded.Data.CurBasicType &&
+                heroSlots.Count > 0 && heroSlots.All(id => id == loaded.Data.CurBasicType));
+        }
 
         // --- characters ------------------------------------------------------------------------------------------
         var catalog = (await Data(await client.GetAsync("/admin/api/editor/catalog")))!;
@@ -158,11 +172,26 @@ internal static class PlayerEditorRegression
                 response.StatusCode == HttpStatusCode.OK &&
                 database.GetInstance<InventoryData>(Uid)!.EquipmentItems.Find(item => item.UniqueId == worn.UniqueId) is { Level: 50, Promotion: 3, Rank: 1 });
 
-        // Equip it as the game would store it, then remove it from the inventory.
-        var wearer = database.GetInstance<AvatarData>(Uid)!.FindByAnyId(added)!;
-        wearer.GetCurPathInfo().EquipId = worn.UniqueId;
-        database.GetInstance<InventoryData>(Uid)!.EquipmentItems.Find(item => item.UniqueId == worn.UniqueId)!.EquipAvatar = wearer.BaseAvatarId;
-        DatabaseHelper.MarkDirty(Uid);
+        // Dress it and a relic through the gear route, then remove the light cone from the inventory.
+        var dressRelic = database.GetInstance<InventoryData>(Uid)!.RelicItems.Last(item => item.ItemId == relic);
+        var relicSlot = (int)GameData.RelicConfigData[relic].Type;
+        var gearPath = $"/avatars/{added}/gear";
+        using (var wrong = await client.PutAsJsonAsync(basePath + gearPath,
+                   new { relics = new Dictionary<string, int> { [(relicSlot % 6 + 1).ToString()] = dressRelic.UniqueId } }))
+        using (var response = await client.PutAsJsonAsync(basePath + gearPath,
+                   new { light_cone_unique_id = worn.UniqueId, relics = new Dictionary<string, int> { [relicSlot.ToString()] = dressRelic.UniqueId } }))
+        {
+            var path = database.GetInstance<AvatarData>(Uid)!.FindByAnyId(added)!.GetCurPathInfo();
+            var view = (await Data(await client.GetAsync(basePath + "/avatars")))!["avatars"]!.AsArray()
+                .First(item => item!["id"]!.GetValue<int>() == added)!;
+            check("editor: the gear route dresses a light cone and a relic in its own slot; a wrong slot is a 400",
+                wrong.StatusCode == HttpStatusCode.BadRequest && response.StatusCode == HttpStatusCode.OK &&
+                path.EquipId == worn.UniqueId && path.Relic.GetValueOrDefault(relicSlot) == dressRelic.UniqueId &&
+                database.GetInstance<InventoryData>(Uid)!.EquipmentItems.Find(item => item.UniqueId == worn.UniqueId)!.EquipAvatar != 0 &&
+                view["light_cone_unique_id"]!.GetValue<int>() == worn.UniqueId &&
+                view["relics"]!.AsArray().Any(item => item!["unique_id"]!.GetValue<int>() == dressRelic.UniqueId));
+        }
+
         using (var response = await client.PostAsJsonAsync(basePath + "/inventory/remove", new { unique_ids = new[] { worn.UniqueId } }))
             check("editor: removing a worn light cone deletes it and takes it off its wearer",
                 response.StatusCode == HttpStatusCode.OK &&
@@ -172,9 +201,10 @@ internal static class PlayerEditorRegression
         using (var response = await client.DeleteAsync(basePath + $"/avatars/{added}"))
         {
             var lineup = database.GetInstance<LineupData>(Uid)!.Lineups[1];
-            check("editor: removing a character takes it out of its team",
+            check("editor: removing a character takes it out of its team and takes its relics off",
                 response.StatusCode == HttpStatusCode.OK && database.GetInstance<AvatarData>(Uid)!.FindByAnyId(added) == null &&
-                lineup.BaseAvatars!.All(slot => slot.BaseAvatarId != added) && lineup.LeaderAvatarId == hero);
+                lineup.BaseAvatars!.All(slot => slot.BaseAvatarId != added) && lineup.LeaderAvatarId == hero &&
+                database.GetInstance<InventoryData>(Uid)!.RelicItems.Find(item => item.UniqueId == dressRelic.UniqueId)?.EquipAvatar == 0);
         }
 
         // --- story, world and position ---------------------------------------------------------------------------
@@ -255,10 +285,10 @@ internal static class PlayerEditorRegression
         await app.StopAsync();
     }
 
-    private static object Profile(string name, int level, int scoin, int worldLevel, string? version) => new
+    private static object Profile(string name, int level, int scoin, int worldLevel, string? version, string gender = "keep") => new
     {
         name, signature = "editor", head_icon = 208002, level, exp = 0, world_level = worldLevel, scoin, hcoin = 10,
-        mcoin = 0, stamina = 240, stamina_reserve = 0.0, month_card_expire = 0, version
+        mcoin = 0, stamina = 240, stamina_reserve = 0.0, month_card_expire = 0, gender, version
     };
 
     // A fresh load of the stored save, as the next login would see it.

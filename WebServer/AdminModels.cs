@@ -215,17 +215,20 @@ public sealed record EditorProfileView(
 
 public sealed record EditorProfileData(EditorProfileView profile, string version);
 
+public sealed record EditorWornRelic(int slot, int unique_id, int item_id);
+
 public sealed record EditorAvatarView(
     int id, int avatar_id, int level, int promotion, int rank, List<int> paths, int light_cone_unique_id,
-    int light_cone_id, int relic_count, bool traces_maxed);
+    int light_cone_id, int relic_count, bool traces_maxed, List<EditorWornRelic> relics);
 
 public sealed record EditorAvatarsData(List<EditorAvatarView> avatars, string version);
 
 public sealed record EditorMaterialView(int item_id, int count);
 
+// slot: a relic's slot (1-6, RelicConfig Type); 0 for light cones.
 public sealed record EditorGearView(
     int unique_id, int item_id, int level, int promotion, int rank, int main_affix, int sub_affixes, int equip_avatar,
-    bool locked);
+    bool locked, int slot);
 
 public sealed record EditorInventoryData(
     List<EditorMaterialView> materials, List<EditorGearView> light_cones, List<EditorGearView> relics,
