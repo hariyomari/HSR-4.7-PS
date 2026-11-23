@@ -26,10 +26,19 @@ public static class RechargeService
 
     public static ValueTask<RechargeResult> Purchase(PlayerInstance player, RechargeConfigExcel product)
     {
+        return Purchase(player, product, ServerTimeProvider.GetServerUnixSec(player.Data));
+    }
+
+    /// <summary>
+    ///     Same as <see cref="Purchase(PlayerInstance, RechargeConfigExcel)" />, decided at <paramref name="now" />
+    ///     (Unix seconds).
+    /// </summary>
+    public static ValueTask<RechargeResult> Purchase(PlayerInstance player, RechargeConfigExcel product, long now)
+    {
         return (ProductGiftType)product.GiftType switch
         {
             ProductGiftType.ProductGiftCoin => GrantCoin(player, product),
-            ProductGiftType.ProductGiftMonthCard => GrantMonthCard(player, product),
+            ProductGiftType.ProductGiftMonthCard => GrantMonthCard(player, product, now),
             _ => ValueTask.FromResult(RechargeResult.UnsupportedGiftType)
         };
     }
@@ -53,13 +62,16 @@ public static class RechargeService
     }
 
     // Express Supply Pass: 300 Oneiric Shards right away, then 90 Stellar Jade a day while the pass runs. The day of
-    // purchase counts, so its reward is handed out here instead of waiting for the next login.
-    private static async ValueTask<RechargeResult> GrantMonthCard(PlayerInstance player, RechargeConfigExcel product)
+    // purchase counts, so its reward is handed out here instead of waiting for the next login. One instant decides
+    // both, so a purchase at a daily reset cannot start the pass in one window and pay the next one's reward.
+    private static async ValueTask<RechargeResult> GrantMonthCard(PlayerInstance player, RechargeConfigExcel product,
+        long now)
     {
         if (!ConfigManager.Config.ServerOption.EnableMonthCard) return RechargeResult.Disabled;
-        if (!MonthCardService.TryExtend(player.Data, out var outDateTime))
+        if (!MonthCardService.TryExtend(player.Data, now, out var outDateTime))
         {
-            Logger.Debug($"Supply pass purchase refused, {MonthCardService.GetRemainingDays(player.Data)} day(s) left. " +
+            var daysLeft = MonthCardService.CountRemainingDays(MonthCardService.GetMonthCardOutDateTime(player.Data), now);
+            Logger.Debug($"Supply pass purchase refused, {daysLeft} day(s) left. " +
                         $"uid={player.Uid} product={product.ProductID}");
             return RechargeResult.MonthCardLimit;
         }
@@ -71,7 +83,7 @@ public static class RechargeService
         await player.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
         await player.SendPacket(new PacketRechargeSuccNotify(product.ProductID, rewards, outDateTime));
 
-        if (MonthCardService.TryClaimDailyReward(player.Data, out var daily))
+        if (MonthCardService.TryClaimDailyReward(player.Data, now, out var daily))
         {
             await player.InventoryManager.AddItem(daily.ItemId, daily.Count, false);
             await player.SendPacket(new PacketMonthCardRewardNotify([daily]));

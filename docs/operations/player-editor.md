@@ -49,6 +49,17 @@ Both keep the save from before as the undo point.
 
 The JSON is the table's row as Newtonsoft serialises it. A table is editable only when its JSON reads back into exactly the stored row (compared column by column after the database round trip); others are shown read-only. On the 4.7 cache all 35 tables of a provisioned save round-trip. Bad values can still stop a login; use undo.
 
+### Supply pass expiry
+
+The profile's *month card expiry* is the Express Supply Pass's stored end time, `MonthCardExpireTime` in Unix seconds (0: never bought). Reading it, here, in the shop or at login, never starts or renews a pass: only an authenticated recharge-shop purchase extends it, and the editor (profile or raw table) stores exactly the value entered. The pass is active while that time is after the account's server time, `/faketime` included. A purchase adds 30 days to a running pass, even one whose expiry is not on a daily reset; a new or lapsed pass starts at the reset that opened the current window (`ServerOption.DailyResetHour`). Another purchase is refused once 179 or more days are left.
+
+The daily 90 Stellar Jade are paid once per reset window, and the save keeps only the last window paid (`LastMonthCardRewardDate`):
+
+- A last claim saved by an older build is a calendar date (`yyyyMMdd`, rolled over at local midnight), not a reset window. On the cutover day, a claim made between midnight and the reset can count for the wrong window once, so one daily reward is paid twice or not at all.
+- Moving an account's time backwards with `/faketime` reaches windows other than the last one paid, and they pay again.
+
+This is simulated fulfillment, not an exactly-once payment ledger.
+
 ## Delete-on-logout test accounts
 
 An account flagged `DeleteOnLogout` is deleted with its save (tombstoned, like an admin deletion) when its player's session ends: a logoff, a disconnect or a kick. A session replaced by a new login of the same uid, and a session stopped by an editor/provision/restore lease, do not count.

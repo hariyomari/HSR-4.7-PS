@@ -269,7 +269,12 @@ public static class SdkShopRoutes
 // Reads SDK request parameters regardless of whether they arrive as query, form or JSON body.
 internal sealed class SdkRequest
 {
-    private static readonly string[] SecretKeys = ["combo_token", "token", "auth_key", "sign", "combo_id"];
+    // Credential fields are matched by name fragment; "ct" (the combo token's short name) only as the whole name,
+    // because it is part of ordinary names such as product_id.
+    private static readonly string[] SecretKeyParts =
+        ["token", "ticket", "password", "auth_key", "sign", "combo_id"];
+
+    private static readonly string[] SecretKeyNames = ["ct"];
 
     private readonly Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
 
@@ -333,7 +338,8 @@ internal sealed class SdkRequest
 
     private static bool IsSecret(string key)
     {
-        return SecretKeys.Any(x => key.Contains(x, StringComparison.OrdinalIgnoreCase));
+        return SecretKeyNames.Any(x => key.Equals(x, StringComparison.OrdinalIgnoreCase)) ||
+               SecretKeyParts.Any(x => key.Contains(x, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ReadJsonBody(string body)
@@ -347,7 +353,8 @@ internal sealed class SdkRequest
         }
         catch (JsonException)
         {
-            _values["_raw_body"] = body.Length > 512 ? body[..512] : body;
+            // Never log an unparsed body: it may carry a token. Only its size goes into the log.
+            _values["_raw_body"] = $"{Encoding.UTF8.GetByteCount(body)} bytes, not JSON";
         }
     }
 

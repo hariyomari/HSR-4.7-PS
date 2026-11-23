@@ -202,6 +202,19 @@ Code: `scripts/LoginSceneRegression/ProgressionRewardsRegression.cs`; behaviour 
 - `VideoKeyInfo` writes `video_key` into `HHCAKADKHAN` and `ps_field_3` into `BOGECOHIINH` (fields 6/13 in 4.6, 10/7 in 4.7, 10/12 in 4.8), checked against the official value for ID `5600`.
 - Opening video keys: the regression reads a temporary copy of `Config/Custom/VideoKeysConfig.json` and, through the real video response, checks the key of tutorial opening video `8` and the full 64-bit fields of ordinary video `5600` and activity video `1806`. The values match official 4.6 capture seq 133; 4.7 writes them by the original attribute identity into the new field numbers. After updating and restarting the server, new logins receive the full key; opening missions that are already finished are not rolled back.
 
+### Express Supply Pass
+
+Operator notes in [Player editor](../operations/player-editor.md#supply-pass-expiry); SDK order authorization is covered by the [web server regression](web-server-regression.md).
+
+- Window math at explicit timestamps: the daily window (`DailyResetClock.WindowStart` and `DayKey`) starts at the reset hour, so a second before the reset still belongs to the previous window and the reset itself to the new one. Days left are whole days rounded down; the 179, 178 and 177 days an OSBETAWin4.7.51 shop showed for one expiry are reproduced.
+- Purchases through `RechargeService`, on an account whose `/faketime` clock starts at the 2026-09-24 reset and keeps running; the checks only assume that the purchases stay in that window. A new account and a shop query create no pass. The first purchase ends at the 30th reset after the window start, sends `RechargeSuccNotify` with the SKU and that expiry, and grants 300 Oneiric Shards; the day's 90 Stellar Jade are paid once and recorded under the window's key. A second purchase adds 30 days without a second daily reward. Six purchases in one window run to the 180th reset, and a seventh is refused with the expiry and both balances unchanged. The 60-shard pack still grants its shards. With `EnableMonthCard` off the pass is neither listed, active nor purchasable. An expired pass pays nothing and still reports its past expiry.
+- Decisions at explicit server times, through the `MonthCardService` overloads that take the time instead of reading the clock:
+  - A new pass bought a second before the reset counts the ending day; bought at or after the reset, it starts at that reset. It shows 30 days at the exact window start and 29 a second later. On its last day it shows 0 days but is still active and pays; at its exact expiry it is over.
+  - With 179 days left another pass is refused and the expiry and balances stay as they were; a reset later the same pass has 178 days left, takes one more and runs 208 days, after which the next one is refused.
+  - An active legacy pass whose expiry is not on a reset renews from that exact expiry, even in its last second. A legacy pass that lapsed earlier in the current window, or lapses that second, restarts at the window's reset rather than at its old expiry.
+  - Daily Stellar Jade: claims a second before and at the reset fall in different windows; a second claim in the same window, up to its last second, is refused; the next reset pays again.
+- Not covered: the one-time cutover from the old calendar-date claim key and claims after `/faketime` moves an account back in time (both described in the operator notes), and the retail client's shop display and popups.
+
 ### Operator files
 
 Code: `scripts/LoginSceneRegression/CustomConfigFilesRegression.cs`; it runs last because it reloads all game data.

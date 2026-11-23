@@ -31,6 +31,7 @@ using March7thHoney.GameServer.Command;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Server;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Game.Mission;
 #if PROTOCOL_48_ACTIVITIES // 4.8-only DiceyDungeon, see its regression section below
 using March7thHoney.Database.DiceyDungeon;
@@ -3887,6 +3888,27 @@ var coinProduct = GameData.RechargeConfigData.GetValueOrDefault("rpgglbcoin60tie
 Check("cache has the month card and 60-shard recharge products",
     cardProduct is { GiftType: (int)ProductGiftType.ProductGiftMonthCard }
     && coinProduct is { GiftType: (int)ProductGiftType.ProductGiftCoin, FirstCharge: 60 });
+// 2026-09-24 04:00 at UTC+8, a daily reset.
+var passReset = new DateTimeOffset(2026, 9, 23, 20, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+Check("the daily window starts at the reset hour: a second before, at and a second after it",
+    DailyResetClock.WindowStart(passReset - 1, 8, 4) == passReset - 86400
+    && DailyResetClock.WindowStart(passReset, 8, 4) == passReset
+    && DailyResetClock.WindowStart(passReset + 1, 8, 4) == passReset
+    && DailyResetClock.WindowStart(passReset + 86399, 8, 4) == passReset
+    && DailyResetClock.DayKey(passReset - 1, 8, 4) == 20260923 && DailyResetClock.DayKey(passReset, 8, 4) == 20260924
+    && DailyResetClock.DayKey(passReset + 86399, 8, 4) == 20260924);
+Check("supply pass days left round down to whole days",
+    MonthCardService.CountRemainingDays(passReset + 30 * 86400, passReset + 3600) == 29
+    && MonthCardService.CountRemainingDays(passReset + 30 * 86400, passReset) == 30
+    && MonthCardService.CountRemainingDays(passReset + 86400, passReset + 3600) == 0
+    && MonthCardService.CountRemainingDays(passReset - 10, passReset) == 0);
+// An OSBETAWin4.7.51 client's shop showed 179, 178 and 177 days for this expiry at these server times
+// (UTC-6, /faketime).
+const long observedOutDate = 1810864167;
+Check("days left match what the shop showed for a pass that does not end on a reset",
+    MonthCardService.CountRemainingDays(observedOutDate, 1795314600) == 179
+    && MonthCardService.CountRemainingDays(observedOutDate, 1795413600) == 178
+    && MonthCardService.CountRemainingDays(observedOutDate, 1795500000) == 177);
 var cardPlayer = new PlayerInstance(60030);
 await cardPlayer.InitializeAsync();
 var savedMonthCard = config.ServerOption.EnableMonthCard;
@@ -3924,6 +3946,11 @@ using (var cardClientPeer = new KcpConversation(endpoint, cardInbound, options))
     }
 
     var cardData = cardPlayer.Data;
+    // The account's /faketime clock starts at that date's daily reset and keeps running, so the purchases below fall
+    // in the window that reset opened.
+    cardData.FakeTimeDate = 20260924;
+    var cardWindow = new DateTimeOffset(2026, 9, 24, DailyResetClock.ResetHour, 0, 0,
+        TimeSpan.FromHours(DailyResetClock.UtcOffsetHours)).ToUnixTimeSeconds();
     var now = ServerTimeProvider.GetServerUnixSec(cardData);
     var products = QueryProductInfoScRsp.Parser.ParseFrom(
         new March7thHoney.GameServer.Server.Packet.Send.Player.PacketQueryProductInfoScRsp(cardData).Data);
@@ -3940,13 +3967,13 @@ using (var cardClientPeer = new KcpConversation(endpoint, cardInbound, options))
     var succ = RechargeSuccNotify.Parser.ParseFrom(firstBuy.Last(p => p.Id == CmdIds.RechargeSuccNotify).Body);
     var daily = MonthCardRewardNotify.Parser.ParseFrom(firstBuy.Single(p => p.Id == CmdIds.MonthCardRewardNotify).Body);
     var firstOutDate = cardData.MonthCardExpireTime;
-    Check("buying the supply pass opens 30 days and announces the expiry with 300 Oneiric Shards",
-        firstResult == RechargeResult.Granted && firstOutDate >= now + 30 * 86400 && firstOutDate <= now + 30 * 86400 + 60
+    Check("buying the supply pass runs it to the 30th reset after today's and grants 300 Oneiric Shards",
+        firstResult == RechargeResult.Granted && firstOutDate == cardWindow + 30 * 86400
         && (long)succ.MonthCardOutDateTime == firstOutDate && succ.ProductId == "rpgglbmonthcardtier5"
         && succ.ItemList.ItemList_.Single() is { ItemId: 3, Num: 300 } && cardData.Mcoin == shardsBefore + 300);
-    Check("the day of purchase pays its 90 Stellar Jade once",
+    Check("the day of purchase pays its 90 Stellar Jade once, keyed to the daily reset",
         daily.Reward.ItemList_.Single() is { ItemId: 1, Num: 90 } && cardData.Hcoin == jadeBefore + 90
-        && !MonthCardService.TryClaimDailyReward(cardData, out _));
+        && cardData.LastMonthCardRewardDate == 20260924 && !MonthCardService.TryClaimDailyReward(cardData, out _));
 
     RechargeResult secondResult = default;
     var secondBuy = await CaptureCard(async () => secondResult = await RechargeService.Purchase(cardPlayer, cardProduct!));
@@ -3957,9 +3984,10 @@ using (var cardClientPeer = new KcpConversation(endpoint, cardInbound, options))
     for (var i = 0; i < 4; i++) await RechargeService.Purchase(cardPlayer, cardProduct!);
     var fullOutDate = cardData.MonthCardExpireTime;
     var refused = await RechargeService.Purchase(cardPlayer, cardProduct!);
-    Check("the pass stops at 180 days and a further purchase is refused without changes",
-        MonthCardService.GetRemainingDays(cardData) == 180 && refused == RechargeResult.MonthCardLimit
-        && cardData.MonthCardExpireTime == fullOutDate && cardData.Mcoin == shardsBefore + 6 * 300);
+    Check("six passes bought in one window run to its 180th reset and a seventh is refused without changes",
+        fullOutDate == cardWindow + 180 * 86400 && refused == RechargeResult.MonthCardLimit
+        && cardData.MonthCardExpireTime == fullOutDate && cardData.Mcoin == shardsBefore + 6 * 300
+        && cardData.Hcoin == jadeBefore + 90);
 
     var shardsBeforeCoin = cardData.Mcoin;
     var coinResult = await RechargeService.Purchase(cardPlayer, coinProduct!);
@@ -3981,6 +4009,72 @@ using (var cardClientPeer = new KcpConversation(endpoint, cardInbound, options))
     Check("an expired pass pays nothing and reports its past expiry",
         !MonthCardService.TryClaimDailyReward(cardData, out _) && MonthCardService.GetMonthCardOutDateTime(cardData) == now - 10
         && MonthCardService.GetRemainingDays(cardData) == 0);
+
+    // Boundaries at explicit server times: the overloads that take a time decide at that instant instead of reading
+    // the account's clock, in the server's own offset and reset hour. cardWindow is a reset, cardHour an hour later.
+    var cardHour = cardWindow + 3600;
+    // Stores the given expiry, buys one pass at the given time and returns the new expiry, or -1 when refused.
+    long BuyCardAt(long expiry, long at)
+    {
+        cardData.MonthCardExpireTime = expiry;
+        return MonthCardService.TryExtend(cardData, at, out var cardBought) ? cardBought : -1;
+    }
+    bool ClaimCardAt(long at) => MonthCardService.TryClaimDailyReward(cardData, at, out _);
+
+    Check("a new pass bought a second before the reset counts the ending day; at or after the reset, the new day",
+        BuyCardAt(0, cardWindow - 1) == cardWindow + 29 * 86400 && BuyCardAt(0, cardWindow) == cardWindow + 30 * 86400
+        && BuyCardAt(0, cardWindow + 1) == cardWindow + 30 * 86400);
+    var cardFreshOut = BuyCardAt(0, cardWindow);
+    Check("a new pass shows 30 days at the exact window start and 29 a second later",
+        MonthCardService.CountRemainingDays(cardFreshOut, cardWindow) == 30
+        && MonthCardService.CountRemainingDays(cardFreshOut, cardWindow + 1) == 29);
+    cardData.LastMonthCardRewardDate = 0;
+    Check("on its last day the pass shows 0 days yet is active and pays; at its exact expiry it is over",
+        MonthCardService.CountRemainingDays(cardFreshOut, cardFreshOut - 1) == 0
+        && MonthCardService.IsActive(cardData, cardFreshOut - 1) && ClaimCardAt(cardFreshOut - 1)
+        && !MonthCardService.IsActive(cardData, cardFreshOut) && !ClaimCardAt(cardFreshOut));
+
+    var cardAt179 = cardWindow + 180 * 86400;
+    var cardBalances = (cardData.Mcoin, cardData.Hcoin);
+    Check("with 179 days left another pass is refused and the expiry and balances stay as they were",
+        MonthCardService.CountRemainingDays(cardAt179, cardHour) == 179 && BuyCardAt(cardAt179, cardHour) == -1
+        && cardData.MonthCardExpireTime == cardAt179 && (cardData.Mcoin, cardData.Hcoin) == cardBalances);
+    var cardNextDay = cardHour + 86400;
+    var cardOut208 = BuyCardAt(cardAt179, cardNextDay);
+    Check("a reset later the same pass has 178 days left and extends to 208, which refuses another",
+        MonthCardService.CountRemainingDays(cardAt179, cardNextDay) == 178 && cardOut208 == cardAt179 + 30 * 86400
+        && MonthCardService.CountRemainingDays(cardOut208, cardNextDay) == 208
+        && BuyCardAt(cardOut208, cardNextDay) == -1 && cardData.MonthCardExpireTime == cardOut208);
+
+    // Passes saved before purchases started at a reset can end at any second.
+    var cardLegacyOut = cardWindow + 10 * 86400 + 12345;
+    Check("an active legacy pass that does not end on a reset renews from its exact expiry, even in its last second",
+        BuyCardAt(cardLegacyOut, cardLegacyOut - 1) == cardLegacyOut + 30 * 86400);
+    Check("a legacy pass that lapsed earlier in this window, or lapses this second, restarts at the window's reset",
+        BuyCardAt(cardWindow + 600, cardHour) == cardWindow + 30 * 86400
+        && BuyCardAt(cardHour, cardHour) == cardWindow + 30 * 86400);
+
+    cardData.MonthCardExpireTime = cardWindow + 30 * 86400;
+    cardData.LastMonthCardRewardDate = 0;
+    Check("the daily Stellar Jade is paid once per window: a second claim is refused until the next reset pays",
+        ClaimCardAt(cardWindow - 1) && ClaimCardAt(cardWindow) && !ClaimCardAt(cardHour)
+        && !ClaimCardAt(cardWindow + 86399) && ClaimCardAt(cardWindow + 86400));
+
+    // A purchase decides the new pass and its day-of-purchase reward at one instant, so a purchase a second before a
+    // reset starts the pass in the ending window and pays that window's Stellar Jade, not the next one's.
+    cardData.MonthCardExpireTime = 0;
+    cardData.LastMonthCardRewardDate = 0;
+    var edgeJade = cardData.Hcoin;
+    RechargeResult edgeResult = default;
+    var edgeBuy = await CaptureCard(async () =>
+        edgeResult = await RechargeService.Purchase(cardPlayer, cardProduct!, cardWindow - 1));
+    var edgeStart = cardData.MonthCardExpireTime - 30 * 86400;
+    Check("a pass bought a second before a reset pays the window it started in, once",
+        edgeResult == RechargeResult.Granted && edgeStart == cardWindow - 86400
+        && edgeBuy.Count(p => p.Id == CmdIds.MonthCardRewardNotify) == 1 && cardData.Hcoin == edgeJade + 90
+        && cardData.LastMonthCardRewardDate
+        == DailyResetClock.DayKey(edgeStart, DailyResetClock.UtcOffsetHours, DailyResetClock.ResetHour)
+        && !ClaimCardAt(cardWindow - 1));
 }
 config.ServerOption.EnableMonthCard = savedMonthCard;
 config.ServerOption.EnableFakeRecharge = savedFakeRecharge;

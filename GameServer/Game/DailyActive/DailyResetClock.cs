@@ -23,6 +23,15 @@ public static class DailyResetClock
         return date.Year * 10000 + date.Month * 100 + date.Day;
     }
 
+    /// <summary>Unix time at which the daily window containing <paramref name="unixSec" /> began.</summary>
+    public static long WindowStart(long unixSec, int utcOffsetHours, int resetHour)
+    {
+        const long secondsPerDay = 24 * 60 * 60;
+        var intoWindow = (unixSec + (utcOffsetHours - resetHour) * 3600L) % secondsPerDay;
+        if (intoWindow < 0) intoWindow += secondsPerDay;
+        return unixSec - intoWindow;
+    }
+
     /// <summary>The window the player is in now (honours per-account and global fake time).</summary>
     public static int Today(PlayerData? data)
     {
