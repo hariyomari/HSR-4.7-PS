@@ -8,7 +8,9 @@ using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Inventory;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Shop;
+using March7thHoney.GameServer.Server.Packet.Send.Item;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
+using March7thHoney.Kcp;
 using March7thHoney.Internationalization;
 using March7thHoney.Proto;
 using March7thHoney.Util;
@@ -110,7 +112,9 @@ var embersPass = new ShopGoodsConfigExcel { GoodsID = EmbersPassGoods, ShopID = 
 var embersCredits = new ShopGoodsConfigExcel { GoodsID = EmbersCreditGoods, ShopID = EmbersShop, ItemID = Scoin, ItemCount = 10000, RefreshType = "MONTH", CostList = { [Hcoin] = 10 } };
 GameData.ShopConfigData[EmbersShop] = new ShopConfigExcel { ShopID = EmbersShop, ShopType = 2, Goods = [embersPass, embersCredits] };
 var starlightAvatar = new ShopGoodsConfigExcel { GoodsID = StarlightAvatarGoods, ShopID = StarlightShop, ItemID = AvatarCardId, ItemCount = 1, CostList = { [Hcoin] = 140 } };
-GameData.ShopConfigData[StarlightShop] = new ShopConfigExcel { ShopID = StarlightShop, ShopType = 2, Goods = [starlightAvatar] };
+var starlightLightCone = new ShopGoodsConfigExcel { GoodsID = 101018, ShopID = StarlightShop, ItemID = 23013, ItemCount = 1, LimitTimes = 1, RefreshType = "MONTH", CostList = { [Hcoin] = 600 } };
+GameData.ItemConfigData[23013] = new ItemConfigExcel { ID = 23013, ItemMainType = ItemMainTypeEnum.Equipment, Rarity = ItemRarityEnum.SuperRare, PileLimit = 1 };
+GameData.ShopConfigData[StarlightShop] = new ShopConfigExcel { ShopID = StarlightShop, ShopType = 2, Goods = [starlightAvatar, starlightLightCone] };
 var dailyGoods = new ShopGoodsConfigExcel { GoodsID = DailyGoods, ShopID = NpcShop, ItemID = Output, ItemCount = 1, LimitTimes = 3, RefreshType = "DAILY", CostList = { [Hcoin] = 10 } };
 var weeklyGoods = new ShopGoodsConfigExcel { GoodsID = WeeklyGoods, ShopID = NpcShop, ItemID = Output, ItemCount = 1, LimitTimes = 3, RefreshType = "WEEK", CostList = { [Hcoin] = 10 } };
 GameData.ShopConfigData[NpcShop] = new ShopConfigExcel { ShopID = NpcShop, ShopType = 3, Goods = [dailyGoods, weeklyGoods] };
@@ -287,6 +291,17 @@ player.AvatarManager!.GetFormalAvatar(AvatarCardId)!.PathInfos[AvatarCardId].Ran
 Check("buying an E6 AvatarCard with zero held eidolons converts to Starlight instead of a 7th eidolon",
     retcode == Retcode.RetSucc && Owned(AvatarEidolonId) == 0 && Owned(Starlight) == 20 &&
     bought.Single() is { ItemId: Starlight, Count: 20 });
+
+// 5* Light Cone shop purchase & AddEquipmentScNotify (CmdId 528) encoding.
+typeof(PlayerInstance).GetProperty(nameof(PlayerInstance.FriendRecordData))!.SetValue(player, player.InitializeDatabase<March7thHoney.Database.Friend.FriendRecordData>());
+SetBalance(600, 0);
+(retcode, bought, _) = await player.ShopManager.BuyItem(StarlightShop, 101018, 1);
+var addEquipPacket = new PacketAddEquipmentScNotify(23013);
+var addEquipProto = AddEquipmentScRsp.Parser.ParseFrom(addEquipPacket.Data);
+Check("buying a 5* Light Cone grants the equipment and PacketAddEquipmentScNotify encodes CmdId 528",
+    retcode == Retcode.RetSucc && bought.Single() is { ItemId: 23013, Count: 1 } &&
+    inventory.Data.EquipmentItems.Any(e => e.ItemId == 23013) &&
+    addEquipPacket.CmdId == CmdIds.AddEquipmentScRsp && addEquipProto.KAJCFPKEGBP == 23013);
 
 // Oneiric Pouch first-time 2x bonus persisted per player in ShopData.
 const string CoinProductId = "rpgglbcoin300tier5";

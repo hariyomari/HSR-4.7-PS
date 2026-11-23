@@ -7,6 +7,7 @@ using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Server.Packet.Send.Item;
 using March7thHoney.GameServer.Server.Packet.Send.Shop;
 using March7thHoney.Proto;
 using March7thHoney.Util;
@@ -223,6 +224,10 @@ public class ShopManager(PlayerInstance player) : BasePlayerManager<ShopData>(pl
                 var item = await Player.InventoryManager!.AddItem(itemConfig.ID, 1, false);
                 if (item != null) items.Add(item);
             }
+
+            if (itemConfig.ItemMainType == ItemMainTypeEnum.Equipment &&
+                itemConfig.Rarity >= ItemRarityEnum.VeryRare && items.Count > 0)
+                await Player.SendPacket(new PacketAddEquipmentScNotify(itemConfig.ID));
         }
         else if (itemConfig.ItemMainType == ItemMainTypeEnum.AvatarCard)
         {
