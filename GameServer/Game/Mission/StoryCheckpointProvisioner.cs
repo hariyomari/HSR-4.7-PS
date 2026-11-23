@@ -247,10 +247,14 @@ public static class StoryCheckpointProvisioner
             _report.PrerequisiteCount = chain.Count;
             foreach (var mainId in chain)
             {
+                // Leftovers are played where a player meets them, so their finish actions (1000204's ChangeLineup)
+                // land before the later chapters' and do not overwrite them.
+                await CloseStoryLeftovers(mainId);
                 await CompleteMain(mainId);
                 await LeaveFinishedRaid();
             }
 
+            await CloseStoryLeftovers(request.TargetMainMissionId);
             await ReachTarget();
 
             if (Missions.GetSubMissionStatus(CreateCharacterSubMission) == MissionPhaseEnum.Finish)
@@ -260,9 +264,10 @@ public static class StoryCheckpointProvisioner
 
             RestorePropStates();
             await LeaveFinishedRuns();
-            ApplyTutorials();
             if (request.TestReady) ApplyTestLoadout(chain);
             if (request.GrantTestCurrency) await GrantTestCurrency();
+            // After the loadout: level and avatar triggers are judged on the final levels.
+            ApplyTutorials();
             PlaceAtTarget();
             _report.TeleportsUnlocked = await UnlockTeleports(_player, request.Teleports);
             Finish(timer);
@@ -317,6 +322,34 @@ public static class StoryCheckpointProvisioner
                 ? $"{mainId}: closed by force with sub-missions still running [{string.Join(", ", open)}]"
                 : $"{mainId}: closed by force, its finish gate was never satisfied");
             await Guard($"finishing main {mainId}", () => Missions.FinishMainMission(mainId));
+        }
+
+        /// <summary>
+        ///     Plays the running Main rows that sit before <paramref name="nextMainId" /> on the story graph and that
+        ///     the chain accepted but does not lead through (1000204, Dan Heng joining on the Herta Space Station,
+        ///     branches off 1000201 and nothing later takes it). A player standing at the target has played them;
+        ///     left running, their tutorials hold input forever (3003 opens on GetAvatar 1002 and only closes on
+        ///     FinishMainMission 1000204).
+        /// </summary>
+        private async ValueTask CloseStoryLeftovers(int nextMainId)
+        {
+            var nextDepth = MissionManager.StoryDepth(nextMainId);
+            while (true)
+            {
+                var leftover = Missions.Data.RunningMainMissionIds
+                    .Where(id => id != request.TargetMainMissionId && id != nextMainId &&
+                                 GameData.MainMissionData.GetValueOrDefault(id)?.Type == MainMissionTypeEnum.Main &&
+                                 MissionManager.StoryDepth(id) < nextDepth)
+                    .OrderBy(MissionManager.StoryDepth).ThenBy(id => id).FirstOrDefault();
+                if (leftover == 0) return;
+                await CompleteMain(leftover);
+                await LeaveFinishedRaid();
+                if (Missions.GetMainMissionStatus(leftover) != MissionPhaseEnum.Finish)
+                {
+                    _report.Warnings.Add($"{leftover}: story leftover could not be closed");
+                    return;
+                }
+            }
         }
 
         /// <summary>
@@ -641,19 +674,27 @@ public static class StoryCheckpointProvisioner
             var tutorials = _player.TutorialData;
             if (tutorials == null || request.Tutorials == StoryTutorialsModeEnum.KeepOpen) return;
 
-            foreach (var config in GameData.TutorialDataData.Values)
+            // Repeated until stable: a TutorialFinish trigger can be met by a tutorial finished in this pass.
+            for (var changed = true; changed;)
             {
-                if (tutorials.Tutorials.TryGetValue(config.TutorialID, out var status) &&
-                    status == TutorialStatus.TutorialFinish) continue;
-                if (request.Tutorials == StoryTutorialsModeEnum.FinishPrior && !IsBehindPlayer(config)) continue;
+                changed = false;
+                foreach (var config in GameData.TutorialDataData.Values)
+                {
+                    if (tutorials.Tutorials.TryGetValue(config.TutorialID, out var status) &&
+                        status == TutorialStatus.TutorialFinish) continue;
+                    if (request.Tutorials == StoryTutorialsModeEnum.FinishPrior && !IsBehindPlayer(config)) continue;
 
-                tutorials.Tutorials[config.TutorialID] = TutorialStatus.TutorialFinish;
-                _report.TutorialsMarkedFinished++;
+                    tutorials.Tutorials[config.TutorialID] = TutorialStatus.TutorialFinish;
+                    _report.TutorialsMarkedFinished++;
+                    changed = true;
+                }
             }
         }
 
-        // A tutorial is behind the player once a mission it opens or closes on is finished. The target's own
-        // tutorials (the warp tutorial 3002 opens on FinishMainMission 1000301) stay untouched so they open in play.
+        // A tutorial is behind the player once a mission it opens or closes on is finished, or when it opens in free
+        // play and the save already meets every trigger: the client would pop it on the first frame and it would
+        // hold input (4003 at PlayerLevel 15 has no finish condition at all). The target's own tutorials (the warp
+        // tutorial 3002 opens on FinishMainMission 1000301) stay untouched so they open in play.
         private bool IsBehindPlayer(Data.Excel.TutorialDataExcel config)
         {
             var targets = new HashSet<string>
@@ -662,9 +703,42 @@ public static class StoryCheckpointProvisioner
                                                     targets.Contains(trigger.TriggerParam)))
                 return false;
 
-            return config.TriggerParams.Concat(config.FinishTriggerParams)
+            if (config.TriggerParams.Concat(config.FinishTriggerParams)
                 .Any(trigger => IsMissionTrigger(trigger.TriggerType) && int.TryParse(trigger.TriggerParam, out var id) &&
-                                IsFinished(trigger.TriggerType, id));
+                                IsFinished(trigger.TriggerType, id)))
+                return true;
+
+            // A free-play tutorial opened by a target sub still running belongs to the step about to be played.
+            var opens = config.TriggerParams.Where(trigger => !IsFreePlayContext(trigger.TriggerType)).ToList();
+            if (opens.Any(trigger => IsMissionTrigger(trigger.TriggerType) &&
+                                     int.TryParse(trigger.TriggerParam, out var id) && IsRunningTargetSub(id)))
+                return false;
+            return config.TriggerParams.Any(trigger => trigger.TriggerType == "OnMazeMainPage") && opens.Count > 0 &&
+                   opens.All(IsMet);
+        }
+
+        private bool IsRunningTargetSub(int subId) =>
+            Missions.GetSubMissionInfo(subId)?.MainMissionID == request.TargetMainMissionId &&
+            Missions.GetSubMissionStatus(subId) == MissionPhaseEnum.Accept;
+
+        private static bool IsFreePlayContext(string type) => type is "OnMazeMainPage" or "NotInGameMode";
+
+        // Trigger types the save can answer; any other (battles, items, task unlocks, UI pages) counts as not met.
+        private bool IsMet(Data.Excel.TutorialTriggerParam trigger)
+        {
+            if (!int.TryParse(trigger.TriggerParam, out var value)) return false;
+            return trigger.TriggerType switch
+            {
+                "FinishMainMission" or "FinishSubMission" => IsFinished(trigger.TriggerType, value),
+                "TakeMainMission" => Missions.GetMainMissionStatus(value) != MissionPhaseEnum.None,
+                "TakeSubMission" => Missions.GetSubMissionStatus(value) != MissionPhaseEnum.None,
+                "PlayerLevel" => _player.Data.Level >= value,
+                "AnyAvatarToLevel" => _player.AvatarManager!.Data.FormalAvatars.Any(avatar => avatar.Level >= value),
+                "GetAvatar" => _player.AvatarManager!.GetFormalAvatar(value) != null,
+                "TutorialFinish" => _player.TutorialData!.Tutorials.GetValueOrDefault(value) ==
+                                    TutorialStatus.TutorialFinish,
+                _ => false
+            };
         }
 
         private static bool IsMissionTrigger(string type) =>

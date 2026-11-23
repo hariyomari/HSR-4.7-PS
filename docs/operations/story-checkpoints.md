@@ -37,6 +37,7 @@ Snapshots are files under `Snapshots/` next to the database (default `Config/Dat
    - Dialogue choices (`CustomValue` subs) are answered through `HandleCustomValue` with the first open alternative, so the choice is also recorded on the main.
    - A finished raid is left, which resets the raid's own mains, as the official server does.
    - A main that still cannot close is finished by force and listed in `stalled_missions`.
+   - Main rows the chain accepted on the way but does not lead through are played in story order. Before each chain main, every running Main row with a shorter chain depth is played first, and before the target every one behind it. Their finish actions therefore land where a player meets them: 1000204's `ChangeLineup` adds Dan Heng before the later chapters change the team. Example: 1000204 (Dan Heng joins on the Herta Space Station) branches off 1000201 and nothing later takes it. Left running, tutorial 3003, which closes only on `FinishMainMission 1000204`, popped at login and held player input.
 4. At the target, `stop_mode` decides where the walk stops:
    - `before`: the target is accepted. With a target sub, only that sub's own prerequisites are finished, until the sub is accepted.
    - `after`: the target is finished.
@@ -75,7 +76,7 @@ Checkpoints **after** 100010134:
 - **Story lines and raids.** A story line whose end sub is finished is left. An unfinished raid that does not belong to the target is abandoned.
 - **Prop states.** Every finished PropState sub saves its prop's target state, in finish order. Groups with `SaveType` `Reset` are skipped.
 - **Tutorials (`tutorials_mode`).**
-  - `finish_prior` (default): finishes every tutorial whose trigger or finish mission is already finished, except tutorials triggered by the target itself. For example, 3002 stays untouched after 1000301.
+  - `finish_prior` (default): finishes every tutorial whose trigger or finish mission is already finished, except tutorials triggered by the target itself. For example, 3002 stays untouched after 1000301. It also finishes a free-play tutorial (`OnMazeMainPage`) whose every trigger the save already meets: missions, `PlayerLevel`, `AnyAvatarToLevel`, `GetAvatar` and `TutorialFinish`. Such a tutorial would pop on the first frame and hold input. An example is 4003 (PlayerLevel 15, no finish condition) at Luofu. Tutorials opened by a running target sub stay untouched. This pass runs after `progression_preset`, so levels are final.
   - `keep_open`: only the fresh-account seed.
   - `finish_all`: finishes every tutorial.
 - **Teleports (`teleports_mode`).** Every checkpoint prop (`MappingInfoID` with a `CheckPointDisable`/`CheckPointEnable` state) on the floors in scope is recorded as reached and saved `CheckPointEnable`. Only Maze, Town and Train planes count.
@@ -110,7 +111,7 @@ Checkpoints **after** 100010134:
 - `POST /admin/api/accounts/provision-story` creates an account and provisions it. It takes the clone body plus `preset?`, `target_main_mission_id`, `target_sub_mission_id?`, `stop_mode` (`before`/`after`), `trailblazer_gender` (`man`/`woman`/`unset`), `trailblazer_name?`, `progression_preset` (`test_ready`/`live_like`), `tutorials_mode`, `teleports_mode`, `include_side_missions`, `grant_test_currency`. Unknown missions, a sub of another main, and unknown option values are a 400, and no account is created.
 - `POST /admin/api/accounts/{uid}/provision-story` resets an existing account to the checkpoint, or advances it with `keep_save: true`.
 - Both return `{account, generated_password, report}`. The report holds `missions_finished`, `sub_missions_finished`, `teleports_unlocked`, `tutorials_marked_finished`, `prop_states_restored`, `spawn_plane_id`/`spawn_floor_id`/`spawn_entry_id`, `tracking_main_mission_id`, `gender_set`, `player_level`/`world_level`, `lineup`, `bypassed_gates`, `stalled_missions`, `warnings` and `elapsed_ms`.
-- Provisioning is serialised server-wide. On the 4.7 cache the 4.7 entry replays about 275 mains in roughly 5–11 s.
+- Provisioning is serialised server-wide. On the 4.7 cache the 4.7 entry finishes about 300 mains in roughly 5–11 s.
 
 ### Operating notes
 
