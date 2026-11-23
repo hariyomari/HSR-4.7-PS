@@ -59,6 +59,12 @@ dotnet run --project scripts/DailyActiveRegression/DailyActiveRegression.csproj 
 
 回归通过后备份现有 `Config/Resource.bin`，再把新文件复制过去。回滚时把备份复制回来；枚举取值变化过的版本需要程序和缓存一起恢复。
 
+[`scripts/rebuild-resource-cache.py`](../../scripts/rebuild-resource-cache.py) 封装了第 3 和第 4 步（自动在 `artifacts/` 下写入新文件和报告，可选 `--verify` 跑回归，带 `--replace` 时先备份再原子替换 `Config/Resource.bin`）：
+
+```powershell
+python scripts/rebuild-resource-cache.py artifacts/<名称>/Resources --verify --replace
+```
+
 ## OSBETAWin4.7.51 的结果（2026-11-14）
 
 - 导出：索引 144 867 个资源，内置名单命名 130 581 个，补名收敛后 134 450 个，写出 133 541 个 JSON，其中楼层 710 个；仍有 10 417 个资源没有路径。

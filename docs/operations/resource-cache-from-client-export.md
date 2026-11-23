@@ -59,6 +59,12 @@ For a cache built from a verified 4.7.51 export, append `--resource-version 4.7.
 
 After the regressions pass, back up the existing `Config/Resource.bin`, then copy the new file over it. To roll back, copy the backup back; for a version in which enum values changed, restore the program and the cache together.
 
+[`scripts/rebuild-resource-cache.py`](../../scripts/rebuild-resource-cache.py) wraps steps 3 and 4 (temporary output under `artifacts/`, optional `--verify` regressions, and backup-before-replace with `--replace`):
+
+```powershell
+python scripts/rebuild-resource-cache.py artifacts/<name>/Resources --verify --replace
+```
+
 ## Results for OSBETAWin4.7.51 (2026-11-14)
 
 - Export: the index has 144 867 resources; the built-in list named 130 581, and 134 450 after name supplementation converged; 133 541 JSON files were written, 710 of them floors; 10 417 resources still have no path.
