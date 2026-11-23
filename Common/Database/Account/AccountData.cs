@@ -48,6 +48,10 @@ public class AccountData : BaseDatabaseDataHelper
     public long LastSeenAt { get; set; }
     public List<string> KnownIpAddresses { get; set; } = [];
     public List<string> KnownDeviceIds { get; set; } = [];
+
+    /// <summary>A throwaway test account: deleted with its save when its player logs off.</summary>
+    public bool DeleteOnLogout { get; set; }
+
     public volatile bool IsDeleting;
 
     public static AccountData? GetAccountByUserName(string username)

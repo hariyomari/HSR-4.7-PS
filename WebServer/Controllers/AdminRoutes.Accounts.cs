@@ -35,6 +35,7 @@ public static partial class AdminRoutes
         app.MapPost("/admin/api/accounts/{uid:int}/gameplay/reset", ResetAccountGameplay);
         app.MapDelete("/admin/api/accounts/{uid:int}/identity-keys", ClearIdentityKeys);
         app.MapDelete("/admin/api/accounts/{uid:int}", DeleteAccount);
+        app.MapPut("/admin/api/accounts/{uid:int}/delete-on-logout", SetDeleteOnLogout);
         app.MapPost("/admin/api/accounts/{uid:int}/clone", CloneAccount);
         app.MapPost("/admin/api/accounts/{uid:int}/snapshot/restore", RestoreAccountSnapshot);
         app.MapGet("/admin/api/snapshots", GetSnapshots);
@@ -298,29 +299,17 @@ public static partial class AdminRoutes
         return Success(new DeletedUid(uid));
     }
 
-    private static async Task DeleteAccountData(AccountData account)
+    private static Task DeleteAccountData(AccountData account) => AccountDeletion.DeleteAsync(account);
+
+    private static IResult SetDeleteOnLogout(HttpContext ctx, int uid, AdminRegistrationRequest? request)
     {
-        var database = DatabaseHelper.Instance ?? throw new InvalidOperationException("Database is not initialized");
-        if (!DatabaseHelper.LoadAllData) throw new InvalidOperationException("Database is still loading; retry deletion shortly");
-        lock (account)
-        {
-            if (account.IsDeleting) throw new InvalidOperationException("Account deletion is already in progress");
-            account.IsDeleting = true;
-        }
-        try
-        {
-            account.ClearLoginTokens();
-            var connections = March7thHoneyListener.GetSnapshot().OfType<Connection>()
-                .Where(c => c.Player?.Uid == account.Uid).ToList();
-            await Task.WhenAll(connections.Select(ConnectionDisconnectHelper.KickByGmAsync));
-            if (connections.Any(c => c.IsOnline))
-                throw new InvalidOperationException("Session could not be stopped; retry deletion");
-            database.DeleteUidData(account.Uid);
-        }
-        finally
-        {
-            if (!DatabaseHelper.IsUidDeleted(account.Uid)) account.IsDeleting = false;
-        }
+        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
+        var account = AccountData.GetAccountByUid(uid);
+        if (account == null) return Error("Account not found", statusCode: StatusCodes.Status404NotFound);
+
+        account.DeleteOnLogout = request?.enabled ?? false;
+        DatabaseHelper.SaveDatabaseType(account);
+        return Success(new AccountWrap(ToAccountSummary(account)));
     }
 
     private static async Task<IResult> BulkDeleteAccounts(HttpContext ctx, AdminBulkDeleteRequest? request)
@@ -503,6 +492,12 @@ public static partial class AdminRoutes
         var account = AccountHelper.CreateAccount(username, email, generatedPassword ?? request.password,
             request.uid.GetValueOrDefault(), NormalizeRole(request.role));
         account.SyncPermissionsWithRole();
+        if (request.delete_on_logout == true)
+        {
+            account.DeleteOnLogout = true;
+            DatabaseHelper.SaveDatabaseType(account);
+        }
+
         return account;
     }
 
@@ -540,6 +535,9 @@ public static partial class AdminRoutes
         public int? uid { get; set; }
         public string? role { get; set; }
         public string? nickname { get; set; }
+
+        /// <summary>Delete the account with its save once its player logs off (a throwaway test account).</summary>
+        public bool? delete_on_logout { get; set; }
     }
 
     public class AdminSnapshotRestoreRequest

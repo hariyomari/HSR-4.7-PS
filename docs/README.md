@@ -34,6 +34,7 @@ March7thHoney 的文档按用途集中维护在此目录。仓库根目录的 `R
 - [Warp schedule（限定跃迁轮换）](operations/warp-schedule.md)
 - [Progression rewards（任务与战斗额外奖励）](operations/progression-rewards.md)
 - [Story checkpoints, account clones and save snapshots（剧情进度测试账号）](operations/story-checkpoints.md)
+- [Player editor and delete-on-logout test accounts（存档编辑）](operations/player-editor.md)
 
 ## 测试
 

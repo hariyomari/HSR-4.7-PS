@@ -80,7 +80,7 @@ public static partial class AccountSnapshotService
         if (!rows.OfType<PlayerData>().Any())
             throw new AccountSnapshotException($"UID {sourceUid} has no gameplay data", true);
 
-        return await ReplaceAsync(targetUid, rows, nickname);
+        return await ReplaceAsync(targetUid, rows, nickname, $"copy of UID {sourceUid}");
     }
 
     public static List<AccountSnapshotMeta> List()
@@ -121,29 +121,15 @@ public static partial class AccountSnapshotService
         var rows = DatabaseHelper.CloneUidGameplayData(uid)
             .Where(row => !SocialTables.Contains(row.GetType()))
             .ToList();
-        var player = rows.OfType<PlayerData>().FirstOrDefault()
-                     ?? throw new AccountSnapshotException($"UID {uid} has no gameplay data", true);
+        if (!rows.OfType<PlayerData>().Any())
+            throw new AccountSnapshotException($"UID {uid} has no gameplay data", true);
 
-        var file = new AccountSnapshotFile
+        var file = ToFile(new AccountSnapshotMeta
         {
-            Meta = new AccountSnapshotMeta
-            {
-                Name = name,
-                Description = description,
-                CreatedAt = Extensions.GetUnixSec(),
-                SourceUid = uid,
-                GameVersion = GameConstants.GAME_VERSION,
-                PlayerLevel = player.Level,
-                FrontierMainMission = rows.OfType<MissionData>().FirstOrDefault()?.TrackingMainMissionId ?? 0,
-                FloorId = player.FloorId,
-                TableCount = rows.Count
-            }
-        };
-        foreach (var row in rows)
-        {
-            var store = EntityStores.Map[row.GetType()];
-            file.Tables[store.Table] = store.Export(row);
-        }
+            Name = name,
+            Description = description,
+            SourceUid = uid
+        }, rows);
 
         lock (FileLock)
         {
@@ -152,14 +138,104 @@ public static partial class AccountSnapshotService
             var id = baseId;
             for (var n = 2; File.Exists(PathOf(id)); n++) id = $"{baseId}-{n}";
             file.Meta.Id = id;
-
-            var path = PathOf(id);
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(file, AccountSnapshotJsonContext.Default.AccountSnapshotFile));
-            File.Move(temp, path);
+            WriteFile(PathOf(id), file);
         }
 
         return file.Meta;
+    }
+
+    // The player editor's undo point: the whole save (friends included) from before the uid's last editor change,
+    // one file per uid under Snapshots/undo, outside the snapshot list.
+    private static string UndoPath(int uid) => Path.Combine(SnapshotDirectory, "undo", $"{uid}.json");
+
+    public static void WriteUndoPoint(int uid, string label, IReadOnlyCollection<BaseDatabaseDataHelper> rows)
+    {
+        var file = ToFile(new AccountSnapshotMeta { Id = $"undo-{uid}", Name = label, SourceUid = uid }, rows);
+        lock (FileLock)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UndoPath(uid))!);
+            WriteFile(UndoPath(uid), file);
+        }
+    }
+
+    public static AccountSnapshotMeta? GetUndoPoint(int uid)
+    {
+        lock (FileLock)
+            return File.Exists(UndoPath(uid)) ? ReadPath(UndoPath(uid), $"undo-{uid}").Meta : null;
+    }
+
+    public static List<BaseDatabaseDataHelper> ReadUndoPoint(int uid)
+    {
+        AccountSnapshotFile file;
+        lock (FileLock)
+        {
+            if (!File.Exists(UndoPath(uid))) throw new AccountSnapshotException($"UID {uid} has nothing to undo", true);
+            file = ReadPath(UndoPath(uid), $"undo-{uid}");
+        }
+
+        var rows = ToRows(file, $"undo-{uid}", true);
+        if (!rows.OfType<PlayerData>().Any()) throw new AccountSnapshotException($"The undo point of UID {uid} has no player data");
+        return rows;
+    }
+
+    public static void DeleteUndoPoint(int uid)
+    {
+        lock (FileLock)
+            if (File.Exists(UndoPath(uid))) File.Delete(UndoPath(uid));
+    }
+
+    private static AccountSnapshotFile ToFile(AccountSnapshotMeta meta, IReadOnlyCollection<BaseDatabaseDataHelper> rows)
+    {
+        var player = rows.OfType<PlayerData>().FirstOrDefault();
+        meta.CreatedAt = Extensions.GetUnixSec();
+        meta.GameVersion = GameConstants.GAME_VERSION;
+        meta.PlayerLevel = player?.Level ?? 0;
+        meta.FrontierMainMission = rows.OfType<MissionData>().FirstOrDefault()?.TrackingMainMissionId ?? 0;
+        meta.FloorId = player?.FloorId ?? 0;
+        meta.TableCount = rows.Count;
+
+        var file = new AccountSnapshotFile { Meta = meta };
+        foreach (var row in rows)
+        {
+            var store = EntityStores.Map[row.GetType()];
+            file.Tables[store.Table] = store.Export(row);
+        }
+
+        return file;
+    }
+
+    private static void WriteFile(string path, AccountSnapshotFile file)
+    {
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(file, AccountSnapshotJsonContext.Default.AccountSnapshotFile));
+        File.Move(temp, path, true);
+    }
+
+    // Gameplay rows of a snapshot file; friendships are kept only for an undo point of the same uid.
+    private static List<BaseDatabaseDataHelper> ToRows(AccountSnapshotFile file, string id, bool keepSocial)
+    {
+        var stores = EntityStores.Map.Values.ToDictionary(store => store.Table, StringComparer.Ordinal);
+        var rows = new List<BaseDatabaseDataHelper>();
+        foreach (var (table, columns) in file.Tables)
+        {
+            if (!stores.TryGetValue(table, out var store) || !DatabaseHelper.IsGameplayType(store.Type))
+            {
+                Logger.Warn($"Snapshot {id}: ignoring unknown table {table}");
+                continue;
+            }
+
+            if (!keepSocial && SocialTables.Contains(store.Type)) continue;
+            try
+            {
+                rows.Add(store.Import(columns));
+            }
+            catch (Exception e)
+            {
+                throw new AccountSnapshotException($"Snapshot {id}: table {table} cannot be read ({e.GetType().Name})");
+            }
+        }
+
+        return rows;
     }
 
     public static bool Delete(string id)
@@ -188,55 +264,31 @@ public static partial class AccountSnapshotService
     {
         if (DatabaseHelper.Instance == null) throw new AccountSnapshotException("Database is not initialized");
         RequireValidId(id);
-        var file = ReadFile(id);
-
-        var stores = EntityStores.Map.Values.ToDictionary(store => store.Table, StringComparer.Ordinal);
-        var rows = new List<BaseDatabaseDataHelper>();
-        foreach (var (table, columns) in file.Tables)
-        {
-            if (!stores.TryGetValue(table, out var store) || !DatabaseHelper.IsGameplayType(store.Type))
-            {
-                Logger.Warn($"Snapshot {id}: ignoring unknown table {table}");
-                continue;
-            }
-
-            if (SocialTables.Contains(store.Type)) continue;
-            try
-            {
-                rows.Add(store.Import(columns));
-            }
-            catch (Exception e)
-            {
-                throw new AccountSnapshotException($"Snapshot {id}: table {table} cannot be read ({e.GetType().Name})");
-            }
-        }
-
+        var rows = ToRows(ReadFile(id), id, false);
         if (!rows.OfType<PlayerData>().Any()) throw new AccountSnapshotException($"Snapshot {id} has no player data");
-        return await ReplaceAsync(uid, rows, nickname);
+        return await ReplaceAsync(uid, rows, nickname, $"restore snapshot {id}");
     }
 
-    private static async Task<bool> ReplaceAsync(int uid, List<BaseDatabaseDataHelper> rows, string? nickname)
+    private static async Task<bool> ReplaceAsync(int uid, List<BaseDatabaseDataHelper> rows, string? nickname,
+        string label)
     {
-        var connection = Listener.GetActiveConnection(uid);
-        if (connection != null)
-        {
-            await ConnectionDisconnectHelper.KickByGmAsync(connection);
-            if (connection.IsOnline) throw new AccountSnapshotException("Session could not be stopped; retry");
-        }
-
         nickname = nickname?.Trim();
         if (!string.IsNullOrEmpty(nickname))
             foreach (var player in rows.OfType<PlayerData>())
                 player.Name = nickname;
 
-        DatabaseHelper.ReplaceUidGameplayData(uid, rows);
-        return connection != null;
+        return await OfflinePlayerSession.ReplaceAsync(uid, label, rows);
     }
 
     private static AccountSnapshotFile ReadFile(string id)
     {
         var path = PathOf(id);
         if (!File.Exists(path)) throw new AccountSnapshotException($"Snapshot {id} not found", true);
+        return ReadPath(path, id);
+    }
+
+    private static AccountSnapshotFile ReadPath(string path, string id)
+    {
         try
         {
             return JsonSerializer.Deserialize(File.ReadAllText(path),

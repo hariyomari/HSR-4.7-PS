@@ -321,6 +321,7 @@ await ProgressionRewardSettingsChecks.Run(client, Check);
 await SecuritySessionChecks.Run(client, fixtureUid, fixturePassword, Check);
 await SnapshotChecks.Run(client, Check);
 await StoryChecks.Run(client, address, Check);
+await EditorChecks.Run(client, Check);
 Check("temporary command sessions are removed", MuipManager.Sessions.Count == 0);
 await app.StopAsync();
 Console.WriteLine($"Regression failures: {failures.Count}");

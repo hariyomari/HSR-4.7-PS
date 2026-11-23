@@ -9,6 +9,7 @@ public static partial class AdminPageScripts
       const ICONS = {
         overview: '<svg viewBox="0 0 20 20"><path d="M3 11h5V3H3zm0 6h5v-4H3zm7 0h7V9h-7zm0-14v4h7V3z"/></svg>',
         accounts: '<svg viewBox="0 0 20 20"><path d="M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm-6 7c0-3 2.7-5 6-5s6 2 6 5z"/></svg>',
+        editor: '<svg viewBox="0 0 20 20"><path d="M3 17h3.5L16 7.5 12.5 4 3 13.5zm8-11.5 3.5 3.5M3 17h14"/></svg>',
         sessions: '<svg viewBox="0 0 20 20"><path d="M2 4h16v9H2zm5 12h6v1.5H7zM10 13v3"/></svg>',
         gridfight: '<svg viewBox="0 0 20 20"><path d="M10 2l7 7-7 9-7-9zm-7 7h14M7 9l3 9 3-9M7 9l3-7 3 7"/></svg>',
         mail: '<svg viewBox="0 0 20 20"><path d="M2 4h16v12H2zm0 0l8 6 8-6"/></svg>',

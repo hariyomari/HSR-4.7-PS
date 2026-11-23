@@ -128,6 +128,14 @@ public class HandlerPlayerGetTokenCsReq : Handler
         if (DatabaseHelper.IsUidDeleted(uid) || AccountData.GetAccountByUid(uid)?.IsDeleting == true)
             return;
 
+        // An admin tool is rewriting this save offline; a session now would load it half-written.
+        if (OfflinePlayerSession.IsHeld(uid))
+        {
+            await connection.SendPacket(new PacketPlayerGetTokenScRsp((uint)uid, Retcode.RetSystemBusy,
+                msg: "This account is being changed by an administrator; log in again in a moment."));
+            return;
+        }
+
         if (!ResourceManager.IsLoaded)
         {
             _logger.Warn($"PlayerGetToken accepted but resource manager is not loaded. remote={connection.RemoteEndPoint} uid={uid}");
@@ -138,6 +146,8 @@ public class HandlerPlayerGetTokenCsReq : Handler
         var prev = Listener.GetActiveConnection(uid);
         if (prev != null)
         {
+            // A login replacing a session is not a logoff: a delete-on-logout test account stays.
+            prev.ReplacedByLogin = true;
             prev.Stop();
         }
 

@@ -3,6 +3,7 @@ using March7thHoney.Data;
 using March7thHoney.Data.Config.Scene;
 using March7thHoney.Database;
 using March7thHoney.Database.Account;
+using March7thHoney.Database.Player;
 using March7thHoney.Database.Mail;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Mission;
@@ -36,6 +37,12 @@ public sealed class StoryProvisionRequest
     public StoryTeleportsModeEnum Teleports { get; init; } = StoryTeleportsModeEnum.ReachedPlanes;
     public bool IncludeSideMissions { get; init; }
     public bool GrantTestCurrency { get; init; }
+
+    /// <summary>
+    ///     Advance the stored save instead of wiping it: characters, items and finished missions stay, and only the
+    ///     missions still open on the way to the target are played. A save already past the target is refused.
+    /// </summary>
+    public bool KeepSave { get; init; }
 }
 
 public sealed class StoryProvisionReport
@@ -134,7 +141,7 @@ public static class StoryCheckpointProvisioner
 
     /// <summary>
     ///     Wipes <paramref name="uid" />'s save (kicking an online session) and provisions the checkpoint. If the replay
-    ///     itself fails, the previous save is put back.
+    ///     itself fails, the previous save is put back; otherwise it becomes the uid's editor undo point.
     /// </summary>
     public static async ValueTask<StoryProvisionReport> ProvisionAsync(int uid, StoryProvisionRequest request)
     {
@@ -144,24 +151,76 @@ public static class StoryCheckpointProvisioner
         await Gate.WaitAsync();
         try
         {
+            using var lease = OfflinePlayerSession.Acquire(uid);
             var backup = DatabaseHelper.CloneUidGameplayData(uid);
             var run = new Run(uid, request);
+            StoryProvisionReport report;
             try
             {
-                return await run.Execute();
+                report = await run.Execute();
             }
             catch
             {
-                // Only a save the run already wiped is put back; before that (a session that would not stop) the
-                // live rows are untouched and must stay the ones the online player writes to.
-                if (run.Wiped && backup.Count > 0) DatabaseHelper.ReplaceUidGameplayData(uid, backup);
+                // Only a save the run already wiped or loaded is put back; before that (a session that would not
+                // stop) the live rows are untouched and must stay the ones the online player writes to.
+                if (run.Changed && backup.Count > 0) DatabaseHelper.ReplaceUidGameplayData(uid, backup);
                 throw;
             }
+
+            OfflinePlayerSession.KeepUndoPoint(uid, $"story checkpoint {request.TargetMainMissionId}", backup);
+            return report;
         }
         finally
         {
             Gate.Release();
         }
+    }
+
+    /// <summary>
+    ///     Records every teleport checkpoint of the floors in scope as reached and saves it enabled, so the map list and
+    ///     the Space Anchor in the world agree. ReachedPlanes: the floors entered, played by a finished sub-mission or
+    ///     stood on. Returns how many teleports were newly unlocked.
+    /// </summary>
+    public static async ValueTask<int> UnlockTeleports(PlayerInstance player, StoryTeleportsModeEnum mode)
+    {
+        if (mode == StoryTeleportsModeEnum.None) return 0;
+
+        var missions = player.MissionManager!;
+        var floors = new HashSet<int>();
+        if (mode == StoryTeleportsModeEnum.All)
+        {
+            floors.UnionWith(GameData.MapEntranceData.Values.Select(entrance => entrance.FloorID));
+        }
+        else
+        {
+            foreach (var planeFloors in player.SceneData!.EnteredSceneData.Values) floors.UnionWith(planeFloors);
+            foreach (var subId in missions.Data.FinishedSubMissionIds)
+                if (missions.GetSubMissionInfo(subId) is { LevelFloorID: > 0 } info)
+                    floors.Add(info.LevelFloorID);
+            floors.Add(player.Data.FloorId);
+        }
+
+        var unlocked = 0;
+        foreach (var floorId in floors)
+        {
+            var entrance = MissionManager.FindEntranceForFloor(floorId);
+            if (entrance == null) continue;
+            if (GameData.MazePlaneData.GetValueOrDefault(entrance.PlaneID)?.PlaneType is not
+                (PlaneTypeEnum.Maze or PlaneTypeEnum.Town or PlaneTypeEnum.Train)) continue;
+            GameData.GetFloorInfo(entrance.PlaneID, floorId, out var floor);
+            if (floor == null) continue;
+
+            foreach (var group in floor.Groups.Values)
+            foreach (var prop in group.PropList)
+            {
+                if (prop.IsDelete || prop.MappingInfoID == 0 ||
+                    prop.State is not (PropStateEnum.CheckPointDisable or PropStateEnum.CheckPointEnable)) continue;
+                if (await player.RecordTeleportUnlock(floorId, prop.MappingInfoID, false)) unlocked++;
+                player.SetScenePropData(floorId, group.Id, prop.ID, PropStateEnum.CheckPointEnable);
+            }
+        }
+
+        return unlocked;
     }
 
     private sealed class Run(int uid, StoryProvisionRequest request)
@@ -174,15 +233,15 @@ public static class StoryCheckpointProvisioner
 
         private PlayerInstance _player = null!;
 
-        /// <summary>Whether the previous save has been deleted.</summary>
-        public bool Wiped { get; private set; }
+        /// <summary>Whether the stored save has been wiped or loaded for the replay, so a failure must put it back.</summary>
+        public bool Changed { get; private set; }
 
         private MissionManager Missions => _player.MissionManager!;
 
         public async ValueTask<StoryProvisionReport> Execute()
         {
             var timer = Stopwatch.StartNew();
-            await CreateFreshPlayer();
+            await LoadPlayer();
 
             var chain = MissionManager.StoryPrerequisites(request.TargetMainMissionId, request.IncludeSideMissions);
             _report.PrerequisiteCount = chain.Count;
@@ -205,23 +264,32 @@ public static class StoryCheckpointProvisioner
             if (request.TestReady) ApplyTestLoadout(chain);
             if (request.GrantTestCurrency) await GrantTestCurrency();
             PlaceAtTarget();
-            await UnlockTeleports();
+            _report.TeleportsUnlocked = await UnlockTeleports(_player, request.Teleports);
             Finish(timer);
             return _report;
         }
 
-        private async ValueTask CreateFreshPlayer()
+        private async ValueTask LoadPlayer()
         {
-            var connection = Listener.GetActiveConnection(uid);
-            if (connection != null)
+            _report.WasOnline = await OfflinePlayerSession.StopSessionsAsync(uid);
+            if (request.KeepSave)
             {
-                await ConnectionDisconnectHelper.KickByGmAsync(connection);
-                if (connection.IsOnline) throw new InvalidOperationException("Session could not be stopped; retry");
-                _report.WasOnline = true;
+                var data = DatabaseHelper.Instance!.GetInstance<PlayerData>(uid) ??
+                           throw new InvalidOperationException($"UID {uid} has no save to advance");
+                Changed = true;
+                _player = new PlayerInstance(data) { PendingMissionEnabledOverride = true };
+                await _player.InitializeAsync();
+                var mainDone = Missions.GetMainMissionStatus(request.TargetMainMissionId) == MissionPhaseEnum.Finish;
+                var subDone = request.TargetSubMissionId != 0 && request.StopMode == StoryStopModeEnum.Before &&
+                              Missions.GetSubMissionStatus(request.TargetSubMissionId) == MissionPhaseEnum.Finish;
+                if (mainDone || subDone)
+                    throw new InvalidOperationException(
+                        "The save is already past this story point; reset it to go back");
+                return;
             }
 
             DatabaseHelper.Instance!.DeleteUidGameplayData(uid);
-            Wiped = true;
+            Changed = true;
             _player = new PlayerInstance(uid) { PendingMissionEnabledOverride = true };
             await _player.InitializeAsync();
             _player.Data.Level = ConfigManager.Config.ServerOption.StartTrailblazerLevel;
@@ -710,47 +778,6 @@ public static class StoryCheckpointProvisioner
             }
 
             return best;
-        }
-
-        // Records every teleport checkpoint of the floors in scope as reached and saves it enabled, so the map list
-        // and the Space Anchor in the world agree.
-        private async ValueTask UnlockTeleports()
-        {
-            if (request.Teleports == StoryTeleportsModeEnum.None) return;
-
-            var floors = new HashSet<int>();
-            if (request.Teleports == StoryTeleportsModeEnum.All)
-            {
-                floors.UnionWith(GameData.MapEntranceData.Values.Select(entrance => entrance.FloorID));
-            }
-            else
-            {
-                foreach (var planeFloors in _player.SceneData!.EnteredSceneData.Values) floors.UnionWith(planeFloors);
-                foreach (var subId in Missions.Data.FinishedSubMissionIds)
-                    if (Missions.GetSubMissionInfo(subId) is { LevelFloorID: > 0 } info)
-                        floors.Add(info.LevelFloorID);
-                floors.Add(_player.Data.FloorId);
-            }
-
-            foreach (var floorId in floors)
-            {
-                var entrance = MissionManager.FindEntranceForFloor(floorId);
-                if (entrance == null) continue;
-                if (GameData.MazePlaneData.GetValueOrDefault(entrance.PlaneID)?.PlaneType is not
-                    (PlaneTypeEnum.Maze or PlaneTypeEnum.Town or PlaneTypeEnum.Train)) continue;
-                GameData.GetFloorInfo(entrance.PlaneID, floorId, out var floor);
-                if (floor == null) continue;
-
-                foreach (var group in floor.Groups.Values)
-                foreach (var prop in group.PropList)
-                {
-                    if (prop.IsDelete || prop.MappingInfoID == 0 ||
-                        prop.State is not (PropStateEnum.CheckPointDisable or PropStateEnum.CheckPointEnable)) continue;
-                    if (await _player.RecordTeleportUnlock(floorId, prop.MappingInfoID, false))
-                        _report.TeleportsUnlocked++;
-                    _player.SetScenePropData(floorId, group.Id, prop.ID, PropStateEnum.CheckPointEnable);
-                }
-            }
         }
 
         private void Finish(Stopwatch timer)

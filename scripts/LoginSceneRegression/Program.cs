@@ -3035,6 +3035,7 @@ await WarpGachaRegression.Run(Check, repository, scratch);
 await ProgressionRewardsRegression.Run(Check);
 await AccountSnapshotRegression.Run(Check);
 await StoryCheckpointRegression.Run(Check);
+await PlayerEditorRegression.Run(Check);
 
 var fakeRaw = Path.Combine(scratch, "fake-raw");
 Directory.CreateDirectory(Path.Combine(fakeRaw, "ExcelOutputGameCore"));

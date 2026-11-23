@@ -330,6 +330,7 @@ public static partial class AdminPageScripts
             <span class="chip-list">
               ${chip(account.online ? t("common.online") : t("common.offline"), account.online ? "good" : "subtle")}
               ${account.banned ? chip(t("common.banned"), "bad") : ""}
+              ${account.delete_on_logout ? chip(t("editor.test_account"), "warn") : ""}
             </span>
           </div>
           <div class="tabs" role="tablist">
@@ -447,6 +448,7 @@ public static partial class AdminPageScripts
             <div class="actions wide">
               <button class="btn primary" type="submit">${t("accounts.save_profile")}</button>
               <button class="btn ghost" type="button" data-open-command="${account.uid}" ${account.online ? "" : "disabled"}>${t("common.run_command")}</button>
+              <button class="btn ghost" type="button" data-open-editor="${account.uid}">${t("editor.open")}</button>
               <button class="btn ghost" type="button" data-open-mail="${account.uid}">${t("accounts.compose_mail")}</button>
             </div>
           </form>`;
@@ -564,6 +566,7 @@ public static partial class AdminPageScripts
                 </table>
               </div>` : emptyState(t("common.none"))}
             <div class="actions">
+              <button class="btn primary" type="button" data-open-editor="${account.uid}">${t("editor.open")}</button>
               <button class="btn ghost" type="button" id="acc-player-refresh">${t("common.refresh")}</button>
               <button class="btn ghost" type="button" data-open-command="${account.uid}" ${data.online ? "" : "disabled"}>${t("common.run_command")}</button>
               <button class="btn ghost" type="button" data-open-mail="${account.uid}">${t("accounts.compose_mail")}</button>
@@ -654,6 +657,8 @@ public static partial class AdminPageScripts
               <button class="btn ghost" type="button" id="acc-clone">${t("accounts.clone")}</button>
               <button class="btn ghost" type="button" id="acc-snapshot-save">${t("snapshots.save")}</button>
             </div>
+            <div class="field">${toggleSwitch("acc-delete-on-logout", account.delete_on_logout, t("accounts.delete_on_logout"))}</div>
+            <p class="muted small">${t("accounts.delete_on_logout_hint")}</p>
             <div class="danger-card">
               <div>
                 <strong>${t("snapshots.restore_title")}</strong>
@@ -693,6 +698,17 @@ public static partial class AdminPageScripts
         on(host, "[data-open-blocks]", "click", () => navigate("blocks"));
         on(host, "[data-open-command]", "click", event => navigate("commands", { target: event.currentTarget.dataset.openCommand }));
         on(host, "[data-open-mail]", "click", event => navigate("mail", { uid: event.currentTarget.dataset.openMail }));
+        on(host, "[data-open-editor]", "click", event => navigate("editor", { id: event.currentTarget.dataset.openEditor }));
+        $("#acc-delete-on-logout", host)?.addEventListener("change", async event => {
+          const box = event.currentTarget;
+          const enabled = box.checked;
+          const done = await run(null, async () => {
+            await api(`/admin/api/accounts/${account.uid}/delete-on-logout`, { method: "PUT", body: { enabled } });
+            await refreshAccounts(account.uid);
+            return true;
+          }, enabled ? t("accounts.delete_on_logout_on") : t("accounts.delete_on_logout_off"));
+          if (!done) box.checked = !enabled;
+        });
 
         const profileForm = $("#acc-profile-form", host);
         if (profileForm) {
@@ -974,7 +990,8 @@ public static partial class AdminPageScripts
         return [
           { name: "username", label: t("common.username"), placeholder: t("accounts.auto_generate") },
           { name: "password", label: t("common.password"), placeholder: t("accounts.auto_generate") },
-          { name: "nickname", label: t("accounts.nickname_optional") }
+          { name: "nickname", label: t("accounts.nickname_optional") },
+          { name: "delete_on_logout", label: t("accounts.delete_on_logout"), type: "select", value: "", options: [["", t("common.off")], ["1", t("common.on")]] }
         ];
       }
 
@@ -982,7 +999,8 @@ public static partial class AdminPageScripts
         return {
           username: (values.username || "").trim() || null,
           password: values.password || null,
-          nickname: (values.nickname || "").trim() || null
+          nickname: (values.nickname || "").trim() || null,
+          delete_on_logout: values.delete_on_logout === "1"
         };
       }
 
@@ -1063,8 +1081,9 @@ public static partial class AdminPageScripts
         return [mission.id, name, mission.chapter_name].filter(Boolean).join(" · ");
       }
 
-      // Creates a new account at a story checkpoint, or (account set) resets that account to one.
-      async function openStoryDialog(account) {
+      // Creates a new account at a story checkpoint, or (account set) resets that account to one or, with keepSave,
+      // advances its save to one. options.onDone(data) runs after a successful run.
+      async function openStoryDialog(account, options = {}) {
         const modal = accountModal(html`<h3>${t("story.title")}</h3>${loadingState()}`);
         let catalog;
         try {
@@ -1078,16 +1097,18 @@ public static partial class AdminPageScripts
 
         const missions = new Map();
         for (const version of catalog.versions) for (const mission of version.main_missions) missions.set(mission.id, mission);
-        const form = { version: catalog.versions[0]?.version || "", query: "", main: 0, sub: 0 };
+        const form = { version: catalog.versions[0]?.version || "", query: "", main: 0, sub: 0, keepSave: Boolean(account && options.keepSave) };
+        const storyHint = () => account ? t(form.keepSave ? "story.advance_hint" : "story.jump_hint") : t("story.hint");
 
         modal.element.innerHTML = String(html`
           <h3>${account ? t("story.jump_title_for", { user: account.username, uid: account.uid }) : t("story.title")}</h3>
-          <p class="modal-message">${account ? t("story.jump_hint") : t("story.hint")}</p>
+          <p class="modal-message" id="story-hint">${storyHint()}</p>
           <div class="field">
             <span>${t("story.presets")}</span>
             <span class="chip-list">${catalog.presets.map(preset => html`<button type="button" class="chip clickable" data-story-preset="${preset.id}">${t(`story.preset.${preset.id}`)}</button>`)}</span>
           </div>
           <form id="story-form" class="form-grid">
+            ${account ? html`<label class="field wide"><span>${t("story.mode")}</span><select id="story-mode">${option("reset", t("story.mode.reset"), form.keepSave ? "advance" : "reset")}${option("advance", t("story.mode.advance"), form.keepSave ? "advance" : "reset")}</select></label>` : ""}
             <label class="field"><span>${t("story.version")}</span><select id="story-version">${catalog.versions.map(version => option(version.version, `${version.version} · ${version.chapters.join(" / ")}`, form.version))}</select></label>
             <label class="field"><span>${t("story.search")}</span><input id="story-search" type="search" placeholder="${t("story.search_placeholder")}" autocomplete="off"></label>
             <label class="field wide"><span>${t("story.main_mission")}</span><select id="story-main" required></select></label>
@@ -1107,12 +1128,12 @@ public static partial class AdminPageScripts
             <label class="field"><span>${t("story.progression")}</span><select id="story-progression">${option("test_ready", t("story.progression.test_ready"), "test_ready")}${option("live_like", t("story.progression.live_like"), "test_ready")}</select></label>
             <label class="field"><span>${t("story.tutorials")}</span><select id="story-tutorials">${option("finish_prior", t("story.tutorials.finish_prior"), "finish_prior")}${option("keep_open", t("story.tutorials.keep_open"), "finish_prior")}${option("finish_all", t("story.tutorials.finish_all"), "finish_prior")}</select></label>
             <label class="field"><span>${t("story.teleports")}</span><select id="story-teleports">${option("reached_planes", t("story.teleports.reached_planes"), "reached_planes")}${option("all", t("story.teleports.all"), "reached_planes")}${option("none", t("story.teleports.none"), "reached_planes")}</select></label>
-            <div class="field"><span>${t("story.extras")}</span>${toggleSwitch("story-currency", false, t("story.grant_currency"))}${toggleSwitch("story-side", false, t("story.include_side"))}</div>
-            ${account ? html`<label class="field"><span>${t("common.type_to_confirm", { text: "RESET" })}</span><input id="story-confirm" autocomplete="off"></label>` : ""}
+            <div class="field"><span>${t("story.extras")}</span>${toggleSwitch("story-currency", false, t("story.grant_currency"))}${toggleSwitch("story-side", false, t("story.include_side"))}${account ? "" : toggleSwitch("story-ephemeral", false, t("accounts.delete_on_logout"))}</div>
+            ${account ? html`<label class="field" id="story-confirm-field"><span>${t("common.type_to_confirm", { text: "RESET" })}</span><input id="story-confirm" autocomplete="off"></label>` : ""}
             <div id="story-result" class="wide"></div>
             <div class="modal-actions wide">
               <button class="btn ghost" type="button" data-story-close>${t("accounts.close")}</button>
-              <button class="btn ${account ? "danger" : "primary"}" type="submit" id="story-submit" ${account ? "disabled" : ""}>${account ? t("story.jump") : t("story.provision")}</button>
+              <button class="btn ${account ? "danger" : "primary"}" type="submit" id="story-submit">${account ? t("story.jump") : t("story.provision")}</button>
             </div>
           </form>`);
 
@@ -1175,9 +1196,23 @@ public static partial class AdminPageScripts
         $("#story-generate", root)?.addEventListener("click", () => {
           $("#story-password", root).value = generatePassword();
         });
-        $("#story-confirm", root)?.addEventListener("input", event => {
-          $("#story-submit", root).disabled = event.currentTarget.value.trim() !== "RESET";
+        // Wiping the save asks for RESET; advancing it keeps everything and leaves an undo point.
+        function syncStoryMode() {
+          if (!account) return;
+          $("#story-hint", root).textContent = storyHint();
+          $("#story-confirm-field", root).style.display = form.keepSave ? "none" : "";
+          const submit = $("#story-submit", root);
+          submit.textContent = form.keepSave ? t("story.advance") : t("story.jump");
+          submit.className = `btn ${form.keepSave ? "primary" : "danger"}`;
+          submit.disabled = !form.keepSave && $("#story-confirm", root).value.trim() !== "RESET";
+        }
+
+        syncStoryMode();
+        $("#story-mode", root)?.addEventListener("change", event => {
+          form.keepSave = event.currentTarget.value === "advance";
+          syncStoryMode();
         });
+        $("#story-confirm", root)?.addEventListener("input", syncStoryMode);
 
         $("#story-form", root).addEventListener("submit", async event => {
           event.preventDefault();
@@ -1197,9 +1232,12 @@ public static partial class AdminPageScripts
             grant_test_currency: $("#story-currency", root).checked,
             include_side_missions: $("#story-side", root).checked
           };
-          if (!account) {
+          if (account) {
+            body.keep_save = form.keepSave;
+          } else {
             body.username = $("#story-username", root).value.trim() || null;
             body.password = $("#story-password", root).value || null;
+            body.delete_on_logout = $("#story-ephemeral", root).checked;
           }
           const result = $("#story-result", root);
           result.innerHTML = String(loadingState(t("story.running")));
@@ -1212,6 +1250,7 @@ public static partial class AdminPageScripts
           accountsState.mode = "detail";
           accountsState.tab = "profile";
           await refreshAccounts(data.account.uid);
+          if (options.onDone) await options.onDone(data);
         });
       }
 

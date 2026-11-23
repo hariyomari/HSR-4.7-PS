@@ -43,6 +43,7 @@ public static partial class AdminRoutes
         MapAccountRoutes(app);
         MapStoryRoutes(app);
         MapPlayerRoutes(app);
+        MapPlayerEditorRoutes(app);
         MapMailRoutes(app);
         MapAnnounceRoutes(app);
         MapAccessRoutes(app);
@@ -251,7 +252,8 @@ public static partial class AdminRoutes
             AccountBanHelper.NormalizeIpAddress(Listener.GetActiveConnection(account.Uid)?.RemoteEndPoint.Address.ToString()) ?? "",
             account.CreatedAt, account.LastSeenAt,
             account.KnownIpAddresses?.ToList() ?? [], account.KnownDeviceIds?.ToList() ?? [],
-            AccountBanHelper.ParseIdentityKeys(account.KnownIdentityKeys).Where(k => k.StartsWith("device:")).ToList());
+            AccountBanHelper.ParseIdentityKeys(account.KnownIdentityKeys).Where(k => k.StartsWith("device:")).ToList(),
+            account.DeleteOnLogout);
     }
 
     private static List<OnlinePlayer> GetOnlinePlayers()

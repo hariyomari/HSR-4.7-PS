@@ -24,6 +24,10 @@ public class Connection(KcpConversation conversation, IPEndPoint remote) : March
     private readonly HashSet<string> _sentLuaScripts = new(StringComparer.OrdinalIgnoreCase);
 
     public PlayerInstance? Player { get; set; }
+
+    /// <summary>Set when a new login of the same uid stops this session: that is not the player logging off.</summary>
+    public bool ReplacedByLogin { get; set; }
+
     public List<PacketActionData> CustomPacketQueue { get; set; } = [];
 
     /// <summary>
@@ -68,6 +72,7 @@ public class Connection(KcpConversation conversation, IPEndPoint remote) : March
         Player?.OnLogoutAsync();
         March7thHoneyListener.UnregisterConnection(this);
         base.Stop();
+        if (Player != null) AccountDeletion.OnSessionEnded(Player.Uid, ReplacedByLogin);
     }
 
     public override async Task SendWatermarkLuaAsync()

@@ -79,6 +79,7 @@ public static partial class AdminRoutes
         string? password;
         try
         {
+            if (request.keep_save == true) return Error("keep_save needs an existing account");
             account = CreateTestAccount(request, $"test_{story.TargetMainMissionId}", out password);
         }
         catch (Exception ex)
@@ -172,7 +173,8 @@ public static partial class AdminRoutes
             Tutorials = tutorials,
             Teleports = teleports,
             IncludeSideMissions = request.include_side_missions ?? false,
-            GrantTestCurrency = request.grant_test_currency ?? false
+            GrantTestCurrency = request.grant_test_currency ?? false,
+            KeepSave = request.keep_save ?? false
         };
 
         var invalid = StoryCheckpointProvisioner.Validate(story);
@@ -220,5 +222,8 @@ public static partial class AdminRoutes
         public string? teleports_mode { get; set; }
         public bool? include_side_missions { get; set; }
         public bool? grant_test_currency { get; set; }
+
+        /// <summary>Existing account only: advance its save to the point instead of wiping it.</summary>
+        public bool? keep_save { get; set; }
     }
 }

@@ -253,6 +253,7 @@ public static class AdminPageStyles
     .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
     .console-split { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+    .editor-split { grid-template-columns: minmax(240px, 0.55fr) minmax(0, 2fr); }
     .stack { display: flex; flex-direction: column; gap: 14px; }
     .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .space-between { justify-content: space-between; }
@@ -462,16 +463,23 @@ public static class AdminPageStyles
     #acc-results input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
     #block-results td { max-width: 260px; }
     .modal-message { max-height: 45vh; overflow-y: auto; overflow-wrap: anywhere; }
+    .raw-json { min-height: 440px; font-family: var(--mono); font-size: 12.5px; white-space: pre; }
+    .editor-team { display: grid; grid-template-columns: 64px repeat(4, minmax(0, 1fr)) auto auto; gap: 8px; align-items: center; }
+    .editor-team select { min-width: 0; }
+    .editor-team label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    #ed-panel td input[type=checkbox], #ed-panel .editor-team input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .editor-log { max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg); }
 
     /* -------------------------------------------------------- responsive */
     @media (max-width: 1180px) {
-      .split, .console-split { grid-template-columns: minmax(0, 1fr); }
+      .split, .console-split, .editor-split { grid-template-columns: minmax(0, 1fr); }
       .panel.editor { position: static; }
       .settings-layout { grid-template-columns: minmax(0, 1fr); }
       .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; }
     }
     @media (max-width: 900px) {
       .grid.two { grid-template-columns: minmax(0, 1fr); }
+      .editor-team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .sidebar { position: fixed; left: 0; top: var(--topbar); z-index: 40; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow); }
       .sidebar.open { transform: none; }
       .content { padding: 16px 14px 60px; }

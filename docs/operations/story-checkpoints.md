@@ -6,7 +6,7 @@ The admin console (Accounts panel) can build a test account that stands at any p
 
 `POST /admin/api/accounts/{uid}/clone` creates a new account and gives it a deep copy of `{uid}`'s save.
 
-- Body: `{username?, password?, email?, uid?, role?, nickname?}`. An empty username becomes `<source>_clone_<hex>`. An empty password is generated and returned once as `generated_password`. An empty email becomes `<username>@local.test`. `nickname` renames the copied Trailblazer.
+- Body: `{username?, password?, email?, uid?, role?, nickname?, delete_on_logout?}`. An empty username becomes `<source>_clone_<hex>`. An empty password is generated and returned once as `generated_password`. An empty email becomes `<username>@local.test`. `nickname` renames the copied Trailblazer. `delete_on_logout` makes it a throwaway account (see [player editor](player-editor.md#delete-on-logout-test-accounts)).
 - An online source is flushed first. The copy goes through the same row round trip as a database save and reload (`EntityStore.DeepCopy`), so the clone shares no object with the source. All rows are written in one SQLite/MySQL transaction.
 - `Friend` and `assist_reward_data` are not copied, because they name other players' uids. The clone starts with no friends and no pending support rewards.
 - If the copy fails, the new account is retired again (deleted with a tombstone).
@@ -42,7 +42,9 @@ Snapshots are files under `Snapshots/` next to the database (default `Config/Dat
    - `after`: the target is finished.
 5. Clean-up and normalisation (see below), then one save.
 
-If the replay throws after the wipe, the previous save is put back.
+If the replay throws after the wipe, the previous save is put back. On success the previous save of an existing account becomes its [player editor undo point](player-editor.md#undo).
+
+With `keep_save: true` (existing accounts only) step 1 loads the stored save instead of wiping it, so only the missions still open on the way are played and characters, items and finished missions stay. A save already past the target is a 400 and is left untouched.
 
 ### Prologue (1000101)
 
@@ -106,13 +108,13 @@ Checkpoints **after** 100010134:
 | `version-4-7` | 1054704 | | before |
 
 - `POST /admin/api/accounts/provision-story` creates an account and provisions it. It takes the clone body plus `preset?`, `target_main_mission_id`, `target_sub_mission_id?`, `stop_mode` (`before`/`after`), `trailblazer_gender` (`man`/`woman`/`unset`), `trailblazer_name?`, `progression_preset` (`test_ready`/`live_like`), `tutorials_mode`, `teleports_mode`, `include_side_missions`, `grant_test_currency`. Unknown missions, a sub of another main, and unknown option values are a 400, and no account is created.
-- `POST /admin/api/accounts/{uid}/provision-story` resets an existing account to the checkpoint.
+- `POST /admin/api/accounts/{uid}/provision-story` resets an existing account to the checkpoint, or advances it with `keep_save: true`.
 - Both return `{account, generated_password, report}`. The report holds `missions_finished`, `sub_missions_finished`, `teleports_unlocked`, `tutorials_marked_finished`, `prop_states_restored`, `spawn_plane_id`/`spawn_floor_id`/`spawn_entry_id`, `tracking_main_mission_id`, `gender_set`, `player_level`/`world_level`, `lineup`, `bypassed_gates`, `stalled_missions`, `warnings` and `elapsed_ms`.
 - Provisioning is serialised server-wide. On the 4.7 cache the 4.7 entry replays about 275 mains in roughly 5–11 s.
 
 ### Operating notes
 
-- "Jump to story point" on an existing account wipes its save. Save a snapshot first to keep it.
+- "Jump to story point" on an existing account wipes its save; the save from before is the undo point in the [player editor](player-editor.md). "Advance" keeps the save.
 - The replay never touches `Config/Resource.bin`, `Proto/` or the database schema.
 - Server regressions do not replace a client check. Verify by hand:
   - Spawn from `prologue-receptacle`: Kafka should stand in the receptacle room, and interacting should open gender/name selection.

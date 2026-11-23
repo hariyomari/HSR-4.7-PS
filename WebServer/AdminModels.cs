@@ -200,3 +200,67 @@ public sealed record StoryProvisionReportView(
     List<string> warnings, bool was_online, long elapsed_ms);
 
 public sealed record StoryProvisionData(AccountSummary account, string? generated_password, StoryProvisionReportView report);
+
+// Player editor — /admin/api/players/{uid}/editor. version: content hash of the section as loaded; an edit naming an
+// older version is refused (409) so a save changed in between (the player was online) is not overwritten.
+public sealed record EditorUndoView(string label, long created_at);
+
+public sealed record EditorSummaryData(
+    int uid, bool exists, bool online, bool busy, bool mission_enabled, EditorUndoView? undo, int max_player_level,
+    int max_world_level, bool delete_on_logout);
+
+public sealed record EditorProfileView(
+    string name, string signature, int head_icon, int level, int exp, int world_level, int scoin, int hcoin, int mcoin,
+    int stamina, double stamina_reserve, long month_card_expire, bool gender_set, string gender);
+
+public sealed record EditorProfileData(EditorProfileView profile, string version);
+
+public sealed record EditorAvatarView(
+    int id, int avatar_id, int level, int promotion, int rank, List<int> paths, int light_cone_unique_id,
+    int light_cone_id, int relic_count, bool traces_maxed);
+
+public sealed record EditorAvatarsData(List<EditorAvatarView> avatars, string version);
+
+public sealed record EditorMaterialView(int item_id, int count);
+
+public sealed record EditorGearView(
+    int unique_id, int item_id, int level, int promotion, int rank, int main_affix, int sub_affixes, int equip_avatar,
+    bool locked);
+
+public sealed record EditorInventoryData(
+    List<EditorMaterialView> materials, List<EditorGearView> light_cones, List<EditorGearView> relics,
+    int max_light_cones, int max_relics);
+
+public sealed record EditorLineupSlot(int base_avatar_id, int special_avatar_id);
+
+public sealed record EditorLineupView(int index, string name, List<EditorLineupSlot> slots, bool current);
+
+// extra_lineup: the story/raid team in use (index >= 10), or -1.
+public sealed record EditorLineupsData(List<EditorLineupView> lineups, int current, int extra_lineup, string version);
+
+public sealed record EditorRunningMission(int main_id, List<int> sub_ids);
+
+public sealed record EditorStoryData(
+    bool mission_enabled, int tracking_main_mission_id, List<EditorRunningMission> running, List<int> prepared,
+    List<int> finished_mains, int finished_subs, int plane_id, int floor_id, int entry_id, int teleports_unlocked,
+    int tutorials_finished, int tutorials_total);
+
+public sealed record EditorMissionResult(List<string> log, EditorStoryData story, bool was_online);
+
+public sealed record EditorCountResult(int count, bool was_online);
+
+public sealed record EditorRawTableView(string table, bool present);
+
+public sealed record EditorRawTablesData(List<EditorRawTableView> tables);
+
+public sealed record EditorRawTableData(string table, string json, bool editable, string version);
+
+public sealed record EditorCatalogAvatar(int id, int base_id, int rarity);
+
+public sealed record EditorCatalogEntrance(int id, int plane_id, int floor_id, string plane_type);
+
+public sealed record EditorCatalogData(
+    List<EditorCatalogAvatar> avatars, List<int> light_cones, List<int> relics, List<int> items,
+    List<EditorCatalogEntrance> entrances);
+
+public sealed record EditorSaved(bool was_online);
