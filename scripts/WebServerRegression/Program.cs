@@ -32,9 +32,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using March7thHoney.Data;
 using March7thHoney.Data.Custom;
-using March7thHoney.Data.Excel;
 
 // An isolated HTTP/command regression runner. Never load the operator's Config.json or database.
 var repository = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
