@@ -1,5 +1,7 @@
 using March7thHoney.Data.Excel;
+using March7thHoney.Database;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Database.Shop;
 using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
@@ -47,17 +49,28 @@ public static class RechargeService
     {
         if (!ConfigManager.Config.ServerOption.EnableFakeRecharge) return RechargeResult.Disabled;
 
+        var shopData = player.ShopManager?.Data ?? DatabaseHelper.Instance?.GetInstanceOrCreateNew<ShopData>(player.Uid);
+        var buyTimes = shopData?.RechargeProductBuyTimes.GetValueOrDefault(product.ProductID) ?? 0;
+        var isFirstPurchase = buyTimes == 0;
+        var bonus = isFirstPurchase ? product.FirstCharge : product.NormalCharge;
+
         List<ItemData> rewards = [new() { ItemId = (int)VirtualItemEnum.Mcoin, Count = product.FirstCharge }];
-        if (product.NormalCharge > 0)
-            rewards.Add(new ItemData { ItemId = (int)VirtualItemEnum.Mcoin, Count = product.NormalCharge });
+        if (bonus > 0)
+            rewards.Add(new ItemData { ItemId = (int)VirtualItemEnum.Mcoin, Count = bonus });
 
         var total = rewards.Sum(x => x.Count);
+        if (shopData != null)
+        {
+            shopData.RechargeProductBuyTimes[product.ProductID] = buyTimes + 1;
+            DatabaseHelper.MarkDirty(player.Uid);
+        }
+
         await player.InventoryManager!.AddItem((int)VirtualItemEnum.Mcoin, total, notify: false, sync: false);
         await player.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
         await player.SendPacket(new PacketRechargeSuccNotify(product.ProductID, rewards,
             MonthCardService.GetMonthCardOutDateTime(player.Data)));
 
-        Logger.Debug($"Recharge granted. uid={player.Uid} product={product.ProductID} shards={total}");
+        Logger.Debug($"Recharge granted. uid={player.Uid} product={product.ProductID} shards={total} first={isFirstPurchase}");
         return RechargeResult.Granted;
     }
 

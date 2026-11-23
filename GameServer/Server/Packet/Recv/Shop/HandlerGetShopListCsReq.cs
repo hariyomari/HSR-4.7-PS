@@ -9,6 +9,7 @@ public class HandlerGetShopListCsReq : Handler<GetShopListCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, GetShopListCsReq req)
     {
-        await connection.SendPacket(new PacketGetShopListScRsp(req.ShopType));
+        await connection.SendPacket(
+            new PacketGetShopListScRsp(req.ShopType, player.ShopManager!.BuildShopList(req.ShopType)));
     }
 }

@@ -14,7 +14,7 @@ public partial class InventoryManager
     {
         GameData.ItemConfigData.TryGetValue(itemId, out var itemConfig);
         if (itemConfig == null) return (Retcode.RetItemNotExist, null);
-        var dataId = itemConfig.ID;
+        var dataId = itemConfig.UseDataID != 0 ? itemConfig.UseDataID : itemConfig.ID;
 
         GameData.ItemUseBuffDataData.TryGetValue(dataId, out var useConfig);
         if (useConfig != null && baseAvatarId > 0 && Player.AvatarManager?.GetFormalAvatar(baseAvatarId) == null)
@@ -108,8 +108,9 @@ public partial class InventoryManager
         }
 
         if (GameData.ItemUseDataData.TryGetValue(dataId, out var useData))
-            foreach (var rewardId in useData.UseParam)
-                resItemDatas.AddRange(await HandleReward(rewardId, true));
+            for (var i = 0; i < count; i++)
+                foreach (var rewardId in useData.UseParam)
+                    resItemDatas.AddRange(await HandleReward(rewardId, true));
 
         return (Retcode.RetSucc, resItemDatas);
     }

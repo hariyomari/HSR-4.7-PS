@@ -1,11 +1,14 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Custom;
 using March7thHoney.Data.Excel;
 using March7thHoney.Database;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Item;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Inventory;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Game.Shop;
+using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.Internationalization;
 using March7thHoney.Proto;
 using March7thHoney.Util;
@@ -40,9 +43,12 @@ void Check(string name, bool pass)
 }
 
 // --- Synthetic tables ------------------------------------------------------------------------------------------
-const int Hcoin = 1, Scoin = 2, Material = 900001, OtherMaterial = 900002, Output = 900003, Resin = 236,
+const int Hcoin = 1, Scoin = 2, Mcoin = 3, Starlight = 252, AvatarCardId = 1001, AvatarEidolonId = 11001,
+    AvatarHeadIconId = 201001, Material = 900001, OtherMaterial = 900002, Output = 900003, Resin = 236,
     WishfulResin = 237, GiftPack = 900004, RewardMaterial = 900005, Relic = 61011, OtherRelic = 61012,
-    NormalCompose = 1, SpecialCompose = 2, EmptyCompose = 3, RelicCompose = 4, Shop = 1, MaterialGoods = 1;
+    NormalCompose = 1, SpecialCompose = 2, EmptyCompose = 3, RelicCompose = 4,
+    Shop = 1, MaterialGoods = 1, EmbersShop = 102, EmbersPassGoods = 102001, EmbersCreditGoods = 102002,
+    StarlightAvatarGoods = 101001, StarlightShop = 101;
 void Item(int id, ItemMainTypeEnum type, ItemSubTypeEnum subType = ItemSubTypeEnum.Unknown) =>
     GameData.ItemConfigData[id] = new ItemConfigExcel
     {
@@ -50,11 +56,18 @@ void Item(int id, ItemMainTypeEnum type, ItemSubTypeEnum subType = ItemSubTypeEn
     };
 Item(Hcoin, ItemMainTypeEnum.Virtual);
 Item(Scoin, ItemMainTypeEnum.Virtual);
-foreach (var id in new[] { Material, OtherMaterial, Output, Resin, WishfulResin, RewardMaterial })
+Item(Mcoin, ItemMainTypeEnum.Virtual);
+foreach (var id in new[] { Starlight, AvatarEidolonId, Material, OtherMaterial, Output, Resin, WishfulResin, RewardMaterial })
     Item(id, ItemMainTypeEnum.Material);
+Item(AvatarCardId, ItemMainTypeEnum.AvatarCard);
+Item(AvatarHeadIconId, ItemMainTypeEnum.Usable, ItemSubTypeEnum.HeadIcon);
 Item(GiftPack, ItemMainTypeEnum.Usable, ItemSubTypeEnum.Gift);
 Item(Relic, ItemMainTypeEnum.Relic);
 Item(OtherRelic, ItemMainTypeEnum.Relic);
+GameData.AvatarConfigData[AvatarCardId] = new AvatarConfigExcel
+{
+    AvatarID = AvatarCardId, MaxRank = 6, Rarity = RarityEnum.CombatPowerAvatarRarityType4
+};
 GameData.RewardDataData[1] = new RewardDataExcel { RewardID = 1, ItemID_1 = RewardMaterial, Count_1 = 5 };
 GameData.ItemUseDataData[GiftPack] = new ItemUseDataExcel { UseDataID = GiftPack, UseParam = [1] };
 foreach (var relicId in new[] { Relic, OtherRelic })
@@ -89,13 +102,21 @@ GameData.ItemComposeConfigData[RelicCompose] = new ItemComposeConfigExcel
     RelicList = [Relic], SpecialMaterialCost = [Resin], SpecialMaterialCostNumber = 1,
     MaterialCost = [new MaterialItem { ItemID = Material, ItemNum = 100 }]
 };
-var goods = new ShopGoodsConfigExcel { GoodsID = MaterialGoods, ShopID = Shop, ItemID = Output, CostList = { [Hcoin] = 160 } };
-GameData.ShopConfigData[Shop] = new ShopConfigExcel { ShopID = Shop, Goods = [goods] };
+var goods = new ShopGoodsConfigExcel { GoodsID = MaterialGoods, ShopID = Shop, ItemID = Output, ItemCount = 1, CostList = { [Hcoin] = 160 } };
+GameData.ShopConfigData[Shop] = new ShopConfigExcel { ShopID = Shop, ShopType = 1, Goods = [goods] };
+var embersPass = new ShopGoodsConfigExcel { GoodsID = EmbersPassGoods, ShopID = EmbersShop, ItemID = Output, ItemCount = 1, CostList = { [Hcoin] = 90 } };
+var embersCredits = new ShopGoodsConfigExcel { GoodsID = EmbersCreditGoods, ShopID = EmbersShop, ItemID = Scoin, ItemCount = 10000, CostList = { [Hcoin] = 10 } };
+GameData.ShopConfigData[EmbersShop] = new ShopConfigExcel { ShopID = EmbersShop, ShopType = 2, Goods = [embersPass, embersCredits] };
+var starlightAvatar = new ShopGoodsConfigExcel { GoodsID = StarlightAvatarGoods, ShopID = StarlightShop, ItemID = AvatarCardId, ItemCount = 1, CostList = { [Hcoin] = 140 } };
+GameData.ShopConfigData[StarlightShop] = new ShopConfigExcel { ShopID = StarlightShop, ShopType = 2, Goods = [starlightAvatar] };
 
 // Only the managers under test are wired: PlayerInstance.InitializeAsync needs the full resource tables.
-var player = new PlayerInstance(70001);
+var player = new PlayerInstance(70001) { Uid = 70001 };
+player.Data.FakeTimeDate = 20261122;
 var inventory = new InventoryManager(player);
 typeof(PlayerInstance).GetProperty(nameof(PlayerInstance.InventoryManager))!.SetValue(player, inventory);
+typeof(PlayerInstance).GetProperty(nameof(PlayerInstance.AvatarManager))!.SetValue(player, new AvatarManager(player));
+typeof(PlayerInstance).GetProperty(nameof(PlayerInstance.PlayerUnlockData))!.SetValue(player, player.InitializeDatabase<March7thHoney.Database.Player.PlayerUnlockData>());
 typeof(PlayerInstance).GetProperty(nameof(PlayerInstance.ShopManager))!.SetValue(player, new ShopManager(player));
 int Owned(int id) => (int)inventory.GetRemovableCount(id);
 void SetBalance(int hcoin, int scoin, params (int id, int count)[] materials)
@@ -129,20 +150,101 @@ Check("an affordable cost is removed", await inventory.TryRemoveItems([(Material
 
 // --- Shop --------------------------------------------------------------------------------------------------------
 SetBalance(0, 0);
-var (retcode, bought) = await player.ShopManager!.BuyItem(Shop, MaterialGoods, 1);
+var (retcode, bought, buyTimes) = await player.ShopManager!.BuyItem(Shop, MaterialGoods, 1);
 Check("buying with zero balance is rejected", retcode == Retcode.RetItemNotEnough && bought.Count == 0 &&
-                                              Owned(Output) == 0 && player.Data.Hcoin == 0);
+                                              buyTimes == 0 && Owned(Output) == 0 && player.Data.Hcoin == 0);
 SetBalance(1000, 0);
-(retcode, bought) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 0xFFFFFFFFL);
-Check("GoodsNum 0xFFFFFFFF is rejected", retcode != Retcode.RetSucc && Owned(Output) == 0 && player.Data.Hcoin == 1000);
-(retcode, bought) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 0);
-Check("GoodsNum 0 is rejected", retcode != Retcode.RetSucc && Owned(Output) == 0);
-(retcode, bought) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 7);
-Check("buying more than the balance covers is rejected", retcode == Retcode.RetItemNotEnough && Owned(Output) == 0 &&
-                                                         player.Data.Hcoin == 1000);
-(retcode, bought) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 6);
-Check("an affordable purchase is charged in full", retcode == Retcode.RetSucc && Owned(Output) == 6 &&
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 0xFFFFFFFFL);
+Check("GoodsNum 0xFFFFFFFF is rejected", retcode != Retcode.RetSucc && buyTimes == 0 && Owned(Output) == 0 && player.Data.Hcoin == 1000);
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 0);
+Check("GoodsNum 0 is rejected", retcode != Retcode.RetSucc && buyTimes == 0 && Owned(Output) == 0);
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 7);
+Check("buying more than the balance covers is rejected", retcode == Retcode.RetItemNotEnough && buyTimes == 0 &&
+                                                         Owned(Output) == 0 && player.Data.Hcoin == 1000);
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(Shop, MaterialGoods, 6);
+Check("an affordable purchase is charged in full", retcode == Retcode.RetSucc && buyTimes == 6 && Owned(Output) == 6 &&
                                                    player.Data.Hcoin == 40);
+
+// Cumulative buy times across repeated purchases, monthly reset rollover, and ItemCount > 1 stacks.
+SetBalance(1000, 0);
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 2);
+var (ret2, _, buyTimes2) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 3);
+var (retFail, _, buyTimesAfterFail) = await player.ShopManager.BuyItem(EmbersShop, EmbersPassGoods, 99);
+var embersProto = player.ShopManager.BuildShopList(2).Single(s => s.ShopId == EmbersShop);
+var embersPassProto = embersProto.GoodsList.Single(g => g.GoodsId == EmbersPassGoods);
+Check("monthly shop buy times accumulate across purchases and survive failed buys",
+    retcode == Retcode.RetSucc && buyTimes == 2 && ret2 == Retcode.RetSucc && buyTimes2 == 5 &&
+    retFail == Retcode.RetItemNotEnough && buyTimesAfterFail == 5 && embersPassProto.BuyTimes == 5 &&
+    embersProto.BeginTime > 0 && embersProto.EndTime > embersProto.BeginTime &&
+    embersProto.EndTime < uint.MaxValue);
+
+(retcode, bought, buyTimes) = await player.ShopManager.BuyItem(EmbersShop, EmbersCreditGoods, 2);
+Check("stacked shop goods multiply count by ItemCount",
+    retcode == Retcode.RetSucc && buyTimes == 2 && player.Data.Scoin == 20000 &&
+    bought.Single() is { ItemId: Scoin, Count: 20000 });
+
+player.Data.FakeTimeDate = 20261201;
+var afterRollover = player.ShopManager.BuildShopList(2).Single(s => s.ShopId == EmbersShop);
+Check("monthly rollover resets Embers Exchange counts while keeping permanent shop counts",
+    afterRollover.GoodsList.Single(g => g.GoodsId == EmbersPassGoods).BuyTimes == 0 &&
+    afterRollover.GoodsList.Single(g => g.GoodsId == EmbersCreditGoods).BuyTimes == 0 &&
+    player.ShopManager.GetGoodsBuyTimes(MaterialGoods) == 6);
+
+// AvatarCard shop purchases: new unlock, duplicate eidolon, and E6 starlight conversion.
+SetBalance(1000, 0);
+(retcode, bought, _) = await player.ShopManager.BuyItem(StarlightShop, StarlightAvatarGoods, 1);
+Check("buying an unowned AvatarCard unlocks the character and populates ReturnItemList",
+    retcode == Retcode.RetSucc && player.AvatarManager!.GetFormalAvatar(AvatarCardId) != null &&
+    bought.Single() is { ItemId: AvatarCardId, Count: 1 });
+(retcode, bought, _) = await player.ShopManager.BuyItem(StarlightShop, StarlightAvatarGoods, 1);
+Check("buying an owned AvatarCard below E6 grants its eidolon in ReturnItemList",
+    retcode == Retcode.RetSucc && Owned(AvatarEidolonId) == 1 &&
+    bought.Single() is { ItemId: AvatarEidolonId, Count: 1 });
+inventory.Data.MaterialItems.RemoveAll(x => x.ItemId == AvatarEidolonId);
+player.AvatarManager!.GetFormalAvatar(AvatarCardId)!.PathInfos[AvatarCardId].Rank = 6;
+(retcode, bought, _) = await player.ShopManager.BuyItem(StarlightShop, StarlightAvatarGoods, 1);
+Check("buying an E6 AvatarCard with zero held eidolons converts to Starlight instead of a 7th eidolon",
+    retcode == Retcode.RetSucc && Owned(AvatarEidolonId) == 0 && Owned(Starlight) == 20 &&
+    bought.Single() is { ItemId: Starlight, Count: 20 });
+
+// Oneiric Pouch first-time 2x bonus persisted per player in ShopData.
+const string CoinProductId = "rpgglbcoin300tier5";
+GameData.QueryProductInfoConfig = new QueryProductInfoConfig
+{
+    ProductList =
+    [
+        new QueryProductInfoItem
+        {
+            ProductId = CoinProductId,
+            PriceTier = "Tier_5",
+            GiftType = "PRODUCT_GIFT_COIN",
+            BeginTime = 1577854800,
+            EndTime = 4070926800
+        }
+    ]
+};
+var coinProduct = new RechargeConfigExcel
+{
+    TierID = "Tier_5",
+    ProductID = CoinProductId,
+    GiftType = (int)ProductGiftType.ProductGiftCoin,
+    FirstCharge = 300,
+    NormalCharge = 30
+};
+config.ServerOption.EnableFakeRecharge = true;
+player.Data.Mcoin = 0;
+var beforeQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+var firstCoin = await RechargeService.Purchase(player, coinProduct);
+var afterFirstQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+var secondCoin = await RechargeService.Purchase(player, coinProduct);
+var afterSecondQuery = QueryProductInfoScRsp.Parser.ParseFrom(new PacketQueryProductInfoScRsp(player.Data).Data);
+Check("Oneiric Pouch grants 2x on first purchase, clears DoubleReward, and pays normal bonus afterwards",
+    beforeQuery.ProductList.Single() is { BuyTimes: 0, DoubleReward: true } &&
+    firstCoin == RechargeResult.Granted &&
+    afterFirstQuery.ProductList.Single() is { BuyTimes: 1, DoubleReward: false } &&
+    secondCoin == RechargeResult.Granted &&
+    afterSecondQuery.ProductList.Single() is { BuyTimes: 2, DoubleReward: false } &&
+    player.Data.Mcoin == 300 * 2 + 300 + 30);
 
 // --- Item synthesis ----------------------------------------------------------------------------------------------
 SetBalance(0, 0);
@@ -235,6 +337,10 @@ Check("a negative use count grants nothing", useRetcode == Retcode.RetItemNotEno
 (useRetcode, rewards) = await inventory.UseItem(GiftPack, 1);
 Check("using an owned item consumes it and grants its reward", useRetcode == Retcode.RetSucc &&
                                                                 Owned(GiftPack) == 1 && Owned(RewardMaterial) == 5);
+SetBalance(0, 0, (GiftPack, 2));
+(useRetcode, rewards) = await inventory.UseItem(GiftPack, 2);
+Check("using multiple reward items grants the reward once per item", useRetcode == Retcode.RetSucc &&
+                                                                     Owned(GiftPack) == 0 && Owned(RewardMaterial) == 10);
 
 Console.WriteLine($"Inventory regression checks: {checks}, failures: {failures.Count}");
 foreach (var failure in failures) Console.WriteLine($"  FAIL {failure}");
