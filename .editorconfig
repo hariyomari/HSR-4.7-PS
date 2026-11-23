@@ -1,0 +1,32 @@
+# Shared editor settings. They describe how new and edited code should look;
+# they are not a reason to reformat files that a change does not otherwise touch.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{csproj,props,targets,json,sh,command,yml,yaml}]
+indent_size = 2
+
+[*.{sln,proto}]
+indent_style = tab
+
+[*.md]
+# Two trailing spaces are a Markdown line break.
+trim_trailing_whitespace = false
+
+# Line endings match .gitattributes.
+[*.{sh,command}]
+end_of_line = lf
+
+[*.bat]
+end_of_line = crlf
+
+[*.cs]
+max_line_length = 120
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:suggestion

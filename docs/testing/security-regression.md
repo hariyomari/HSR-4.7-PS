@@ -1,26 +1,60 @@
-# 安全修复回归入口
+# Security regression gate
 
-从仓库根目录执行（.NET SDK 10、Python 3）：
+English | [简体中文](security-regression.zh-CN.md)
+
+`scripts/verify-security.py` is the single entry point for the security regressions that need no private game resources. Run it before submitting changes to authentication, the web server, the KCP transport, protocol generation or dependencies; with `--with-resources` it also runs the suites that need a real resource cache.
+
+## How to run
+
+From the repository root:
 
 ```sh
 python3 scripts/verify-security.py
 ```
 
-该入口执行完整 Release 构建、Auth/Web 鉴权与会话安全回归、KCP 来源绑定与握手容量回归、协议生成回归，并校验当前版本两个 `CmdIds.cs` 副本一致。测试只使用临时数据库、内存资源和回归程序自己的隔离配置；不部署生产服务。
+Options:
 
-默认明确跳过依赖真实游戏资源的 LoginScene、GridFight、DailyActive 回归。拥有匹配版本的 `Config/Resource.bin` 时可使用 `--with-resources`；指定后文件缺失会失败，不会把跳过报告为通过。客户端实机、Windows/macOS、NativeAOT 和真实业务数据升级仍须单独验收。
+- `--with-resources` also runs the LoginScene, GridFight and DailyActive regressions. It requires `Config/Resource.bin`; if the file is missing the gate fails instead of reporting the skip as a pass.
+- `--skip-build` reuses a solution build you have already verified.
 
-Linux 更新脚本的失败/回滚场景使用隔离 mock 命令测试，绝不操作真实 systemd 服务。见运维文档和对应测试脚本。
+## Prerequisites
 
-## 依赖补丁
+- .NET SDK 10 and Python 3.
+- For `--with-resources`: a `Config/Resource.bin` that matches the current program version.
+- The Linux deployment mock suite runs only when `bash` and `flock` are available; otherwise it is reported as SKIP.
 
-WebServer 显式固定 `System.Security.Cryptography.Pkcs` 10.0.13，覆盖 MimeKit 传递依赖的旧最低版本。Microsoft 公告列出的修复线为 10.0.13：
+## What it covers
+
+The gate runs, in order:
+
+- `scripts/check-comments.py`.
+- A check that `KcpSharp/CmdIds.cs` is byte-identical to `Proto/4.7/CmdIds.cs`, the command ID snapshot of the active protocol version (`ActiveProtocolVersion` in `Proto/Proto.csproj`).
+- A full Release build of the solution.
+- The Auth and Web authentication and session-security regressions, the KCP source-binding, handshake-routing and handshake-capacity regressions (`KcpSecurityRegression`, `KcpAdmissionRegression`), the inventory cost regression (`InventoryRegression`) and `SourceGenRegression`.
+- The protocol generation regression, `scripts/test-proto-generation.py`.
+- The failure and rollback scenarios of the Linux update script (`scripts/test-update-server.py`), tested with isolated mock commands. It never touches a real systemd service.
+
+The tests use only temporary databases, in-memory resources and each regression's own isolated configuration. Nothing is deployed.
+
+### UDP session boundary
+
+The KCP conversation ID is used only for routing; another source IP or port can no longer inject data into an existing session. Both channel types compare the endpoint recorded at creation before parsing and queueing. The test injects synthetic data into the in-memory receive queue only and sends no network traffic. A client whose IP or port changes must handshake again, which matches the channel's fixed send destination.
+
+### Dependency patch
+
+WebServer pins `System.Security.Cryptography.Pkcs` 10.0.13 explicitly, overriding the older minimum version that MimeKit pulls in transitively. Microsoft's advisories list 10.0.13 as the fixed line:
 
 - https://github.com/dotnet/runtime/security/advisories/GHSA-2fmv-rv2c-59x7
 - https://github.com/dotnet/runtime/security/advisories/GHSA-846f-f764-76mx
 
-项目没有已确认可达的攻击者 CMS 处理入口；补丁消除已知依赖风险，不把它描述为已验证的本项目远程漏洞。
+The project has no confirmed reachable entry point where an attacker's CMS data is processed. The patch removes a known dependency risk; it is not described as a verified remote vulnerability in this project.
 
-## UDP 会话边界
+## Expected result
 
-KCP conversation ID 仅用于路由，不再允许其它来源 IP／端口向既有会话注入数据。两种通道均在解析和入队前核对创建时的 endpoint；测试只向内存接收队列注入合成数据，不发出网络流量。客户端 IP／端口变化须重新握手，这与通道固定发送目的地址一致。该检查不是加密身份认证，不能抵御能伪造同一来源地址的网络攻击；公网部署仍需防火墙／上游流量限制。
+The gate ends with `PASS: requested security gate; skipped resource suites are NOT validated` and exits with code 0. Without `--with-resources` it also prints `SKIP: LoginScene/GridFight/DailyActive resource suites (use --with-resources)`; skipped suites have not been validated.
+
+## Known gaps
+
+- The resource-backed LoginScene, GridFight and DailyActive regressions are skipped unless `--with-resources` is given.
+- Real clients, Windows/macOS, NativeAOT and upgrades of real production data still need separate acceptance.
+- The UDP endpoint check is not cryptographic authentication. It does not stop a network attacker who can forge the same source address; public deployments still need a firewall or upstream traffic limits.

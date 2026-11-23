@@ -3,14 +3,10 @@ using March7thHoney.Proto;
 
 namespace March7thHoney.GameServer.Game.TrainParty;
 
-// Best-effort server-side simulation of the 4.4 TrainParty board minigame.
-// The 4.4 protocol is turn-based: the server holds one "pending action" (an offer the client must
-// answer); each TrainPartyHandlePendingActionCsReq answer advances the queue position and the server
-// pushes the next pending action via TrainPartySyncUpdateScNotify (HPAGFCCNCHE delta). Message
-// semantics are inferred from field shapes only — no reference implementation exists for 4.4 — so
-// effects are deterministic placeholders. The goal is a run the client can play to settlement without
-// desyncing, not faithful gameplay. Iterate against live-client captures (log the oneof cases the
-// client actually sends).
+// Best-effort 4.4 board simulation. Each TrainPartyHandlePendingActionCsReq advances the one pending
+// offer; TrainPartySyncUpdateScNotify sends the next one as an HPAGFCCNCHE delta.
+// Effects are deterministic placeholders inferred from field shapes, not verified gameplay rules.
+// Use live-client captures to verify settlement and oneof cases.
 public class TrainPartyGameplayRun
 {
     private const int ActionsPerRound = 3;

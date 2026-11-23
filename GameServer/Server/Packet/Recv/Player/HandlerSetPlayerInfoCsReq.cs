@@ -17,19 +17,21 @@ public class HandlerSetPlayerInfoCsReq : Handler<SetPlayerInfoCsReq>
         {
             await connection.SendPacket(new PacketSetPlayerInfoScRsp(player, req.IsModify));
             await connection.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
-            await connection.SendWatermarkLuaAsync();
+            await connection.ClientLua.SendWatermarkAsync();
             return;
         }
 
         await player.AvatarManager!.SetHeroGenderAtCreation(req.Gender);
 
-        var heroAvatarId = player.Data.CurrentGender == Gender.Woman ? 8002 : 8001;
+        var heroAvatarId = player.Data.CurrentGender == Gender.Woman
+            ? TrailblazerAvatar.FemaleDestructionId
+            : TrailblazerAvatar.MaleDestructionId;
         await player.LineupManager!.AddAvatarToRealTeam(heroAvatarId);
-        await player.LineupManager!.AddAvatarToRealTeam(1001);
+        await player.LineupManager!.AddAvatarToRealTeam(AvatarManager.StarterCompanionAvatarId);
         await player.MissionManager!.FinishSubMission(AvatarManager.NameAndGenderSubMissionId);
 
         await connection.SendPacket(new PacketSetPlayerInfoScRsp(player, req.IsModify));
         await connection.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
-        await connection.SendWatermarkLuaAsync();
+        await connection.ClientLua.SendWatermarkAsync();
     }
 }

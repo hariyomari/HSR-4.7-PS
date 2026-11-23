@@ -1,3 +1,4 @@
+using March7thHoney.Data.Avatar;
 using March7thHoney.GameServer.Game.Friend;
 using March7thHoney.GameServer.Server.Packet.Send.Friend;
 using March7thHoney.Data;
@@ -9,6 +10,7 @@ using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Lineup;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Quest;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
@@ -58,7 +60,10 @@ public class LineupManager : BasePlayerManager<LineupData>
         return 5 + Data.ExtraMpCount;
     }
 
-    /// <summary>按当前编队重算 ExtraMpCount，加成来自角色 AdventureAbility 的 AdvModifyMaxMazeMP。</summary>
+    /// <summary>
+    ///     Recalculates ExtraMpCount from the current lineup; the bonus comes from AdvModifyMaxMazeMP in each avatar's
+    ///     AdventureAbility.
+    /// </summary>
     public void RecalculateExtraMpCount()
     {
         var extra = 0;
@@ -71,7 +76,7 @@ public class LineupManager : BasePlayerManager<LineupData>
             lineup.Mp = Math.Min(Math.Max(0, lineup.Mp), 5 + extra);
     }
 
-    /// <summary>试用角色归一到本体，多命途角色归一到 BaseAvatarID。</summary>
+    /// <summary>Normalizes a trial avatar to its real avatar and a multi-path avatar to its BaseAvatarID.</summary>
     private static int ResolveAvatarId(LineupAvatarInfo slot)
     {
         var avatarId = slot.BaseAvatarId;
@@ -83,7 +88,10 @@ public class LineupManager : BasePlayerManager<LineupData>
         return avatarId;
     }
 
-    /// <summary>角色上场时 modifier 的 OnCreate 里声明的秘技点上限加成。</summary>
+    /// <summary>
+    ///     The bonus to the technique point cap that the avatar's modifiers declare in OnCreate, applied while the
+    ///     avatar is in the lineup.
+    /// </summary>
     private static int ResolveExtraMazeMp(int avatarId)
     {
         if (!GameData.AvatarConfigData.TryGetValue(avatarId, out var avatar)) return 0;
@@ -102,7 +110,10 @@ public class LineupManager : BasePlayerManager<LineupData>
         return extra;
     }
 
-    /// <summary>写入协议 LineupInfo.MaxMp，ToProto 可能漏带 ExtraMpCount 故发包前强制设置。</summary>
+    /// <summary>
+    ///     Writes MaxMp into the LineupInfo proto. ToProto can miss ExtraMpCount, so the value is forced before the
+    ///     packet is sent.
+    /// </summary>
     public void ApplyMaxMp(Proto.LineupInfo proto)
     {
         if (proto == null) return;
@@ -159,7 +170,9 @@ public class LineupManager : BasePlayerManager<LineupData>
         return GetAvatarsFromTeam(Data.GetCurLineupIndex());
     }
 
-    /// <summary>普通队伍 0..8 按编号在前，额外队伍（键 &gt;= 10）按编号在后。</summary>
+    /// <summary>
+    ///     Normal lineups 0..8 come first in index order, followed by the extra lineups (keys &gt;= 10) in index order.
+    /// </summary>
     public List<LineupInfo> GetAllLineup()
     {
         PadNormalLineups();
@@ -173,8 +186,9 @@ public class LineupManager : BasePlayerManager<LineupData>
     }
 
     /// <summary>
-    ///     按编号补齐普通队伍槽 0..8。旧实现按字典条目数补齐，存档里缺中间编号或带额外队伍时会漏掉某些槽，
-    ///     甚至因编号已存在而抛异常；队伍界面随之只剩一队（yuukisr_go 6bb4fd1 PadNormalLineups）。
+    ///     Pads the normal lineup slots 0..8 by index (yuukisr_go 6bb4fd1 PadNormalLineups). Padding by dictionary
+    ///     entry count is not enough: when a save lacks a middle index or holds extra lineups, slots get skipped or an
+    ///     index that already exists throws, and the team screen is left with a single team.
     /// </summary>
     public void PadNormalLineups()
     {
@@ -205,8 +219,10 @@ public class LineupManager : BasePlayerManager<LineupData>
     }
 
     /// <summary>
-    ///     当前普通队伍为空（存档指向从未保存过的槽、或补齐出来的空槽）时，改用编号最小的非空普通队伍，
-    ///     避免以空队伍登录导致客户端建不出队长实体。没有任何非空队伍（新号）时保持不变。
+    ///     When the current normal lineup is empty (the save points at a slot that was never saved, or at a padded
+    ///     empty slot), switches to the lowest-numbered non-empty normal lineup, so the player does not log in with an
+    ///     empty lineup for which the client cannot create a leader entity. Nothing changes when no lineup is
+    ///     non-empty (a new account).
     /// </summary>
     public void EnsurePlayableCurLineup()
     {
@@ -223,7 +239,9 @@ public class LineupManager : BasePlayerManager<LineupData>
         }
     }
 
-    /// <summary>MarkPresetLineupCsReq：标记 / 取消常用队伍，只接受普通队伍编号。</summary>
+    /// <summary>
+    ///     MarkPresetLineupCsReq: marks or unmarks a lineup as favourite; only normal lineup indexes are accepted.
+    /// </summary>
     public bool SetLineupFavourite(int lineupIndex, bool isFavourite)
     {
         if (lineupIndex is < 0 or >= GameConstants.MAX_LINEUP_COUNT) return false;
@@ -343,9 +361,11 @@ public class LineupManager : BasePlayerManager<LineupData>
             }
             else
             {
-                // 仅当 avatarId 不是有效角色时才回退到男主，避免把女主/其他命途主角强制锁成 8001
-                if (baseAvatarId > 8000 && !GameData.AvatarConfigData.ContainsKey(baseAvatarId))
-                    baseAvatarId = 8001;
+                // Fall back to the male Trailblazer only when avatarId is not a valid avatar, so that the female
+                // Trailblazer and other Trailblazer paths are not forced to 8001.
+                if (baseAvatarId >= TrailblazerAvatar.BaseAvatarId &&
+                    !GameData.AvatarConfigData.ContainsKey(baseAvatarId))
+                    baseAvatarId = TrailblazerAvatar.BaseAvatarId;
             }
 
             lineup = new LineupInfo
@@ -364,7 +384,7 @@ public class LineupManager : BasePlayerManager<LineupData>
         }
         else
         {
-            if (lineup.BaseAvatars!.Count >= 4) return;
+            if (lineup.BaseAvatars!.Count >= GameConstants.MAX_LINEUP_AVATAR_COUNT) return;
 
             var baseAvatarId = avatarId;
             if (GameData.MultiplePathAvatarConfigData.TryGetValue(baseAvatarId, out var multiPathAvatar))
@@ -378,9 +398,11 @@ public class LineupManager : BasePlayerManager<LineupData>
             }
             else
             {
-                // 仅当 avatarId 不是有效角色时才回退到男主，避免把女主/其他命途主角强制锁成 8001
-                if (baseAvatarId > 8000 && !GameData.AvatarConfigData.ContainsKey(baseAvatarId))
-                    baseAvatarId = 8001;
+                // Fall back to the male Trailblazer only when avatarId is not a valid avatar, so that the female
+                // Trailblazer and other Trailblazer paths are not forced to 8001.
+                if (baseAvatarId >= TrailblazerAvatar.BaseAvatarId &&
+                    !GameData.AvatarConfigData.ContainsKey(baseAvatarId))
+                    baseAvatarId = TrailblazerAvatar.BaseAvatarId;
             }
 
             lineup.BaseAvatars?.Add(new LineupAvatarInfo
@@ -397,6 +419,78 @@ public class LineupManager : BasePlayerManager<LineupData>
                 Player.SceneInstance?.SyncLineup();
             }
             await Player.SendPacket(new PacketSyncLineupNotify(lineup));
+        }
+    }
+
+    /// <summary>
+    ///     Rewrites trial slots saved with a SpecialAvatar row key (special avatar ID * 10 + world level) to the
+    ///     special avatar ID, and brings the trial avatars of all trial slots to the player's world level.
+    /// </summary>
+    public void RefreshTrialAvatarSlots()
+    {
+        foreach (var info in GetAllLineup().SelectMany(lineupInfo => lineupInfo.BaseAvatars ?? []))
+        {
+            if (info.SpecialAvatarId > 0 &&
+                GameData.SpecialAvatarData.TryGetValue(info.SpecialAvatarId, out var excel))
+            {
+                info.SpecialAvatarId = excel.SpecialAvatarID;
+                Player.AvatarManager!.GetTrialAvatar(excel.SpecialAvatarID)?.CheckLevel(Player.Data.WorldLevel);
+            }
+
+            if (info.SpecialAvatarId > 0 &&
+                GameData.SpecialAvatarData.TryGetValue(info.SpecialAvatarId * 10 + 0, out var e))
+                Player.AvatarManager!.GetTrialAvatar(e.SpecialAvatarID)?.CheckLevel(Player.Data.WorldLevel);
+        }
+    }
+
+    /// <summary>
+    ///     Login-time repair of the saved lineups, before the scene loads: leaves an extra lineup that no running mode
+    ///     owns any more, trims oversized lineups, moves trial IDs saved as a base avatar into the trial slot and
+    ///     revives the fallen members of the current lineup. A new account without a current lineup is left alone.
+    /// </summary>
+    public async ValueTask RepairAtLogin(bool extraLineupOwned)
+    {
+        if (GetCurLineup() == null) return;
+
+        if (GetCurLineup()!.IsExtraLineup() && !extraLineupOwned)
+        {
+            SetExtraLineup(ExtraLineupType.LineupNone, []);
+            if (GetCurLineup()!.IsExtraLineup()) await SetCurLineup(0);
+        }
+
+        foreach (var lineup in Data.Lineups)
+        {
+            if (lineup.Value.BaseAvatars!.Count > GameConstants.MAX_LINEUP_AVATAR_COUNT)
+                lineup.Value.BaseAvatars = lineup.Value.BaseAvatars.GetRange(0, GameConstants.MAX_LINEUP_AVATAR_COUNT);
+
+            foreach (var avatar in lineup.Value.BaseAvatars!)
+                if (avatar.BaseAvatarId > 10000)
+                {
+                    GameData.SpecialAvatarData.TryGetValue(avatar.BaseAvatarId, out var special);
+                    if (special != null)
+                    {
+                        avatar.SpecialAvatarId = special.SpecialAvatarID;
+                        avatar.BaseAvatarId = special.AvatarID;
+                    }
+                    else
+                    {
+                        GameData.SpecialAvatarData.TryGetValue(avatar.BaseAvatarId * 10 + Player.Data.WorldLevel,
+                            out special);
+                        if (special != null)
+                        {
+                            avatar.SpecialAvatarId = special.SpecialAvatarID;
+                            avatar.BaseAvatarId = special.AvatarID;
+                        }
+                    }
+                }
+        }
+
+        foreach (var avatar in GetCurLineup()!.BaseAvatars!)
+        {
+            var avatarData = Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId);
+            if (avatarData is { CurrentHp: <= 0 })
+                // revive
+                avatarData.CurrentHp = GameConstants.REVIVE_HP;
         }
     }
 
@@ -435,7 +529,8 @@ public class LineupManager : BasePlayerManager<LineupData>
         }
         else
         {
-            if (lineup.BaseAvatars!.Count >= 4) lineup.BaseAvatars!.RemoveAt(3); // remove last avatar
+            if (lineup.BaseAvatars!.Count >= GameConstants.MAX_LINEUP_AVATAR_COUNT)
+                lineup.BaseAvatars!.RemoveAt(GameConstants.MAX_LINEUP_AVATAR_COUNT - 1);
             lineup.BaseAvatars?.Add(new LineupAvatarInfo
                 { BaseAvatarId = specialAvatar.AvatarID, SpecialAvatarId = specialAvatar.SpecialAvatarID });
             Data.Lineups[Data.GetCurLineupIndex()] = lineup;
@@ -462,7 +557,7 @@ public class LineupManager : BasePlayerManager<LineupData>
             { BaseAvatarId = trial.BaseAvatarId, SpecialAvatarId = trial.SpecialAvatarId };
         // A Trailblazer-path trial replaces the hero in their own slot. Appending it shifted the
         // party and opened the fight on the wrong character.
-        var hero = IsTrailblazerPath(trial.AvatarId)
+        var hero = TrailblazerAvatar.IsPath(trial.AvatarId)
             ? members.FindIndex(IsOwnedTrailblazer)
             : -1;
         if (hero >= 0)
@@ -473,7 +568,7 @@ public class LineupManager : BasePlayerManager<LineupData>
         }
         else
         {
-            if (members.Count >= 4) members.RemoveAt(members.Count - 1);
+            if (members.Count >= GameConstants.MAX_LINEUP_AVATAR_COUNT) members.RemoveAt(members.Count - 1);
             members.Add(slot);
         }
 
@@ -528,8 +623,8 @@ public class LineupManager : BasePlayerManager<LineupData>
 
         foreach (var path in GameData.MultiplePathAvatarConfigData.Values.OrderBy(path => path.AvatarID))
         {
-            if (path.BaseAvatarID != 8001 || path.UnlockConditions.Count == 0) continue;
-            if (PlayerInstance.NormalizeHeroPathId(path.AvatarID, Player.Data.CurrentGender) != path.AvatarID)
+            if (path.BaseAvatarID != TrailblazerAvatar.BaseAvatarId || path.UnlockConditions.Count == 0) continue;
+            if (TrailblazerAvatar.NormalizePathId(path.AvatarID, Player.Data.CurrentGender) != path.AvatarID)
                 continue;
             if (!UnlockConditionInChain(path.UnlockConditions, chain)) continue;
             var specialId = 1_000_000 + path.AvatarID;
@@ -555,15 +650,11 @@ public class LineupManager : BasePlayerManager<LineupData>
         return false;
     }
 
-    private static bool IsTrailblazerPath(int avatarId)
-    {
-        return GameData.MultiplePathAvatarConfigData.TryGetValue(avatarId, out var path) &&
-               path.BaseAvatarID == 8001;
-    }
-
     private static bool IsOwnedTrailblazer(LineupAvatarInfo slot)
     {
-        return slot.SpecialAvatarId == 0 && (slot.BaseAvatarId is 8001 or 8002 || IsTrailblazerPath(slot.BaseAvatarId));
+        return slot.SpecialAvatarId == 0 &&
+               (slot.BaseAvatarId is TrailblazerAvatar.MaleDestructionId or TrailblazerAvatar.FemaleDestructionId ||
+                TrailblazerAvatar.IsPath(slot.BaseAvatarId));
     }
 
     public async ValueTask RemoveTrialAvatarFromCurTeam(int specialAvatarId, bool sendPacket = true)
@@ -682,7 +773,7 @@ public class LineupManager : BasePlayerManager<LineupData>
         var existing = lineup.BaseAvatars.FindIndex(avatar => avatar.AssistUid != 0);
         if (existing >= 0)
             lineup.BaseAvatars[existing] = slot;
-        else if (lineup.BaseAvatars.Count < 4)
+        else if (lineup.BaseAvatars.Count < GameConstants.MAX_LINEUP_AVATAR_COUNT)
             lineup.BaseAvatars.Add(slot);
         else
             lineup.BaseAvatars[^1] = slot;

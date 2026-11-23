@@ -22,7 +22,7 @@ public sealed partial class GridFightSession
         OnForesightInvestmentSelected(augmentId);
         ActiveInvestmentIds.Add(augmentId);
         PrepareInvestmentSelectionReward(augmentId);
-        OnP0InvestmentSelected(augmentId);
+        OnRewardInvestmentSelected(augmentId);
         ApplyAugmentSelectionEffects(augmentId);
         if (Phase == GridFightSessionPhase.Preparing) TryBeginBonusInvestment(Phase);
         return true;
@@ -82,7 +82,7 @@ public sealed partial class GridFightManager
         foreach (var itemReward in Session.TakeInvestmentSelectionRewards())
             AppendInvestmentItemReward(notify, itemReward);
         AppendSpecialInvestmentSelectionResults(notify, augmentId);
-        AppendP0InvestmentSelectionResults(notify, augmentId);
+        AppendInvestmentSelectionResults(notify, augmentId);
         AppendAugmentEffectResults(notify, Session.TakeAugmentSelectionEffects());
         AppendEconomyEffects(notify);
         AppendProcurementRefreshSync(notify);

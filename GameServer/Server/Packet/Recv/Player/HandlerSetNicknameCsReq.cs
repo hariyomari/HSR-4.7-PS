@@ -14,6 +14,6 @@ public class HandlerSetNicknameCsReq : Handler<SetNicknameCsReq>
 
         await connection.SendPacket(CmdIds.SetNicknameScRsp);
         await connection.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
-        await connection.SendWatermarkLuaAsync();
+        await connection.ClientLua.SendWatermarkAsync();
     }
 }

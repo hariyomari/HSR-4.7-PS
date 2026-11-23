@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text.Json;
 using March7thHoney.Data;
+using March7thHoney.Data.Config.AdventureAbility;
 using March7thHoney.Enums;
 using March7thHoney.Enums.GridFight;
 using March7thHoney.Internationalization;
@@ -28,6 +29,23 @@ config.Path.LogPath = reportRoot;
 config.ServerOption.Language = "EN";
 config.ServerOption.UseCache = false;
 Logger.SetLogFile(new FileInfo(Path.Combine(reportRoot, "loader.log")));
+// Per-file resource misses and loader diagnostics are logged by ResMgr/ResCache at debug level, so they only reach
+// the debug log and are read back from there; operator-facing warnings arrive through OnLogEntry.
+var debugLog = new FileInfo(Path.Combine(reportRoot, "loader-debug.log"));
+Logger.SetDebugLogFile(debugLog);
+var warningsRead = 0;
+List<string> NewLoaderWarnings()
+{
+    debugLog.Refresh();
+    if (!debugLog.Exists) return [];
+    var warnings = File.ReadAllLines(debugLog.FullName)
+        .Where(line => line.Contains("][ResMgr][DEBUG] ", StringComparison.Ordinal) ||
+                       line.Contains("][ResCache][DEBUG] ", StringComparison.Ordinal))
+        .ToList();
+    var fresh = warnings.Skip(warningsRead).ToList();
+    warningsRead = warnings.Count;
+    return fresh;
+}
 var issues = new ConcurrentQueue<LogIssue>();
 PluginEventCommon.OnLogEntry += (module, level, message) =>
 {
@@ -54,7 +72,8 @@ if (staleIndex >= 0)
     File.Copy(Path.GetFullPath(args[staleIndex + 1]), Path.Combine(config.Path.ConfigPath, "Resource.bin"));
     // CachePath is first initialized against this isolated copy, never production.
     Check("pre-adaptation cache is rejected when split raw tables are available", !ResourceCache.LoadCache() &&
-        issues.Any(issue => issue.Message.Contains("GridFight split season tables", StringComparison.Ordinal)));
+        (issues.Any(issue => issue.Message.Contains("GridFight split season tables", StringComparison.Ordinal)) ||
+         NewLoaderWarnings().Any(line => line.Contains("GridFight split season tables", StringComparison.Ordinal))));
     ResourceCache.ClearGameData();
     config.Path.ConfigPath = operatorConfigPath;
     issues.Clear();
@@ -63,9 +82,11 @@ Directory.CreateDirectory(Path.Combine(fixture, "ExcelOutput"));
 config.Path.ResourcePath = fixture;
 ResourceCache.IsComplete = true;
 ResourceManager.LoadSingleExcelResource(typeof(OptionalFixture));
-Check("absent optional table has no warning and permits cache generation", issues.IsEmpty && ResourceCache.IsComplete);
+Check("absent optional table has no warning and permits cache generation",
+    issues.IsEmpty && NewLoaderWarnings().Count == 0 && ResourceCache.IsComplete);
 ResourceManager.LoadSingleExcelResource(typeof(RequiredFixture));
-Check("absent required table warns and prevents cache generation", !issues.IsEmpty && !ResourceCache.IsComplete);
+Check("absent required table warns and prevents cache generation",
+    NewLoaderWarnings().Any(line => line.Contains("Required.json", StringComparison.Ordinal)) && !ResourceCache.IsComplete);
 issues.Clear();
 ResourceCache.IsComplete = true;
 File.WriteAllText(Path.Combine(fixture, "ExcelOutput/Optional.json"), "[{\"Value\":\"invalid integer\"}]");
@@ -93,6 +114,7 @@ Check("beta consume, equipment and trait values match the client", (int)GridFigh
 config.Path.ResourcePath = resourceRoot;
 ResourceCache.IsComplete = true;
 issues.Clear();
+NewLoaderWarnings();
 string? fatal = null;
 try
 {
@@ -100,7 +122,9 @@ try
     ResourceManager.ReportTruncatedMissionGraphs();
 }
 catch (Exception exception) { fatal = exception.ToString(); }
-Check("production loader completes without warnings, errors or an exception", issues.IsEmpty && fatal == null && ResourceCache.IsComplete);
+var loaderWarnings = NewLoaderWarnings();
+Check("production loader completes without warnings, errors or an exception",
+    issues.IsEmpty && loaderWarnings.Count == 0 && fatal == null && ResourceCache.IsComplete);
 Check("production loader registers character and scene data", GameData.AvatarConfigData.Count > 0 && GameData.FloorInfoData.Count > 0);
 Check("NPC shared abilities contain their actual shared definitions", GameData.AdventureAbilityConfigListData.TryGetValue(1004010, out var npc) &&
     npc.AbilityList.Any(x => x.Name == "MazeMonster_CommonAbility_Default"));
@@ -130,10 +154,10 @@ if (cacheIndex >= 0 && failures.Count == 0)
     }
 }
 var report = new { ResourceRoot = resourceRoot, Checks = checks, Failures = failures, Fatal = fatal,
-    ResourceCache.IsComplete, Issues = issues.ToArray(), AvatarCount = GameData.AvatarConfigData.Count,
+    ResourceCache.IsComplete, Issues = issues.ToArray(), Warnings = loaderWarnings, AvatarCount = GameData.AvatarConfigData.Count,
     HasAvatar1511 = GameData.AvatarConfigData.ContainsKey(1511), FloorCount = GameData.FloorInfoData.Count };
 File.WriteAllText(Path.Combine(reportRoot, "audit.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
-Console.WriteLine($"Resource regression checks: {checks}, failures: {failures.Count}, loader issues: {issues.Count}");
+Console.WriteLine($"Resource regression checks: {checks}, failures: {failures.Count}, loader issues: {issues.Count + loaderWarnings.Count}");
 return failures.Count == 0 ? 0 : 1;
 
 record LogIssue(string Module, string Level, string Message);

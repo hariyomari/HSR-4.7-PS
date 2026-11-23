@@ -17,7 +17,7 @@ public class PacketGetAllLineupDataScRsp : BasePacket
         foreach (var lineup in player.LineupManager.GetAllLineup())
         {
             var lp = lineup.ToProto();
-            // 当前队用重算后的上限；其它队至少保证不小于当前 Mp
+            // The current lineup takes the recalculated cap; any other lineup gets a cap no lower than its current Mp.
             if (lineup.LineupType == 0 && lineup == player.LineupManager.GetCurLineup())
                 lp.MaxMp = maxMp;
             else if (lp.MaxMp < lp.Mp)

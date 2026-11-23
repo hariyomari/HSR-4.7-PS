@@ -106,7 +106,6 @@ public static partial class AdminPageScripts
                 ${kv(t("overview.os"), data.os)}
                 ${kv(t("overview.database"), `${data.db_type || ""} (${data.db_name || ""})`)}
                 ${kv(t("overview.server_time"), fmt.unix(data.server_time))}
-                ${kv(t("overview.public_mode"), data.public_mode ? t("common.on") : t("common.off"))}
                 ${kv(t("maintenance.handbook_languages"), (data.handbook_languages || []).length ? html`<span class="chip-list">${data.handbook_languages.map(lang => html`<a class="chip clickable" href="/handbook/content?lang=${encodeURIComponent(lang)}" target="_blank" rel="noopener">${lang}</a>`)}</span>` : t("common.none"))}
               </div>
             </section>

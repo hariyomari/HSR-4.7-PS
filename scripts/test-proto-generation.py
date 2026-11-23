@@ -13,6 +13,9 @@ def main():
         project.mkdir()
         shutil.copy2(source / 'Proto.csproj', project / 'Proto.csproj')
         shutil.copytree(source / 'Build', project / 'Build')
+        # The project takes its SDK, shared defaults and package versions from the repository root.
+        for name in ('global.json', 'Directory.Build.props', 'Directory.Packages.props'):
+            shutil.copy2(source.parent / name, Path(directory) / name)
         # Keep this test scoped to the active version; never alter the real checkout.
         import xml.etree.ElementTree as ET
         version = ET.parse(source / 'Proto.csproj').findtext('.//ActiveProtocolVersion')
@@ -24,7 +27,8 @@ def main():
                    '-p:Configuration=Release', '-v:minimal', '-m:1']
 
         def generate(*args):
-            result = subprocess.run(command + list(args), cwd=project, text=True,
+            # dotnet writes UTF-8 whatever the console code page is; the locale default breaks on localized output.
+            result = subprocess.run(command + list(args), cwd=project, encoding='utf-8', errors='replace',
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             if result.returncode:
                 raise RuntimeError(result.stdout)
@@ -33,17 +37,26 @@ def main():
         generate('-restore')
         output = project / 'obj' / 'Release' / 'net10.0' / 'protobuf' / version
         baseline = {p.name: p.read_bytes() for p in output.glob('*.cs')}
-        assert len(baseline) == len(list(schemas.glob('*.proto')))
+        # One C# file per schema, plus the generated list of every file descriptor.
+        descriptors = output / 'ProtocolDescriptors.g.cs'
+
+        def listed():
+            return sorted(line.strip()[len('global::March7thHoney.Proto.'):-len('Reflection.Descriptor,')]
+                          for line in descriptors.read_text().splitlines() if line.strip().endswith('.Descriptor,'))
+
+        assert len(baseline) == len(list(schemas.glob('*.proto'))) + 1
+        assert listed() == sorted(p.stem for p in schemas.glob('*.proto')), 'Descriptor list differs from schemas'
         stamp = output / 'generation.stamp'
         timestamp = stamp.stat().st_mtime_ns
         generate()
         assert stamp.stat().st_mtime_ns == timestamp, 'No-op build regenerated files'
         print('PASS: fresh generation in path with spaces and incremental skip')
 
-        missing = output / next(iter(baseline))
-        missing.unlink()
-        generate()
-        assert missing.read_bytes() == baseline[missing.name]
+        schema_output = next(name for name in baseline if name != descriptors.name)
+        for missing in (output / schema_output, descriptors):
+            missing.unlink()
+            generate()
+            assert missing.read_bytes() == baseline[missing.name]
         print('PASS: missing generated output is repaired')
 
         probe = schemas / 'RepositorySlimmingProbe.proto'
@@ -52,6 +65,7 @@ def main():
         generate()
         generated_probe = output / 'RepositorySlimmingProbe.cs'
         assert generated_probe.exists()
+        assert 'RepositorySlimmingProbe' in listed(), 'Added schema missing from the descriptor list'
         probe.write_text(probe.read_text().replace('int32', 'int64'))
         generate()
         assert 'long value_' in generated_probe.read_text()

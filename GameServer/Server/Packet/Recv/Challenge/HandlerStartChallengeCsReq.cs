@@ -15,10 +15,8 @@ public class HandlerStartChallengeCsReq : Handler<StartChallengeCsReq>
         ChallengeBossBuffInfo? bossBuffInfo = null;
         if (req.StageInfo != null && req.StageInfo.BossInfo != null) bossBuffInfo = req.StageInfo.BossInfo;
 
-        // 4.3 瀹㈡埛绔妸涓婁笅鍗婄紪闃熸媶鎴愪袱涓?AvatarIdentifier 鍒楄〃鍙戯紝鐩稿 4.2 瀛楁
-        // 璇箟瀵硅皟锛?.2 鏃?field 13 = 涓婂崐锛?.3 鎶撳寘纭 field 1 ABNDFKFIKCI = 涓婂崐锛?
-        // field 13 BKNKLEOCJNO = 涓嬪崐锛夈€傛棫鐗堟湰 client 鐢?first_lineup / second_lineup
-        // packed uint32 浣?fallback銆?
+        // The client sends each half of the team as a list of AvatarIdentifier; older clients sent packed
+        // uint32 lists in first_lineup / second_lineup, which are still read as a fallback.
         var firstLineup = req.AvatarLineupFirst.Count > 0
             ? req.AvatarLineupFirst.Select(x => (int)x.Id).Where(x => x > 0).ToList()
             : req.FirstLineup.Select(x => (int)x).Where(x => x > 0).ToList();

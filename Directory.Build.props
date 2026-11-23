@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- Defaults for every project in the repository, including the tools under scripts/. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

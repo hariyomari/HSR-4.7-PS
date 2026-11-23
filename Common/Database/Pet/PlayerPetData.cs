@@ -3,26 +3,29 @@ using MemoryPack;
 namespace March7thHoney.Database.Pet;
 
 /// <summary>
-///     4.6 盲盒宠物的实例与编队。客户端用 uint64 unique id 指代每一只宠物实例并在编队里跨会话引用，
-///     所以实例 id 必须持久化。宠物物品本身仍作为材料堆叠存放在背包，实例列表按材料数量对账得出。
-///     新表：旧数据库首次启动时自动建空表，旧玩家读出来就是空数据。
+///     Instances and lineup of the 4.6 blind box pets (盲盒宠物). The client refers to each pet instance by a uint64
+///     unique id and keeps using that id in the lineup across sessions, so instance ids must be persisted. The pet
+///     items themselves still stack as materials in the inventory; the instance list is reconciled from the material
+///     counts. This is a new table: an older database gets it created empty on first start, so existing players
+///     read empty data.
 /// </summary>
 [DbTable("PlayerPet")]
 public class PlayerPetData : BaseDatabaseDataHelper
 {
-    /// <summary>每一只拥有的盲盒宠物实例，按获得顺序。</summary>
+    /// <summary>Every owned blind box pet instance, in the order obtained.</summary>
     public List<PetInstanceData> Instances { get; set; } = [];
 
-    /// <summary>盲盒宠物编队（随行小队），最多 3 个槽位。</summary>
+    /// <summary>The blind box pet lineup, i.e. the companion squad (随行小队); at most 3 slots.</summary>
     public List<PetLineupSlotData> Lineup { get; set; } = [];
 
     /// <summary>
-    ///     当前召唤状态（EHDNPMEKPCA.LLGIIPALELD 枚举值）。-1 表示从未召唤或收回过，此时按是否拥有实例推导
-    ///     （有实例为 3，否则为 0，与官服新号 / 有宠物账号的抓包一致）。
+    ///     Current summon state (the EHDNPMEKPCA.LLGIIPALELD enum value). -1 means the player has never summoned or
+    ///     recalled a pet; the state is then derived from whether any instance is owned: 3 with instances, 0 without,
+    ///     matching official captures of an account with pets and of a new account.
     /// </summary>
     public int CurPetRefType { get; set; } = -1;
 
-    /// <summary>实例序号，只增不减，保证 unique id 永不复用。</summary>
+    /// <summary>Instance serial number. It only ever increases, so a unique id is never reused.</summary>
     public ulong NextSerial { get; set; }
 }
 

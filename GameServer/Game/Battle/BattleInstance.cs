@@ -1,3 +1,4 @@
+using March7thHoney.Data.Activity;
 using March7thHoney.Database.Player;
 using March7thHoney.Data;
 using March7thHoney.Data.Excel;
@@ -7,6 +8,7 @@ using March7thHoney.Database.Inventory;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.GameServer.Game.Activity.FinalityBattle;
 using March7thHoney.Enums.Scene;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Calyx;
 using March7thHoney.GameServer.Game.GridFight;
 using March7thHoney.GameServer.Game.GridFight.Battle;
@@ -112,6 +114,9 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
     public CalyxOverrideContext? CalyxOverride { get; set; }
     public FinalityBattleContext? FinalityContext { get; set; }
 
+    /// <summary>An activity battle fought with its own team: the result must not touch the player's lineups.</summary>
+    public bool HasActivityLineup => FinalityContext != null;
+
     public delegate ValueTask OnBattleEndDelegate(BattleInstance battle, PVEBattleResultCsReq req);
 
     public event OnBattleEndDelegate? OnBattleEnd;
@@ -170,20 +175,11 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
         // if college excel is not null
         if (CollegeConfigExcel is { TrialAvatarList.Count: > 0 }) list = [.. CollegeConfigExcel.TrialAvatarList];
 
-        if (list.Count > 0)
-        {
-            List<int> tempList = [.. list];
-            if (Player.Data.CurrentGender == Gender.Man)
-                foreach (var avatar in tempList.Where(avatar =>
-                             GameData.SpecialAvatarData.TryGetValue(avatar * 10 + 0, out var specialAvatarExcel) &&
-                             specialAvatarExcel.AvatarID is 8002 or 8004 or 8006))
-                    list.Remove(avatar);
-            else
-                foreach (var avatar in tempList.Where(avatar =>
-                             GameData.SpecialAvatarData.TryGetValue(avatar * 10 + 0, out var specialAvatarExcel) &&
-                             specialAvatarExcel.AvatarID is 8001 or 8003 or 8005))
-                    list.Remove(avatar);
-        }
+        // Stage trial lists hold special avatar IDs; the avatar comes from the world-level-0 row.
+        list = TrailblazerAvatar.ExcludeOppositeGenderTrials(list, Player.Data.CurrentGender,
+            avatar => GameData.SpecialAvatarData.TryGetValue(avatar * 10 + 0, out var specialAvatarExcel)
+                ? specialAvatarExcel.AvatarID
+                : 0);
 
         if (list.Count > 0) // if list is not empty
         {
@@ -407,10 +403,9 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
                 proto.BattleAvatarList.Add(ToBattleAvatar(avatar, own));
         }
 
-        System.Threading.Tasks.Task.Run(async () =>
-        {
-            await PrepareSceneBuffs(avatars);
-        }).Wait();
+        // ToProto is synchronous, so the buff preparation is waited on here. AsTask() keeps the blocking wait
+        // within the ValueTask contract, and the caller sees the original exception.
+        PrepareSceneBuffs(avatars).AsTask().GetAwaiter().GetResult();
 
         foreach (var buff in Buffs.Clone())
             if (Enum.IsDefined(typeof(DamageTypeEnum), buff.BuffID))
@@ -439,7 +434,7 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
             });
         }
 
-        // 贪饕侵蚀：档位与对应 buff 由 StageInvasionConfig/StageInvasionBuff 决定
+        // Voracity Invasion (贪饕侵蚀): the tier and its buff are determined by StageInvasionConfig/StageInvasionBuff.
         foreach (var stage in Stages)
         {
             if (stage.InvasionMazeBuffID == 0) continue;

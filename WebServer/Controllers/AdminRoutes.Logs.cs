@@ -1,25 +1,23 @@
 using March7thHoney.Util;
-using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
-    private static void MapLogRoutes(IEndpointRouteBuilder app)
+    private static void MapLogRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/logs", GetLogs);
-        app.MapGet("/admin/api/logs/files", GetLogFiles);
-        app.MapGet("/admin/api/logs/files/{name}", DownloadLogFile);
+        api.MapGet("/logs", GetLogs);
+        api.MapGet("/logs/files", GetLogFiles);
+        api.MapGet("/logs/files/{name}", DownloadLogFile);
     }
 
-    private static IResult GetLogs(HttpContext ctx, long? after, int? limit, string? levels, string? search)
+    private static IResult GetLogs(long? after, int? limit, string? levels, string? search)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var levelList = (levels ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
@@ -35,11 +33,8 @@ public static partial class AdminRoutes
             truncated));
     }
 
-    private static IResult GetLogFiles(HttpContext ctx)
+    private static IResult GetLogFiles()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var directory = new DirectoryInfo(ConfigManager.Config.Path.LogPath);
         if (!directory.Exists)
             return Success(new LogFilesData([], directory.FullName));
@@ -60,11 +55,8 @@ public static partial class AdminRoutes
         return Success(new LogFilesData(files, directory.FullName));
     }
 
-    private static IResult DownloadLogFile(HttpContext ctx, string name)
+    private static IResult DownloadLogFile(string name)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         name = (name ?? string.Empty).Trim();
         if (!IsLogFileName(name) || name != Path.GetFileName(name))
             return Error("Invalid log file name");

@@ -316,7 +316,7 @@ public static class ChessRogueProtoBuilder
 
         var buffs = run.PendingBuffKeys
             .Select(key => GameData.RogueBuffData.GetValueOrDefault(key))
-            .OfType<Data.Custom.BaseRogueBuffExcel>()
+            .OfType<Data.Excel.BaseRogueBuffExcel>()
             .ToList();
 
         // Same draft shape as the classic Simulated Universe blessing select.

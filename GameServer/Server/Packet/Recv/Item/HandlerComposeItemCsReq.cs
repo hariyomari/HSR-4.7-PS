@@ -13,11 +13,12 @@ public class HandlerComposeItemCsReq : Handler<ComposeItemCsReq>
         if (req.ComposeItemList != null)
             costData = [.. req.ComposeItemList.ItemList];
 
-        var item = await player.InventoryManager!.ComposeItem(
-            (int)req.ComposeId, (int)req.Count, costData);
+        var (retcode, item) = req.ComposeId > int.MaxValue || req.Count > int.MaxValue
+            ? (Retcode.RetFail, null)
+            : await player.InventoryManager!.ComposeItem((int)req.ComposeId, (int)req.Count, costData);
         if (item == null)
         {
-            await connection.SendPacket(new PacketComposeItemScRsp());
+            await connection.SendPacket(new PacketComposeItemScRsp(retcode == Retcode.RetSucc ? Retcode.RetFail : retcode));
             return;
         }
 

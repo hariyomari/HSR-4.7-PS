@@ -79,6 +79,8 @@ public class GameServerConfig
 public class PathConfig
 {
     public string ResourcePath { get; set; } = "Resources";
+    // Set only after identifying the raw resource or cache source. Null applies no version-specific repairs.
+    public string? ResourceVersion { get; set; }
     public List<string> ExcelOutputDirs { get; set; } = ["ExcelOutput", "ExcelOutputGameCore"];
     public string ConfigPath { get; set; } = "Config";
     public string DatabasePath { get; set; } = "Config/Database";
@@ -118,7 +120,9 @@ public class ServerOption
     public string FallbackLanguage { get; set; } = "EN";
     public string DefaultPermissionRole { get; set; } = CommandRoles.User;
     public Dictionary<string, HashSet<string>> PermissionRoles { get; set; } = CommandRoles.DefaultRoles();
-    public HashSet<string> DefaultPermissions { get; set; } = ["*"];
+    // Granted to every account on top of its role. Keep it to low-risk permissions: anything here is
+    // available to every registered player.
+    public HashSet<string> DefaultPermissions { get; set; } = [];
     public ServerAnnounce ServerAnnounce { get; set; } = new();
     public ServerProfile ServerProfile { get; set; } = new();
     public GlobalChatConfig GlobalChat { get; set; } = new();
@@ -259,20 +263,25 @@ public class WebAccountApiOption
     public List<string> AllowedAddresses { get; set; } = ["127.0.0.1", "::1"];
 }
 
+/// <summary>
+///     Registration, login and email rate limits and the one-account-per-device/IP rule. All are off by default so a
+///     self-hosted server lets its players register and sign in freely; a public server turns them on here or on the
+///     admin settings page.
+/// </summary>
 public class AntiAbuseOption
 {
-    public bool RateLimitEnabled { get; set; } = true;
+    public bool RateLimitEnabled { get; set; } = false;
     public int RateLimitMaxRequests { get; set; } = 10;
     public int RateLimitWindowSeconds { get; set; } = 60;
     public int RateLimitBlockSeconds { get; set; } = 900;
-    public bool LimitRegistrationPerIdentity { get; set; } = true;
+    public bool LimitRegistrationPerIdentity { get; set; } = false;
     public string RegistrationIdentityMode { get; set; } = "DeviceOrIp";
     public bool RequireRegistrationIdentity { get; set; } = false;
-    public bool LoginRateLimitEnabled { get; set; } = true;
+    public bool LoginRateLimitEnabled { get; set; } = false;
     public int LoginRateLimitMaxRequests { get; set; } = 8;
     public int LoginRateLimitWindowSeconds { get; set; } = 900;
     public int LoginRateLimitBlockSeconds { get; set; } = 900;
-    public bool EmailRateLimitEnabled { get; set; } = true;
+    public bool EmailRateLimitEnabled { get; set; } = false;
     public int EmailRateLimitMaxRequests { get; set; } = 3;
     public int EmailRateLimitWindowSeconds { get; set; } = 3600;
     public int EmailRateLimitBlockSeconds { get; set; } = 900;
@@ -467,6 +476,7 @@ public class LogOption
     public bool DisableLogDetailPacket { get; set; } = false;
     public bool SavePersonalDebugFile { get; set; } = false;
     public bool LogResourceCacheLoading { get; set; } = true;
+    public bool ShowDebugInConsole { get; set; } = false;
 }
 
 public class ServerAnnounce

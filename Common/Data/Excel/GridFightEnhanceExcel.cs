@@ -17,7 +17,7 @@ public partial class GridFightEnhanceExcel : ExcelResource
 
     public List<GridFightRatioValue> EffectParamList { get; set; } = [];
 
-    /// <summary>选项产出的装备 ID，升费选项则是目标角色 ID。</summary>
+    /// <summary>The equipment ID the option grants; for a cost-up option, the target role ID.</summary>
     public uint FirstEffectParam => (uint)Math.Max(0, EffectParamList.FirstOrDefault()?.Value ?? 0);
 
     public override int GetId()

@@ -38,7 +38,7 @@ internal static class AccountSnapshotRegression
             clone.LineupManager!.GetCurLineup()!.BaseAvatars!.Select(slot => slot.SpecialAvatarId).SequenceEqual(lineup));
 
         await clone.InventoryManager!.AddItem(2, 777, false, sync: false);
-        await clone.AddAvatar(1002, false, false);
+        await clone.AvatarManager!.AddAvatar(1002, false, false);
         clone.MissionManager.Data.SetMainMissionStatus(1000101, MissionPhaseEnum.Finish);
         clone.MissionManager.Data.SetMainMissionStatus(1000201, MissionPhaseEnum.Accept);
         clone.LineupManager.GetCurLineup()!.BaseAvatars!.Clear();

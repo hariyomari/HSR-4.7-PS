@@ -116,7 +116,7 @@ public sealed record OverviewServer(
     string name, string game_address, string database, long uptime_seconds, double process_memory_mb,
     long server_time, bool registration_enabled, bool limit_registration_per_identity, string version,
     double machine_total_mb, double machine_available_mb, long last_save, int dirty_uids, string os,
-    bool announce_enabled, bool email_enabled, bool fake_time_enabled, string fake_date, bool public_mode);
+    bool announce_enabled, bool email_enabled, bool fake_time_enabled, string fake_date);
 
 public sealed record OnlinePlayer(int uid, string nickname, int level, string endpoint, string state);
 

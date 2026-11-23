@@ -2,24 +2,20 @@ using March7thHoney.Command;
 using March7thHoney.Command.Command;
 using March7thHoney.Configuration;
 using March7thHoney.Data;
-using March7thHoney.Data.Custom;
 using March7thHoney.Database;
-using March7thHoney.Database.Avatar;
+using March7thHoney.Database.Migrations;
 using March7thHoney.Enums;
 using March7thHoney.GameServer.Command;
 using March7thHoney.GameServer.Server;
 using March7thHoney.GameServer.Server.Packet;
 using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
-using March7thHoney.Program.Generator;
 using March7thHoney.Program.Handbook;
 using March7thHoney.Util;
-using March7thHoney.Util.License;
 using March7thHoney.WebServer;
-using March7thHoney.WebServer.Handler;
 using March7thHoney.WebServer.Server;
+using March7thHoney.WebServer.Services;
 using System.Globalization;
-using System.IO.Compression;
 using System.Runtime.InteropServices;
 
 namespace March7thHoney.Program.Program;
@@ -28,15 +24,16 @@ public class EntryPoint
 {
     private static readonly Logger Logger = new("Program");
     public static readonly DatabaseHelper DatabaseHelper = new();
-    public static readonly Listener Listener = new();
     public static readonly CommandManager CommandManager = new();
     private static PosixSignalRegistration? _sigtermRegistration;
 
-    public static async Task Main(string[] args)
+    private const int StartupFailedExitCode = 1;
+    private static int _cleanupStarted;
+
+    public static async Task<int> Main(string[] args)
     {
-        var publicMode = PublicModeSwitch.Enabled;
-        IConsole.InitConsole();
-        IConsole.RedrawInput(IConsole.Input);
+        ServerConsole.InitConsole();
+        ServerConsole.RedrawInput(ServerConsole.Input);
         // Capture log output from the very first line so the admin console's log viewer has the boot history.
         AdminLogBuffer.Attach();
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
@@ -66,70 +63,26 @@ public class EntryPoint
             _sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSigTerm);
         var time = DateTime.Now;
 
-        // pack the old log
-        var logDirectory = new DirectoryInfo(GetConfig().Path.LogPath);
-        if (logDirectory.Exists)
-        {
-            List<string> packed = [];
-            foreach (var oldFile in logDirectory.GetFiles().ToArray())
-            {
-                if (!oldFile.Name.EndsWith(".log")) continue;
-                if (oldFile.Name.EndsWith("-debug.log")) continue;
-                if (packed.Contains(oldFile.Name)) continue;
-
-                var fileName = oldFile.Name.Replace(".log", "");
-                var debugFileName = fileName + "-debug";
-                var oldDebugFile = logDirectory.GetFiles(debugFileName + ".log").FirstOrDefault();
-
-                if (oldFile.Exists)
-                {
-                    var zipFileName = fileName + ".zip";
-                    var zipFile = new FileInfo(GetConfig().Path.LogPath + $"/{zipFileName}");
-                    if (zipFile.Exists) zipFile.Delete();
-                    using (var zip = ZipFile.Open(zipFile.FullName, ZipArchiveMode.Create))
-                    {
-                        zip.CreateEntryFromFile(oldFile.FullName, oldFile.Name);
-                        if (oldDebugFile is { Exists: true })
-                            zip.CreateEntryFromFile(oldDebugFile.FullName, oldDebugFile.Name);
-                    }
-
-                    oldFile.Delete();
-                    oldDebugFile?.Delete();
-                    packed.Add(oldFile.Name);
-                    packed.Add(oldDebugFile?.Name ?? "");
-                }
-            }
-        }
-
-        // Initialize the logfile
-        var counter = 0;
-        FileInfo file;
-        FileInfo zi;
-        while (true)
-        {
-            file = new FileInfo(GetConfig().Path.LogPath + $"/{DateTime.Now:yyyy-MM-dd}-{++counter}.log");
-            zi = new FileInfo(GetConfig().Path.LogPath + $"/{DateTime.Now:yyyy-MM-dd}-{counter}.zip");
-            if (file is not { Exists: false, Directory: not null }) continue;
-            if (zi is not { Exists: false, Directory: not null }) continue;
-            file.Directory.Create();
-            break;
-        }
-
-        var debugFile = new FileInfo(GetConfig().Path.LogPath + $"/{DateTime.Now:yyyy-MM-dd}-{counter}-debug.log");
-
-        Logger.SetLogFile(file);
-        Logger.SetDebugLogFile(debugFile);
         // Load the config
         try
         {
-            ConfigManager.LoadConfig(publicMode);
+            ConfigManager.LoadConfig();
         }
         catch (Exception e)
         {
+            // Uses the log directory of the configuration in memory: the default unless Config.json was read before
+            // the failure.
+            TryOpenLogFiles();
             Logger.Error(
                 I18NManager.Translate("Server.ServerInfo.FailedToLoadItem", I18NManager.Translate("Word.Config")), e);
-            Console.ReadLine();
-            return;
+            WaitForEnterIfInteractive();
+            return StartupFailedExitCode;
+        }
+
+        if (!TryOpenLogFiles())
+        {
+            WaitForEnterIfInteractive();
+            return StartupFailedExitCode;
         }
 
         // Load the language
@@ -141,8 +94,9 @@ public class EntryPoint
         {
             Logger.Error(
                 I18NManager.Translate("Server.ServerInfo.FailedToLoadItem", I18NManager.Translate("Word.Language")), e);
-            Console.ReadLine();
-            return;
+            ConfigManager.LogStartupNotices();
+            WaitForEnterIfInteractive();
+            return StartupFailedExitCode;
         }
 
         // Starting logs after i18n is ready
@@ -151,23 +105,7 @@ public class EntryPoint
         Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadingItem", I18NManager.Translate("Word.Language")));
         ConfigManager.Logger.Info(
             I18NManager.Translate("Server.ServerInfo.CurrentVersion", GameConstants.GAME_VERSION));
-        if (publicMode)
-        {
-            Logger.Warn(I18NManager.Translate("Server.ServerInfo.PublicModeEnabled"));
-            if (!await OnlineActivationManager.ValidateAsync(GameConstants.GAME_VERSION))
-            {
-                Logger.Warn(I18NManager.Translate("Server.ServerInfo.PublicModeValidationFailed"));
-                if (!Console.IsInputRedirected)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("Press Enter to close...");
-                    Console.ReadLine();
-                }
-
-                return;
-            }
-        }
-
+        ConfigManager.LogStartupNotices();
         // Initialize the database
         Task databaseInitTask;
         try
@@ -179,7 +117,7 @@ public class EntryPoint
                 if (databaseInitTask.IsFaulted)
                     databaseInitTask.GetAwaiter().GetResult();
 
-                Thread.Sleep(100);
+                await Task.Delay(100);
             }
 
             Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadedItem",
@@ -189,125 +127,35 @@ public class EntryPoint
         {
             Logger.Error(
                 I18NManager.Translate("Server.ServerInfo.FailedToLoadItem", I18NManager.Translate("Word.Database")), e);
-            Console.ReadLine();
-            return;
+            WaitForEnterIfInteractive();
+            return StartupFailedExitCode;
         }
+
+        // Warm protobuf descriptors at startup so the first login doesn't pay the initialization cost.
+        var protoDescriptorWarmUp = Task.Run(BuildProtoDescriptors);
 
         HandlerManager.Init();
         if (ConfigManager.Config.GameServer.UsePacketEncryption)
         {
             Crypto.ClientSecretKey = Crypto.InitEc2b();
-            if (Crypto.ClientSecretKey == null) ConfigManager.Config.GameServer.UsePacketEncryption = false;
         }
 
         Logger.Warn(I18NManager.Translate("Server.ServerInfo.WaitForAllDone"));
-        WebProgram.Main([], GetConfig().HttpServer.Port, GetConfig().HttpServer.GetBindDisplayAddress());
-        Logger.Info(I18NManager.Translate("Server.ServerInfo.ServerRunning", I18NManager.Translate("Word.Dispatch"),
-            GetConfig().HttpServer.GetDisplayAddress()));
-
-        if (ConfigManager.Config.ServerOption.ServerConfig.RunGateway)
-        {
-            var handler =
-                new March7thHoneyListener.ConnectionCreatedHandler((conversation, remote) =>
-                    new Connection(conversation, remote));
-            March7thHoneyListener.CreateConnection = handler;
-            March7thHoneyListener.StartListener();
-        }
-
-        GenerateLogMap();
 
         var loadedFromResources = false;
         if (ConfigManager.Config.ServerOption.ServerConfig.RunGateway)
         {
             try
             {
-                if (File.Exists(ResourceCache.CachePath))
-                {
-                    Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadingItem",
-                        I18NManager.Translate("Word.Cache")));
-                    if (!ResourceCache.LoadCache())
-                    {
-                        ResourceCache.ClearGameData();
-                        throw new InvalidDataException("Resource cache is invalid. Delete it before restarting to rebuild from Resources.");
-                    }
-                }
-                else
-                {
-                    Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadingItem",
-                        I18NManager.Translate("Word.GameData")));
-                    ResourceManager.LoadGameData();
-                    loadedFromResources = true;
-
-                    // Finish writing the cache before startup completes.
-                    if (ConfigManager.Config.ServerOption.UseCache && ResourceCache.IsComplete)
-                    {
-                        Logger.Warn(I18NManager.Translate("Server.ServerInfo.WaitingItem",
-                            I18NManager.Translate("Word.Cache")));
-                        await ResourceCache.SaveCache();
-                    }
-                    else if (ConfigManager.Config.ServerOption.UseCache)
-                    {
-                        // A single unparseable record anywhere in the tree clears IsComplete, and the
-                        // cache write was then skipped without a word - every later boot re-read the raw
-                        // Resources tree and the operator had no idea why Resource.bin never appeared.
-                        Logger.Warn(
-                            "Resource cache NOT written: one or more resources failed to load (see the errors above). " +
-                            "Fix them and restart, or the server will re-read the raw resource tree on every boot.");
-                    }
-                }
-
-                // Operator-authored content, not dumped game data: the banner list and the video keys
-                // are the two files a server owner actually edits. Baking them into Resource.bin made
-                // those edits invisible until the whole resource cache was regenerated - which needs the
-                // raw Resources tree most deployments do not ship. Re-read them after the cache branch so
-                // a change only needs a restart (or the matching /reload subcommand).
-                ResourceManager.LoadMissionInfoOverrides();
-                ResourceManager.ReportTruncatedMissionGraphs();
-                ResourceManager.ReloadBanners();
-                GameData.VideoKeysConfig =
-                    ResourceManager.LoadCustomFile<VideoKeysConfig>("VideoKeys", "VideoKeysConfig") ??
-                    new VideoKeysConfig();
-                // The activity schedule is operator data too (Config/Custom/ActivityConfig.json). Keep the
-                // cached copy only when the file is missing or unreadable.
-                var activityConfig = ResourceManager.LoadCustomFile<ActivityConfig>("Activity", "ActivityConfig");
-                if (activityConfig != null) GameData.ActivityConfig = activityConfig;
-                // RogueMapGen is operator-side compatibility data rather than a dumped Excel table.
-                // Reload it after either cache path so new Rogue room pools do not require replacing
-                // an otherwise valid Resource.bin.
-                var rogueMapGen =
-                    ResourceManager.LoadCustomFile<Dictionary<int, List<int>>>("Rogue Map", "RogueMapGen");
-                if (rogueMapGen != null) GameData.RogueMapGenData = rogueMapGen;
-
-                // ExRank (奇缘星魂) materials are an operator overlay, so they must also load on a cache boot.
-                AvatarExRankMaterials.Apply();
-                // Story-trial skill limits and IsUseWorldLevel live on the raw excel rows, not in Resource.bin.
-                StoryTrialTables.Load();
-
-                // These runtime room/dice definitions were added after the checked-in 4.6 cache was built.
-                // They are operator-authored JSON rather than dumped tables, so a cache boot must overlay the
-                // current files just like banners, video keys and RogueMapGen do above.
-                if (!loadedFromResources)
-                {
-                    ResourceManager.LoadRogueMagicRoomData();
-                    ResourceManager.LoadChessRogueRoomData();
-                    ResourceManager.LoadChessRogueDiceSurfaceEffectData();
-                    ResourceManager.LoadRogueChestMapInfo();
-                }
+                loadedFromResources = await GameDataStartup.LoadAsync();
             }
             catch (Exception e)
             {
                 Logger.Error(
                     I18NManager.Translate("Server.ServerInfo.FailedToLoadItem", I18NManager.Translate("Word.GameData")),
                     e);
-                Console.ReadLine();
-                return;
-            }
-
-            // check option
-            if (args.Contains("-generate-tourn"))
-            {
-                TournRoomGenerator.GenerateFile("RogueTournRoom.json");
-                return;
+                WaitForEnterIfInteractive();
+                return StartupFailedExitCode;
             }
         }
 
@@ -321,52 +169,19 @@ public class EntryPoint
             Logger.Error(
                 I18NManager.Translate("Server.ServerInfo.FailedToInitializeItem",
                     I18NManager.Translate("Word.Command")), e);
-            Console.ReadLine();
-            return;
+            WaitForEnterIfInteractive();
+            return StartupFailedExitCode;
         }
 
         CommandExecutor.OnRunCommand += (sender, e) => { CommandManager.HandleCommand(e, sender); };
 
-        MuipManager.OnExecuteCommand += CommandManager.HandleCommandAsync;
+        MuipManager.CommandHandler = CommandManager.HandleCommandAsync;
         MuipManager.CommandCatalogProvider = CommandManager.BuildCatalog;
-        MuipManager.OnGetServerInformation += x =>
-        {
-            foreach (var con in March7thHoneyListener.GetSnapshot())
-                if ((con as Connection)?.Player != null)
-                    x.Add((con as Connection)!.Player!.Uid, (con as Connection)!.Player!.Data);
-        };
-        MuipManager.OnGetPlayerStatus += (int uid, out PlayerStatusEnum status, out PlayerSubStatusEnum subStatus) =>
-        {
-            subStatus = PlayerSubStatusEnum.None;
-            foreach (var con in March7thHoneyListener.GetSnapshot())
-                if ((con as Connection)!.Player != null && (con as Connection)!.Player!.Uid == uid)
-                {
-                    // TODO 4.3: ChallengeManager 暂停
-                    if ((con as Connection)!.Player!.RaidManager?.Data.CurRaidId != 0)
-                    {
-                        status = PlayerStatusEnum.Raid;
-                    }
-                    else if ((con as Connection)!.Player!.StoryLineManager?.StoryLineData.CurStoryLineId != 0)
-                    {
-                        status = PlayerStatusEnum.StoryLine;
-                    }
-                    else
-                    {
-                        status = PlayerStatusEnum.Explore;
-                    }
-
-                    if ((con as Connection)!.Player!.BattleInstance != null) subStatus = PlayerSubStatusEnum.Battle;
-
-                    return;
-                }
-
-            status = PlayerStatusEnum.Offline;
-        };
 
         // Generate handbooks only when this startup reads raw resources.
         if (loadedFromResources)
         {
-            var handbookThread = new Thread(HandbookGenerator.GenerateAll)
+            var handbookThread = new Thread(() => HandbookGenerator.GenerateAll(CommandManager.CommandInfo.Values))
             {
                 IsBackground = true,
                 Name = "HandbookGenerator",
@@ -385,7 +200,7 @@ public class EntryPoint
                     if (databaseInitTask.IsFaulted)
                         databaseInitTask.GetAwaiter().GetResult();
 
-                    Thread.Sleep(100);
+                    await Task.Delay(100);
                 }
             }
             catch (Exception e)
@@ -393,8 +208,8 @@ public class EntryPoint
                 Logger.Error(
                     I18NManager.Translate("Server.ServerInfo.FailedToLoadItem",
                         I18NManager.Translate("Word.Database")), e);
-                Console.ReadLine();
-                return;
+                WaitForEnterIfInteractive();
+                return StartupFailedExitCode;
             }
 
             Logger.Info(I18NManager.Translate("Server.ServerInfo.LoadedItem", I18NManager.Translate("Word.Database")));
@@ -404,68 +219,25 @@ public class EntryPoint
 
         ServerUtils.InitializeHandlers();
 
-        // check if the database is up to date
-        var updated = false;
-        foreach (var avatarData in DatabaseHelper.GetAllInstanceFromMap<AvatarData>()!)
-        {
-            if (avatarData.DatabaseVersion == GameConstants.AvatarDbVersion) continue;
-
-            foreach (var avatar in avatarData.Avatars)
-            {
-                var formalAvatar = new FormalAvatarInfo
-                {
-                    BaseAvatarId = avatar.AvatarId,
-                    AvatarId = avatar.PathId == 0 ? avatar.AvatarId : avatar.PathId,
-                    CurrentHp = avatar.CurrentHp,
-                    CurrentSp = avatar.CurrentSp,
-                    Exp = avatar.Exp,
-                    ExtraLineupHp = avatar.ExtraLineupHp,
-                    ExtraLineupSp = avatar.ExtraLineupSp,
-                    IsMarked = avatar.IsMarked,
-                    Level = avatar.Level,
-                    Promotion = avatar.Promotion,
-                    PathInfos = []
-                };
-
-                foreach (var info in avatar.PathInfoes)
-                {
-                    if (info.Value.PathId == 0)
-                        info.Value.PathId = avatar.AvatarId;
-                    formalAvatar.PathInfos.Add(info.Value.PathId, new PathInfo(info.Value.PathId)
-                    {
-                        PathId = info.Value.PathId,
-                        EquipId = info.Value.EquipId,
-                        Rank = info.Value.Rank,
-                        Relic = info.Value.Relic,
-                        Skin = info.Value.Skin,
-                        EnhanceInfos =
-                        {
-                            {
-                                0, new EnhanceInfo(0)
-                                {
-                                    SkillTree = avatar.SkillTreeExtra.GetValueOrDefault(info.Value.PathId) ?? []
-                                }
-                            }
-                        }
-                    });
-                }
-
-                avatarData.FormalAvatars.Add(formalAvatar);
-            }
-
-            avatarData.DatabaseVersion = "20250430";
-            updated = true;
-            DatabaseHelper.MarkDirty(avatarData.Uid);
-        }
-
-        if (updated)
-        {
-            Logger.Info(I18NManager.Translate("Server.ServerInfo.UpdatedItem",
-                I18NManager.Translate("Word.Database")));
-            DatabaseHelper.SaveDatabase();
-        }
+        FormalAvatarMigration.Run(DatabaseHelper);
 
         if (args.Contains("--upgrade-database")) DatabaseHelper.UpgradeDatabase();
+
+        await protoDescriptorWarmUp;
+        // The dispatch and game ports open only now, so no client reaches a server whose game data, commands, mission
+        // handlers or save migrations are still loading.
+        WebProgram.Main([], GetConfig().HttpServer.Port, GetConfig().HttpServer.GetBindDisplayAddress());
+        Logger.Info(I18NManager.Translate("Server.ServerInfo.ServerRunning", I18NManager.Translate("Word.Dispatch"),
+            GetConfig().HttpServer.GetDisplayAddress()));
+
+        // The packet name maps back logging and the fallback replies, so they exist before any connection.
+        March7thHoneyConnection.InitPacketNameMap();
+
+        if (ConfigManager.Config.ServerOption.ServerConfig.RunGateway)
+        {
+            March7thHoneyListener.CreateConnection = (conversation, remote) => new Connection(conversation, remote);
+            March7thHoneyListener.StartListener();
+        }
 
         var elapsed = DateTime.Now - time;
         Logger.Info(I18NManager.Translate("Server.ServerInfo.ServerStarted",
@@ -474,17 +246,52 @@ public class EntryPoint
         if (GetConfig().ServerOption.EnableMission)
             Logger.Warn(I18NManager.Translate("Server.ServerInfo.MissionEnabled"));
 
-        ResourceManager.IsLoaded = true;
         await LifecycleNotifier.NotifyStartedAsync(GameConstants.GAME_VERSION);
 
-        IConsole.OnConsoleExcuteCommand += command =>
+        ServerConsole.OnConsoleExecuteCommand += command =>
         {
             CommandManager.HandleCommand(command, new ConsoleCommandSender(Logger));
-            IConsole.RedrawInput(IConsole.Input);
+            ServerConsole.RedrawInput(ServerConsole.Input);
         };
 
-        IConsole.ListenConsole();
+        ServerConsole.ListenConsole();
         GC.KeepAlive(_sigtermRegistration);
+        return 0;
+    }
+
+    /// <summary>
+    ///     Keeps a failed startup's console window open until the operator presses Enter. A service, a container or
+    ///     any run with redirected input exits straight away so its supervisor sees the exit code.
+    /// </summary>
+    private static void WaitForEnterIfInteractive()
+    {
+        if (Console.IsInputRedirected || !Environment.UserInteractive) return;
+        Console.ReadLine();
+    }
+
+    /// <summary>Opens this run's log files in the configured log directory, packing the earlier runs' logs.</summary>
+    private static bool TryOpenLogFiles()
+    {
+        try
+        {
+            LogFiles.RotateAndOpen(GetConfig().Path.LogPath);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Logger.Error($"Failed to open the log files in {GetConfig().Path.LogPath}", e);
+            return false;
+        }
+    }
+
+    /// <summary>
+    ///     Builds the descriptor of every generated .proto file. The active protocol is split across many .proto files,
+    ///     each built on the first access to one of its messages; without this the first login pays for them while the
+    ///     client waits on its replies. The build generates the list, so no reflection is involved (NativeAOT-safe).
+    /// </summary>
+    private static void BuildProtoDescriptors()
+    {
+        _ = March7thHoney.Proto.ProtocolDescriptors.BuildAll();
     }
 
     public static ConfigContainer GetConfig()
@@ -514,23 +321,13 @@ public class EntryPoint
 
     private static void PerformCleanup()
     {
+        // ProcessExit and the unhandled-exception handler can both reach this; save and notify only once.
+        if (Interlocked.Exchange(ref _cleanupStarted, 1) != 0) return;
         var notificationTask = LifecycleNotifier.NotifyMaintenanceAsync();
         // Stopping a live connection on shutdown can throw (disposed CancellationTokenSource race); never let it skip the save.
         try { March7thHoneyListener.GetSnapshot().ForEach(x => x.Stop()); }
-        catch (Exception e) { Logger.Error("Cleanup: failed to stop connections", e); }
+        catch (Exception e) { Logger.Error(I18NManager.Translate("Server.Log.StopConnectionsFailed"), e); }
         DatabaseHelper.SaveDatabase();
         notificationTask.GetAwaiter().GetResult();
-    }
-
-    private static void GenerateLogMap()
-    {
-        // get opcode from CmdIds
-        var opcodes = typeof(CmdIds).GetFields().Where(x => x.FieldType == typeof(int)).ToList();
-        foreach (var opcode in opcodes)
-        {
-            var name = opcode.Name;
-            var value = (int)opcode.GetValue(null)!;
-            March7thHoneyConnection.LogMap.TryAdd(value, name);
-        }
     }
 }

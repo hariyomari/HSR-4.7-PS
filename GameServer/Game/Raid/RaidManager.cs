@@ -4,6 +4,7 @@ using March7thHoney.Database;
 using March7thHoney.Database.Scene;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Scene;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
 using March7thHoney.GameServer.Server.Packet.Send.Raid;
@@ -38,7 +39,7 @@ public class RaidManager(PlayerInstance player) : BasePlayerManager<RaidData>(pl
         {
             // The raid no longer exists in this version's tables, so LeaveRaid could never release the player:
             // abandon the run and return to where it was entered from instead of resuming a dead session.
-            Logger.Warn($"Player {Player.Uid} logged in inside raid {record.RaidId} (world level {record.WorldLevel}) " +
+            Logger.Debug($"Player {Player.Uid} logged in inside raid {record.RaidId} (world level {record.WorldLevel}) " +
                         "that has no RaidConfig; abandoning the run.");
             await AbandonCurrentRun(true);
             record = null;
@@ -145,28 +146,8 @@ public class RaidManager(PlayerInstance player) : BasePlayerManager<RaidData>(pl
             else if (excel.TeamType == RaidTeamTypeEnum.TrialOnly)
             {
                 // set lineup
-                List<int> list = [..excel.TrialAvatarList];
-                if (list.Count > 0)
-                {
-                    if (Player.Data.CurrentGender == Gender.Man)
-                    {
-                        foreach (var avatar in excel.TrialAvatarList)
-                            if (avatar > 10000) // else is Base Avatar
-                                if (avatar.ToString().EndsWith("8002") ||
-                                    avatar.ToString().EndsWith("8004") ||
-                                    avatar.ToString().EndsWith("8006"))
-                                    list.Remove(avatar);
-                    }
-                    else
-                    {
-                        foreach (var avatar in excel.TrialAvatarList)
-                            if (avatar > 10000) // else is Base Avatar
-                                if (avatar.ToString().EndsWith("8001") ||
-                                    avatar.ToString().EndsWith("8003") ||
-                                    avatar.ToString().EndsWith("8005"))
-                                    list.Remove(avatar);
-                    }
-                }
+                var list = TrailblazerAvatar.ExcludeOppositeGenderTrials(excel.TrialAvatarList,
+                    Player.Data.CurrentGender, TrailblazerAvatar.AvatarIdFromTrialDigits);
 
                 Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupHeliobus, list);
                 if (excel.LockCaptain) Player.LineupManager!.GetCurLineup()!.LeaderAvatarId = excel.LockCaptainAvatarID;

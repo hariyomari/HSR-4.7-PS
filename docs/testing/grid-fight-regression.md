@@ -1,158 +1,309 @@
-# GridFight 对比与回归验证
+# GridFight regression
 
-同日补充：[晋升名额修复与幕后茶歇全选项检查](grid-fight-bonfire-audit-2026-10-13.md)（486 项回归通过，茶歇特殊效果缺项单独列明）。
+English | [简体中文](grid-fight-regression.zh-CN.md)
 
-2026-10-13 最新一批利息、三种叽米、纳米改件和刷新视界修复：
-[行为、回归结果与客户端验收](grid-fight-owlbert-spotlight-fixes.md)。
+`GridFightRegression` plays Currency Wars (GridFight) runs in memory against the current resource cache and checks the server state and the messages built for the client. Run it after changing anything under `GameServer/Game/GridFight/`, the GridFight request handlers, the GridFight resource models or the run save.
 
-测试项目：[`scripts/GridFightRegression/`](../../scripts/GridFightRegression/)
+Project: [`scripts/GridFightRegression/`](../../scripts/GridFightRegression/)
 
-本次对比基于当前 `4.5` 分支与 `C:\Users\Administrator\Downloads\GridFight`。
-排除了仅换行不同的文件，迁入 GridFight 会话、资源目录、战斗消息和请求处理器的功能改动。
+## How to run
 
-迁入内容包括传送门与契约、投资奖励、银河学者、命运卜者、银狼升级选择、装备与羁绊追踪、商店锁定及相关同步消息。
-保留当前分支的非 GridFight 战斗逻辑、资源加载器与配置模型，没有覆盖任务、场景、抽卡等无关改动。
-
-在下载版基础上的修复：
-
-- 自动穿戴统一检查装备锁定、穿戴条件与槽位，显式目标无效时不转移到其他角色。
-- 装备追踪批量更新先验证再提交，完成状态由实际穿戴推导，避免客户端伪造或残留状态影响自动穿戴。
-- NPC 装备创建时即锁定，避免先被追踪系统穿给玩家角色。
-- 统一手动与自动宝钻合成配方，保留满星角色及切换形态的商店过滤，并处理候选池为空的情况。
-- 保留骰子绑定与战后重随，补齐临时装备删除同步，禁止单独转移临时装备，出售与合成角色时回收临时装备。
-- 保留装备按备战阶段产金；重复备战请求不重复发奖。
-- 串行发布银狼、命运卜者的选择，避免同一队列位置重复占用；选择期间禁止移动、出售目标角色或进入战斗。
-- 接通周期性投资的节点回调，并在黄金期货触发后重置间隔计数。
-- 使用当前 `CmdIds` 常量，移除空的迁移占位文件和未使用的清理方法。
-
-运行：
+From the repository root:
 
 ```powershell
 dotnet run --project scripts/GridFightRegression/GridFightRegression.csproj
 dotnet run --project scripts/GridFightRegression/GridFightRegression.csproj -- --cache <Resource.bin>
-dotnet build March7thHoney.sln --no-restore
 ```
 
-回归程序默认读取当前 `Config/Resource.bin`；`--cache` 先把指定缓存复制到 `tmp/GridFightRegression/Cache/` 再读取。不使用玩家数据库，不写回资源缓存；测试状态和额外测试装备仅存在于进程内。最后一段对局存档检查在系统临时目录新建 SQLite（`m7h-gridfight-regression-*`），结束后删除。
-覆盖全部可选传送门开局与 protobuf 往返、装备追踪、宝钻、骰子、选择队列、20 场战斗的完整路线、周期奖励、重复请求及中止结算。
-赛季由缓存中的 `GridFight_Season_ID` 决定：测试角色取当前赛季角色池；银狼/命运卜者选择队列和持续伤害契约只在赛季 1 运行。
+- Without options the regression reads the current `Config/Resource.bin`.
+- `--cache` first copies the given cache to `tmp/GridFightRegression/Cache/` in the repository and reads that copy. Logs go to `tmp/GridFightRegression/Logs`.
 
-## 赛季 2 与赛季隔离
+Changes to shared code should also build the whole solution:
 
-4.6.51（4.7 测试服）资源把 `GridFight_Season_ID` 改为 2，并且赛季 1、赛季 2 的行同表共存：
-`GridFightRoleBasicInfo`（赛季 2 角色编号为头像 ID × 100 + 2，另有成本档变体）、`GridFightTraitBasicInfo`、
-`GridFightEquipment` / `Consumables` / `Forge`、`GridFightCraftConfig`（同一对基础装备在两季合成出不同物品，如 350201+350201 → 35030101 / 47030101）。
-`GridFightSeasonTalent` 则把同一批 ID（2011–4061）整体改为赛季 2 的天赋。
+```powershell
+dotnet build March7thHoney.sln -c Release --no-restore
+```
 
-服务端处理：
+## Prerequisites
 
-- 新加载 `GridFightSeasonItem.json`、`GridFightSeasonCraft.json`（物品/合成 → 赛季），由 `GridFightSeasonScope` 统一判定；没有这两张表的旧缓存视为全部共享。
-- 商店、开局、补给、宝珠/奖励（随机角色、随机装备、指定角色）、锻造、骰子、合成、图鉴只取当前赛季内容；`SpecificAvatar` 与 `101000+ID` 角色宝珠按头像 ID 解析为当前赛季角色。
-- 4.6.51 去掉了 `GridFightCamp.SeasonID` 与 `RoleBasicInfo.RoleSavedValueList`：无赛季的阵营视为共享；缺少 SavedValue 列时角色池改用赛季 2 规则（排除 `IsFakeAvatar` 与阿哈 151112/151122/151132 成本档，七费档按 `ShopPrice` 第 7 行定价）。
-- 赛季 1 专属机制只在赛季 1 生效：昔涟/银狼 LV999 校验、受限角色种子、4.5 商店稀有度表、赛季天赋 2011 终局回合治疗及 3560xxxx 天赋战斗 buff、天赋 4032 的宝珠奖励（`GridFightRewardRules.json` 的 `SeasonIds`）。
-- `GridFightFormationWave` 新增一条省略 ID（0）的 5 人波次，战斗仍使用编号 5 的波次。
-- 赛季 2 每局随机一名伙伴（`GridFightPetPal.json`，跳过无效果的 1 号）及其一条效果，经 `GridFightGameInfo` 的伙伴同步（字段 1984，条目字段 9 为伙伴、8 为效果）和结算 `GridFightFinishInfo`（字段 1836）下发；客户端开局流程直接读取第一条伙伴效果，缺失时空引用导致“开始对局”无反应。伙伴效果本身的玩法尚未实现。
-- 对局结算（胜利或退出结算）触发 `GridFightFinishGamePlay` 任务进度，参数 1 为标准博弈、2 为超频博弈；超频博弈由 `GridFight_OC_UnlockQuest`（7302115）解锁。
-- 地图控制台（`Prop_Common_GridFightConsole_01`）按 `ByCompareMainMissionState(8037100)` 分支，省略的状态取类默认值 `Finish`：`GridFight_Tutorial_Main_Mission_Id` 已完成时打开新入口，否则打开赛季 1 旧页面。服务端如实下发该任务状态，覆盖见 `LoginSceneRegression`。
-- 标准路线按赛季取：`GridFightStageRoute` 无赛季列，赛季 N 的段位路线编号从 N×1000 起（赛季 1 为 1000–1800、1801，23 节点；赛季 2 为 2000–2800、2801，16 节点），1000 以下为教程/首玩路线。
-- 4.6.51 客户端只用 `GridFightLevelInfo` 字段 12 下发的路线节点构建关卡节点（章节 5、小节 1，参数内 2 关卡、7 惩罚规则、8 增益节点、12 基础金币、14 节点类型）；缺失时当前节点为空，进度条显示 0-0、备战页无法出战。
-- 赛季 2 路线中补给节点之后可能紧接精英分支，补给回合开始后进入精英遭遇选择（未经抓包确认，依据为客户端需要遭遇选择才能出战）。
-- 消耗品增删同步必须带嵌套的 `GridFightConsumableInfo`（`GridFightConsumableUpdateInfo` 字段 13），客户端只读该字段。
-- 赛季 2 等级表新增只能由效果达到的 11 级；普通经验（购买、战斗）只升到 `GridFight_DefaultPlayerLevelMax`（10），10 级无升级经验，不能再滚入 11 级。
+- A resource cache with GridFight tables. The season comes from `GridFight_Season_ID` in the cache, and the test roles come from that season's role pool.
+- Season-specific checks run only with a matching cache: the Silver Wolf / Fate Diviner selection queues and the damage-over-time contract only in season 1; the season 2 trait checks only in season 2. When the cache uses the new native skill layout, `BetaTableRegression` runs first, followed by the full regression; older caches still run the original equipment, wealth diamond, investment and selection queue tests.
+- The regression uses no player database and never writes the resource cache back. Test state and extra test equipment live only in the process. The run-save checks at the end create a SQLite database in the system temporary directory (`m7h-gridfight-regression-*`) and delete it afterwards.
+- **Battle buff rows.** `MazeBuffExcel` also loads `GridFightTraitMazebuffS2.json` and `GridFightSpotLightMazebuff.json` (both optional). Caches built before these tables were registered lack 93 battle buff records used by Black Hole Gravity and the Clara modules. Upgrade such a cache offline into a file that does not exist yet:
 
-- 补给卡片（`GridFightSupplyRoleInfo`）必须带字段 13 的角色掉落（`GridFightDropEntry` 角色/1 星），装备放在字段 6 的掉落列表；客户端 `GridFightDraftItemData.Create` 无条件读取字段 13，缺失时空引用，表现为卡在补给节点（如 1-3）的结算。
+  ```powershell
+  dotnet run --project scripts/GridFightCacheUpgrade/GridFightCacheUpgrade.csproj -c Release -- Config/Resource.bin <resources directory> <new output file>
+  ```
 
-### 赛季 2 羁绊效果
+  The tool re-reads its output and checks that everything except the added buff rows is unchanged. Run the regression with `--cache <new output file>` before copying it over `Config/Resource.bin`, back up the original first, and roll back the program and cache together.
+- **Building a cache.** When missing tables and rows are filled from an older cache, GridFight tables always come from the new dump and are never filled from the old cache (an older cache contained 14 season 1 affixes that must not be mixed in). The `PetConfig.json` of 4.6.52 has obfuscated field names, so the 4.6.51 version was used when building that cache. See [Rebuilding the resource cache from a client export](../operations/resource-cache-from-client-export.md).
 
-协议结构来自 4.6.51 客户端反汇编（`artifacts/gf-season2/re-g1..g5-*.md`，未纳入版本控制），不是抓包；客户端不包含的规则（商品池、触发节点、阈值）按羁绊描述实现，代码中注明为推测。
-新表（模板装备、白厄薪火、克拉拉改装、奇美拉、开拓商店、翡翠黑市、欢愉模板）尚未进入 `Resource.bin`，由 `artifacts/gf-season2/gen_s2_tables.py` 生成为 `GridFightSeasonTwoTables.cs`。
+## What it covers
 
-- 客户端自行发起的交互走 `GridFightTraitUpdateCsReq`（8657），客户端在收到 `GridFightTraitUpdateScRsp` 前锁定输入，失败也必须回包；服务端提示走待办动作。
-- 每个币战请求处理后由 `GridFightHandler<T>` 刷新赛季 2 状态，并只把发生变化的效果快照（`GridFightTraitSyncInfo`）下发；只对已激活羁绊下发，客户端对未知羁绊的同步会空引用。
-- 5 费独立羁绊：双龙吟（饮月上场召唤同星级腾荒于后台，不占人口、不可出售/前移；选择 召唤/治疗/连击/反击 之一赋予饮月）、盗火行者（拖拽角色给白厄转化为薪火，存于角色存档值 `GP_Avatar_S2_Phainon_00`；黄金裔名单为推测）、巡海游侠（不死途在场时任命一名前台角色，3 星时全体前台）、黑市主理人（1 号槽招牌商品不售罄，轮换商品按翡翠星级生成）、机心巧匠（上场立即改装，前 3 次每节点、之后每 2 节点一次）、幻乐之主（阿哈 3/4/5 费档不升星，多余拷贝转为成长值并升费，阈值 3/6 为推测，9 级与欢愉/幻月游戏总星级升 7 费）。
-- 其他羁绊：开拓银轨（每场战斗积攒开拓力、开拓商店、列车升级作为战斗 MazeBuff）、千星商会（1 档刷新得经验、2 档每节点免费刷新）、奇兽花园（每节点 1 点能量，首次达到各档免费招聘）、幻月游戏（每局随机规则，愿力随战斗累积）、星核猎手/黄金大饭店（每局按权重选模板，随层数发放模板装备）、梦境交织、反击王、仙舟舰队（战斗内基础装备升级）、欢愉（阿哈装备栏，拖入装备与简易装备合成）。
-- 未实现：克拉拉改装在战斗中的效果（改装 BuffID 不在本地 MazeBuff 表，未知 MazeBuff 会导致关卡无法开始）、阿哈消耗品、欢愉重铸/换模板待办、千星商会 3–6 档、幻月游戏唱名规则、聚光灯与 2101–2214 传送门效果。
+### Core run flow
 
-回归中的赛季 2 羁绊检查（仅赛季 2 缓存运行）覆盖：腾荒召唤/人口/出售与移动限制/随饮月离场、双龙吟选择与羁绊归属、白厄吞噬与薪火存档值、巡海游侠任命、翡翠黑市槽位与招牌商品、开拓商店商品与战后开拓力、克拉拉首次改装、奇美拉免费招聘、全部 5 费独立羁绊同时在场时 GetData 的协议往返与 ContextValue。
+- Every selectable portal opening and its protobuf round trip; equipment tracking; wealth diamonds; dice; the selection queue; a complete route of 20 battles; periodic rewards; repeated requests; aborted settlement.
+- Portals and contracts, investment rewards, Galaxy Scholar, Fate Diviner, the Silver Wolf upgrade choice, equipment and trait tracking, shop locking and the related sync messages.
+- Auto-equip checks equipment locks, wear conditions and slots in one place; an invalid explicit target is not moved to another character.
+- Batch equipment-tracking updates validate before committing; the completion state is derived from what is actually worn, so forged or stale client state cannot affect auto-equip.
+- NPC equipment is locked at creation, so the tracking system cannot first put it on a player character.
+- Manual and automatic wealth diamond crafting share one recipe set; the shop filters for max-star characters and switched forms are kept; an empty candidate pool is handled.
+- Dice binding and post-battle rerolls are kept; temporary equipment deletion is synced; temporary equipment cannot be moved on its own and is reclaimed when its character is sold or merged.
+- Equipment produces gold per preparation phase; a repeated preparation request does not pay twice.
+- Silver Wolf and Fate Diviner choices are published one at a time so they never occupy the same queue position; during a choice the target character cannot be moved or sold and no battle can start.
+- Periodic investments are hooked to node callbacks, and the interval counter resets after Gold Futures triggers.
+- Handlers use the current `CmdIds` constants.
 
-投资环境（传送门）与投资策略（投资）修复（2026-10-06）：
+### Seasons and season isolation
 
-- 传送门只允许 1 次免费刷新；待选信息的 `free_reroll_count` 固定为 1，`reroll_count` 记录已用次数（与投资待选一致），第二次刷新返回失败且候选不变。
-- 投资刷新时，已被刷掉的投资不再回到同一次选择的其他槽位。
-- 补给回合开始后按通用规则进入下一节点（精英遭遇、投资、黄金期货、补给），不再只判断精英分支；此前补给后到期的黄金期货会被推迟。当前赛季 2 路线没有紧跟补给的投资节点。
-- 剩余投资不足一次报价时，投资品质抽取返回 `None`，投资节点直接进入返回备战，不再抛出异常。
-- 好运令牌·银（130901）第 3 个节点发放的 350107 是 `GridFightConsumables` 消耗品，按消耗品发放并经 `UpdateGridFightConsumableList` 同步；此前按装备发放，表中不存在而静默失败。
+The 4.6.51 resources (4.7 test server) set `GridFight_Season_ID` to 2, and season 1 and season 2 rows share the same tables: `GridFightRoleBasicInfo` (season 2 role ID = avatar ID × 100 + 2, plus cost-tier variants), `GridFightTraitBasicInfo`, `GridFightEquipment` / `Consumables` / `Forge`, and `GridFightCraftConfig` (the same pair of basic equipment crafts different items per season, for example 350201+350201 → 35030101 / 47030101). `GridFightSeasonTalent` reuses the same IDs (2011–4061) for the season 2 talents.
 
-投资策略与投资环境的局外效果（2026-10-06，`GridFightAugmentEffects.cs`、`GridFightPortalEffects.cs`）：
+- `GridFightSeasonItem.json` and `GridFightSeasonCraft.json` (item/craft → season) are loaded and evaluated by `GridFightSeasonScope`; old caches without these two tables treat everything as shared.
+- The shop, opening, supply, orbs and rewards (random role, random equipment, specific role), forge, dice, crafting and the handbook use only current-season content. `SpecificAvatar` and the `101000+ID` role orbs resolve the avatar ID to the current season's role.
+- 4.6.51 removed `GridFightCamp.SeasonID` and `RoleBasicInfo.RoleSavedValueList`: camps without a season are shared; without the SavedValue column the role pool uses the season 2 rules (excluding `IsFakeAvatar` and the Aha cost tiers 151112/151122/151132; the seven-cost tier is priced from row 7 of `ShopPrice`).
+- Season 1 mechanics apply only in season 1: the Cyrene/Silver Wolf LV999 check, the restricted role seeds, the 4.5 shop rarity table, the end-of-round healing of season talent 2011 and the 3560xxxx talent battle buffs, and the orb reward of talent 4032 (`SeasonIds` in `GridFightRewardRules.json`).
+- `GridFightFormationWave` has an extra 5-member wave with the ID omitted (0); battles still use wave 5.
+- Season 2 rolls one companion per run (`GridFightPetPal.json`, skipping companion 1, which has no effect) and one of its effects, sent through the companion sync in `GridFightGameInfo` (field 1984; entry field 9 is the companion, 8 the effect) and in the settlement `GridFightFinishInfo` (field 1836). The client's opening flow reads the first companion effect directly; without it a null reference makes "start run" do nothing.
+- Run settlement (win or settle on quit) advances the `GridFightFinishGamePlay` mission, parameter 1 for the standard game and 2 for the overclocked game; the overclocked game is unlocked by `GridFight_OC_UnlockQuest` (7302115).
+- The map console (`Prop_Common_GridFightConsole_01`) branches on `ByCompareMainMissionState(8037100)`; an omitted state takes the class default `Finish`. When `GridFight_Tutorial_Main_Mission_Id` is finished it opens the new entrance, otherwise the old season 1 page. The server reports that mission state faithfully; coverage is in `LoginSceneRegression`.
+- The standard route depends on the season: `GridFightStageRoute` has no season column, and season N's division routes start at N×1000 (season 1: 1000–1800 and 1801, 23 nodes; season 2: 2000–2800 and 2801, 16 nodes). Routes below 1000 are tutorial / first-play routes.
+- The 4.6.51 client builds stage nodes only from the route nodes sent in field 12 of `GridFightLevelInfo` (chapter 5, section 1; in the params, 2 is the stage, 7 the penalty rules, 8 the buff node, 12 the basic gold, 14 the node type). Without them the current node is empty, the progress bar shows 0-0 and the preparation page cannot start a battle.
+- In season 2 routes an elite branch can follow a supply node directly; after the supply round begins the run enters the elite encounter choice.
+- Consumable add/remove syncs must carry the nested `GridFightConsumableInfo` (field 13 of `GridFightConsumableUpdateInfo`); the client reads only that field.
+- The season 2 level table adds level 11, reachable only through effects. Ordinary EXP (buying, battles) only reaches `GridFight_DefaultPlayerLevelMax` (10); level 10 has no level-up EXP and cannot roll over into 11.
+- Supply cards (`GridFightSupplyRoleInfo`) must carry the role drop in field 13 (`GridFightDropEntry`, role / 1 star), with equipment in the drop list of field 6. The client's `GridFightDraftItemData.Create` reads field 13 unconditionally; without it a null reference leaves the run stuck in the settlement of a supply node (for example 1-3).
+- Season isolation checks: role pool, portal and investment pools, 300 shop refreshes, supply, 8 openings of every resolvable orb, forge, random equipment, crafting, the handbook, dice filling, and the roles, equipment and offers that appear on a complete route.
 
-- 依据：4.6.51 `GridFightAugment` / `GridFightPortalBuff` 的 `HexDesc` / `PortalBuffDesc` 哈希在 4.6.0 正式服 TextMapCHS 中命中的描述（命中即文字未改），数值取 4.6.51 的 `EffectParamList`。效果规则来自描述文字，没有官方服务端逻辑或抓包对照。
-- 赛季 2 新增的 79 个投资策略和 32 个投资环境（2101–2214）在公开文本中没有描述，仍只记录选择；战斗内效果由客户端按投资/环境 ID 执行。
-- 获得时奖励（金币、经验、免费刷新、小队生命与上限、随机 N 费/指定星级角色、随机简易/进阶/光辉装备、随机星徽、指定道具与武装箱）逐条发放：单条失败（如备战席已满）只跳过该条，已发放的照常同步。
-- 节点触发：每次进入节点、经过 N 个节点后、接下来 N 个节点、每 N 个节点、进入首领节点、首领战后、位面开始。
-- 免费刷新：服务端计数，优先于金币消耗；有免费次数时商店 `refresh_cost` 下发 0（协议没有单独的免费刷新字段）。
-- 投资环境：红钻/蓝钻贵族、战力提升、战力飙升（属性成长除外）、人才储备开局角色、特权阶级、二手市场、长线利好、彩虹/黄金/白银时代、头彩/尾彩、成功经验、策略大师（额外投资选择除外）。
-- 只实现收益会让投资失衡的条目（最大等级 7、受到伤害加倍、取消利息、羁绊人口上限、连胜/难度代价等）暂不加入效果表，保持只记录。
+### Season 2 traits
 
-赛季 2 专属玩法（聚光灯、奇美拉、开拓商店、欢愉笑点、阿哈升级等）及其 4.7 协议消息尚未实现：选择 2101–2214 传送门只记录为已选，不触发专属效果。
+The protocol structures come from disassembling the 4.6.51 client, not from captures. Rules the client does not contain (goods pools, trigger nodes, thresholds) follow the trait descriptions and are marked as guesses in the code. Tables that are not in `Resource.bin` (template equipment, Phainon's flames, Clara modifications, Chimera, the Trailblaze shop, the Jade black market, Elation templates) are generated into `GridFightSeasonTwoTables.cs` by a script kept outside the repository.
 
-回归中的赛季隔离检查覆盖：角色池、传送门与投资池、商店 300 次刷新、补给、全部可解析宝珠各 8 次开启、锻造、随机装备、合成、图鉴、骰子填充与完整路线中出现的角色/装备/报价。
+- Interactions the client starts go through `GridFightTraitUpdateCsReq` (8657). The client locks input until it receives `GridFightTraitUpdateScRsp`, so a failure must also reply. Server prompts go through pending actions.
+- After each Currency Wars request `GridFightHandler<T>` refreshes the season 2 state and sends only the effect snapshots (`GridFightTraitSyncInfo`) that changed, and only for activated traits; a sync for a trait the client does not know causes a null reference.
+- Five-cost unique traits:
+  - Dan Heng trait (双龙吟): when Imbibitor Lunae (饮月) enters the field, Permansor Terrae (腾荒) of the same star level is summoned in the background; it takes no population slot and cannot be sold or moved forward. One of summon / heal / combo / counter is chosen and granted to Imbibitor Lunae.
+  - Phainon trait (盗火行者): dragging a character to Phainon converts it into flames, stored in the character save value `GP_Avatar_S2_Phainon_00`. The list of Chrysos Heirs (黄金裔) uses the official list in `GridFightTraitConstValueS2.json` (including 141302), read optionally.
+  - Ranger trait (巡海游侠): while 不死途 is on the field it appoints one front-line character; at 3 stars, the whole front line.
+  - Jade trait (黑市主理人): the signature item in slot 1 never sells out; rotating goods are generated by Jade's star level.
+  - Clara (机心巧匠): modifies immediately on entering the field, then once per node for the first 3 times and once every 2 nodes afterwards.
+  - Aha trait (幻乐之主): see [Aha](#aha) below.
+- Other traits: Trailblaze (开拓银轨: Trailblaze Power earned per battle, the Trailblaze shop, train upgrades as battle MazeBuffs); 千星商会 (tier 1 refreshes give EXP, tier 2 gives a free refresh per node); Chimera (奇兽花园: 1 energy per node, a free recruit the first time each tier is reached); Moon Game (幻月游戏: a random rule per run, wish power accumulating with battles); Stellaron Hunter (星核猎手) and 黄金大饭店 (a template chosen by weight per run, template equipment granted by layer); Member Link (梦境交织); Counter King (反击王); Xianzhou (仙舟舰队: basic equipment upgrades in battle); Elation (欢愉: the Aha equipment bar, dragging equipment in to merge with simple equipment).
+- Trait table changes in OSBETAWin4.7.51 that take effect from the tables: Elation `200702`'s top tier changes from 4 to 5 members; tier 4 of Xianzhou `1001021` replaces 3 instead of 2; `101202` gains effect `1012022` (TraitEffectByJson).
+- Stellaron Hunter Script Equipment (`TraitEquipmentRegression`) is granted and taken back with the trait level (the hotel's dishes keep their behaviour). It is marked as temporary equipment (`IODIJBEHEGF`): wearable, but it cannot be crafted, rerolled, upgraded or consumed by Aha or Clara. Script Equipment granted in old saves gets the mark at the next refresh.
+- Season 2 trait checks (season 2 caches only): Permansor Terrae summoning, population, sell and move restrictions and leaving with Imbibitor Lunae; the Dan Heng choice and trait ownership; Phainon devouring and the flame save value; Ranger appointment; Jade black market slots and the signature item; Trailblaze shop goods and post-battle Trailblaze Power; Clara's first modification; Chimera free recruits; the GetData protocol round trip and ContextValue with all five-cost unique traits on the field at once.
 
-缓存组成：`Config/Resource.bin` 由 4.6.51 资源生成，再用 4.6.0 正式服缓存补齐 4.6.51 dump 缺失的表和行（任务、消息、MechCraft 等）；GridFight 表一律以 4.6.51 为准，不从旧缓存补行（旧缓存中的 14 条赛季 1 词缀不再混入）。
+### Aha
 
-验证结果（2026-10-04，加入赛季 2 羁绊后）：赛季 2 缓存 177/177（赛季 2 路线更短，战斗相关检查随之减少），4.6.0 赛季 1 缓存 194/194。
+- Aha tiers are read from tables. The OSBETAWin4.7.51 role table removes the 3-cost `151102`; `GridFight_Aha_No_Star_Role_IDList` is `151112`, `151122`; `GridFight_SevenPriceRoleIdList` is `151132`; `GridFight_InitialExceptRoleIdList` no longer contains `151112`, so the 4-cost `151112` becomes the base form sold in the shop. The server derives the tiers from these constant tables (`GridFightResourceCatalog.AhaGrowthRoleIds`, `AhaSevenCostRoleId`) instead of hard-coding role IDs; the three-tier layout of 4.6.5x still follows its original rules.
+- Growth: in the 4.7.51 client `GridFightAhaRarity`, `_GetFormRarity` shows 4-cost below growth 5 and 5-cost otherwise, and both `_SevenCostGrowthLevel` and `MaxGrowthLevel` are 5. The two-tier layout therefore becomes 5-cost at growth 5, growth caps at 5, and 7-cost still needs the 5-cost form plus the star condition of trait `300602` (parameters `[10, 12]`, unchanged). In the three-tier layout, the 3/4/5-cost tiers do not gain stars; surplus copies become growth and raise the cost, and level 9 plus the combined star level of Elation / Moon Game raises it to 7-cost.
+- When a 7-cost Aha already exists, other Aha copies become 1-star 7-cost and merge and star up normally.
+- With the Elation trait active, Aha items appear in the shop at the 3-cost tier probability even without Aha on the field.
+- Growth is also written to the character-level battle SavedValue; absorbing a copy without a tier change still syncs that character (`EconomyEffectsRegression`).
+- Aha goods: `GridFightSeasonTwoTables.AhaGoods` is regenerated from the 4.7.51 `GridFightSpecialGoods` (GroupID 2 and 3), 122 rows. 开拓之旅 (347) and 哈基维利 (447) grant 150 and 500 Trailblaze Power as in the table.
+- Elation equipment (`ElationUiRegression`): config ID sync, unlock state, battle consistency and save restore for Aha's initial equipment and for equipment after merging.
 
-下载版资源缓存不能由当前数据模型反序列化（`VideoKeysConfig` 字段布局不匹配），因此保留当前缓存，并使用当前缓存完成验证。
-这些检查验证服务端状态及消息构造；客户端界面、动画和实机战斗尚未验证。下载版注释中的抓包结论未在本次重新抓包核实。
+### Investment strategies and environments
 
-## 4.7 测试服表兼容
+Investment strategies are augments (投资策略); investment environments are portals (投资环境).
 
-检测到新版原生技能布局时，回归先运行 `BetaTableRegression`，根据当前表中的角色、阵营和赛季进行检查，不复用旧版角色 ID 断言；随后继续执行完整回归（2026-10-17 起，此前在此提前结束，赛季 2 羁绊等检查不会运行）。覆盖全部传送门开局与消息往返、分表合并、怪物缺失与重复赛季的原子拒绝、旧表保留、跨赛季奖励隔离，以及从开局到最终首领的完整战斗和结算路线。旧版缓存仍执行原有装备、宝钻、投资及选择队列测试。
+- Portals allow 1 free reroll: `free_reroll_count` in the pending info is fixed at 1 and `reroll_count` records the rerolls used (as for investments); a second reroll fails and leaves the candidates unchanged.
+- An investment rerolled away does not come back in another slot of the same choice.
+- After a supply round begins the run moves to the next node by the general rule (elite encounter, investment, Gold Futures, supply), not only the elite branch; Gold Futures due right after a supply node used to be postponed.
+- When the remaining investments cannot fill an offer, the quality draw returns `None` and the investment node goes straight back to preparation instead of throwing.
+- Lucky Token · Silver (130901) grants 350107 at the third node; it is a `GridFightConsumables` consumable, so it is granted as a consumable and synced through `UpdateGridFightConsumableList` (it used to be granted as equipment and failed silently).
+- Lobby effects (`GridFightAugmentEffects.cs`, `GridFightPortalEffects.cs`) are based on the descriptions found by looking up the `HexDesc` / `PortalBuffDesc` hashes of the 4.6.51 `GridFightAugment` / `GridFightPortalBuff` in the 4.6.0 live TextMapCHS (a hit means the text did not change), with values from the 4.6.51 `EffectParamList`:
+  - On-gain rewards (gold, EXP, free refreshes, squad HP and its cap, random N-cost or star-level roles, random simple/advanced/radiant equipment, random emblems, specific items and arms crates) are granted one by one; if one fails (for example a full bench) only that one is skipped and the rest are synced.
+  - Node triggers: every node entered, after N nodes, for the next N nodes, every N nodes, entering the boss node, after the boss battle, start of a plane.
+  - Free refreshes are counted on the server and used before gold; while free refreshes remain, the shop's `refresh_cost` is sent as 0 (the protocol has no separate free-refresh field).
+  - Portals: 红钻/蓝钻贵族, 战力提升, 战力飙升 (except attribute growth), 人才储备 opening roles, 特权阶级, 二手市场, 长线利好, 彩虹/黄金/白银时代, 头彩/尾彩, 成功经验, 策略大师 (except the extra investment choice).
+- Season 2 investments (`GridFightSeasonTwoAugmentEffects.cs`) have no public text; their descriptions were read from the in-game investment handbook and matched to `GridFightAugment` rows by handbook order and `EffectParamList`.
+- In OSBETAWin4.7.51 the season 2 investment list shrinks from 307 to 298 entries. 103601, 204001, 204101, 304001, 304101, 304201 and 304301 remain only in the season 1 list, and their effect configuration is kept. 212001 and 312001 (emblem set `355100600`) are deleted entirely and removed from `EmblemSetAugments`. The effect table is shared by both seasons, so the regression asserts that every configured investment is in some season's list, and that investments are offered only from the current season's list.
+- Invitation portals 2101–2119 grant their trait's emblem; in 4.7.51 their parameter changed from the emblem group to the emblem item ID, with the same result. Concept-stock portals 2201–2214 are implemented in `GridFightConceptStockPortal.cs`.
+- New season 2 portals 149–152 and 1015 (4.7.51) enter the portal pool and pass the opening and message round-trip checks.
+- Economy strategies (`EconomyEffectsRegression`), checked with real settlement, successful and failed spending, free refreshes, extra investment choices and their reroll counts, purchase messages, character battle fields, reward rollback and old-save restore:
+  - 利息上调 (300801): the interest cap at battle settlement rises to 10.
+  - 开源节流 (300101): the interest cap rises to 9; if no gold was spent in the previous node, the new node pays the maximum interest; the spending state is saved. Settlement and the basic info share `CurrentMaxInterestGold`, and a change of the cap sends the full basic info: 85 gold gives interest 8, 90 gold or more gives 9.
+  - 采购专员·金 (201201): every 7 manual refreshes produce a full row of characters with the same cost as the leftmost bench character; it shares the candidate filter with the 彩 version. Its counter sync key follows the naming of the 彩 version.
+  - 采购专员·彩 (303101): every 5 accumulated manual refreshes (including free ones) produce 5 characters with the cost of the leftmost bench character at trigger time; with an empty bench or no sellable character of that cost the normal shop is used. Automatic refreshes and failed requests do not count; the count survives re-login and is synced to the client as `Augment303101_SavedValue01`. The triggered full-shop offer does not mix in Aha special goods and still respects role limits and the max-star filter (`ThreeEffectsRegression`).
+  - 市场干预 (102201): the first and every 4th, 8th, … manual refresh produces a full row of 3-cost characters.
+  - 四费晋升 (202201): the next purchased 1-star 4-cost character becomes 2-star at the original price; once only.
+  - 返利 (101201): 3 gold back for every 3 five-cost characters bought; progress is saved.
+  - 淘金客 (301601): 2 EXP whenever gold is actually spent on a shop refresh; free, automatic and failed refreshes give nothing.
+  - 商业间谍 (300201): buying EXP costs 1 gold less; on level-up the shop refreshes for free and the 3 most expensive characters are granted.
+  - 成长基金 (101701): 40 gold on reaching level 9, once per save.
+  - 白银投资 (203201): opens a silver 3-choose-1 immediately and again after 3 nodes, then returns to the original flow. Each card has 3 rerolls: the client treats `free_reroll_count`/`reroll_count` as each card's limit and used count (MaxRollTimes/RollTimes of the 4.6.51 `GridFightAugmentSelectItem`). Ordinary investments have 1 reroll per card.
+  - 晋升名额 (301301): after each successful EXP purchase, one unsold promotable character offer is replaced by a character one cost higher, keeping the slot and star level and repricing for the new character/star. The role pool, max-star exclusion and Silver Wolf form restrictions apply. The existing purchase response already carries the shop sync, so no new protocol is needed. No replacement happens without the strategy, without enough gold, during battle, at the level cap, with an empty shop, when everything is already top cost or with no suitable candidate; the EXP purchase itself is still charged and applied normally.
+- 战力提升 (136) (`ThreeEffectsRegression`): the opening character it grants is marked; on each normal entry into a new node it gains one random permanent attribute, synced to preparation and battle. Star-ups keep the mark and the accumulated value; buying another copy does not copy the effect. Attribute pool: attack, HP, damage, front-line strength, back-line strength; each step adds 5% (permille value 50).
+- 战力飙升 (137): the opening characters use the same growth mark; star-ups and saves keep the growth.
+- 苦战寻宝 (120202): only the bound character gets 20% healing and shield strength, the same in preparation and battle. When an encounter meets its original settlement condition, one extra reward of the same tier is drawn, keeping the original card reward and preview. Combined with 免费升舱 the extra reward also uses the upgraded tier; if the effect is lost or the target no longer exists there is no extra reward.
+- Trailblaze property goods: the purchase counts of the 22 `Property` goods apply to preparation and battle attributes, stack across repeated purchases and are saved. The battle goods 110000021–110000027 have their resource rows, so purchased battle goods pass the existing checks and are sent to battle.
 
-新版基础表和 GridFightCampSeason 合并后，当前赛季的阵营保留原 ID 索引，其他赛季以 `(SeasonID << 20) | CampID` 的内部键保存，行内 ID 和协议 ID 不变。新版角色通过 GridFightRoleStar 解析技能，缓存保存布局标志；旧缓存缺少这一适配结果且原表可用时自动要求重建。更新程序和缓存前保留备份，回滚时一起恢复。假角色（如第二赛季帕姆王 604202）不进入商店卡池，但仍可由奖励发放；第二赛季不沿用被复用的天赋 2011 做终局回合治疗。
+### Spotlights
 
-### 玩家反馈修复与 4.6.52 资源（2026-10-17）
+Spotlights (主角光环) are implemented in `GridFightSeasonTwoSpotLight.cs` and `GridFightSpotLightEffects.cs`; the spotlight table is one of the 4.6.51 tables hard-coded in `GridFightSeasonTwoTables.cs`.
 
-- 多角色奖励的同步顺序：人才大礼包、晶矿、阿哈商品等一次发放多名角色时，后发的角色可能落在前一次合成刚空出的备战格。原先同步先下发全部 `AddRoleInfo` 再下发合成，客户端收到时该格仍被占用，格子显示为空但服务端仍有角色，拖入即返回 “消息获取失败”。现在每个获取结果的新角色紧接其合成之后下发；赛季 2 后续同步此前完全不下发获取结果的合成步骤，已补上。`AppendRewardApplication` 的属性刷新也不再提前更新本次奖励尚未下发的角色。`SyncOrderRegression` 以客户端棋盘模型按顺序回放同步，旧顺序会报 “role added on taken cell”。
-- 阿哈：已有 7 费阿哈时，其他阿哈副本转为 1 星 7 费并正常合成升星（此前副本要单独上场才变 7 费，且永不合成）；欢愉羁绊激活时即使场上没有阿哈，商店也按 3 费档概率出现阿哈道具；哈基维利（447）按 4.6.53 客户端描述发放 200 开拓力（4.6.51/4.6.52 表仍为 1000，依据玩家反馈）。
-- 撤退：`BATTLE_END_QUIT` 后官方客户端立即发送 `GridFightQuitLeaveGamePlayCsReq` 回到大世界（2026-10-06 日志）。服务端仍按失败结算（无免费重打），但只下发解锁同步，不再下发结算页、路线同步和结算通知，避免黑屏；客户端重进时通过 GetData 取得结果。
-- 星核猎手剧本装备随羁绊等级发放和收回（大饭店餐品保持原行为），标记为临时装备（`IODIJBEHEGF`），可穿戴但不能合成、重随、升级或被阿哈/克拉拉消耗；旧存档中已发放的剧本装备在下次刷新时补上标记。战斗中的“紫字”增伤需要战斗装备来源类型（`PMAEBPKJCLL`），其取值未能从客户端确认，未处理。
-- 晶矿：爆晶矿掉落的 121006/121007/121008 对应奖励 21006–21008 不在任何表中，此前可获得但打开必然失败；现按同色通用晶矿（199/204/305）开启，内容为推测。“全部打开” 遇到无法打开的晶矿时跳过该晶矿，不再整批失败。战斗内生成的奖励（客户端在 `GridFightBattleResultStatistics` 字段 5 上报，如赛季天赋 4061 的拾荒者）按上报发放晶矿：仅限服务端能打开的晶矿、每个击杀至多一个，并扣除本场按计划已发放的同种晶矿；该字段尚无抓包，服务端以 Debug 日志记录上报内容。
-- 白银投资（203201）的 3 次刷新改为每张卡各 3 次：客户端把 `free_reroll_count`/`reroll_count` 当作每张卡的上限和已用次数（4.6.51 `GridFightAugmentSelectItem` 的 MaxRollTimes/RollTimes），服务端此前把 3 次当作整组共用并逐次下调每张卡的上限、已用次数从不增加，客户端在共用次数用完后仍允许点击，请求被拒绝。普通投资仍为每张卡 1 次。
-- 奇缘星魂（额外星魂）在货币战争中同样生效（用户确认）：玩家拥有该角色时，货币战争战斗角色由其正式角色构建，现在一并下发已激活的奇缘星魂（此前移植时排除了 `AvatarGridFightType`）；未拥有角色时使用试用角色，不带奇缘星魂。LoginSceneRegression 新增检查。
-- 原生布局下 `TryAddRole` 不再拒绝没有 AvatarConfig 的假角色（帕姆王 604202）。
-- 资源：本地 Resources（Mar7thDev/Resources）更新到 OSBETAWin4.6.52（上游尚无 4.6.53）。新导出格式中动态值改为裸 JSON 值，`GridFightDynamicValueConverter` 同时接受旧格式与裸值；`UpgradeAvatarSubType/Equipment/SubRelic` 的字段名改为 4.6.51/4.6.52 实际名称（此前加载为每表 1 行无效数据）；新增可选读取 `GridFightTraitConstValueS2.json`，盗火行者黄金裔名单改用其中的官方名单（含 141302）。4.6.52 的 `PetConfig.json` 字段名被混淆，构建缓存时临时使用 4.6.51 版本。缓存由 4.6.52 构建后用旧缓存补齐 4.6.52 dump 缺失的行（任务、消息、充值等 35 个成员，GridFight 表以新表为准），见 `artifacts/resource-cache-4.6.52/`。
-- 未处理：“球球了！”（349/449）在 4.6.53 客户端的描述未知（4.6.52 的 449 为“获得 1 个金色晶矿，打开得到 3 星阿哈”，需要客户端认识的晶矿 ID）；“商店里的阿哈是 3 星”无法在服务端复现（商店卡的星级与普通角色相同）。
-- 验证：4.6.52 缓存 GridFightRegression 543/543（原生布局现在跑完整回归），4.6.0 赛季 1 缓存 382/385（3 项为 10-16 合并时已有的失败：主角光环奖励 23156、两项赛季 1 投资池检查）；LoginSceneRegression 697/0（含奇缘星魂检查），DailyActiveRegression 70/0。均未经客户端实机验证。
+- 刷新视界 (100100) and 刷新视界·进阶 (100106) (`SpotLightEffectsRegression`): when the holder fought in the last battle, entering a new node gives 1 free refresh; each manual shop refresh adds front/back-line strength, 1.5% for the normal version and 2% for the advanced one. Free refreshes count; automatic shop filling does not. The two versions save their counts separately.
+- 纳米改件 (100101): in the battle equipment list, the holder's first advanced equipment that appears in the upgrade table is temporarily replaced by its privileged version. The inventory, instance IDs and preparation equipment do not change; without eligible equipment nothing is generated.
+- Black Hole Gravity (黑洞引力, 100900, `BattleEffectsRegression`): for a fielded spotlight character the real battle buff 131000002 is sent, bound to `role_id`, using the original resource parameters (10 action value, 3 times per battle). It is not sent after the spotlight is lost, the character leaves the field or is sold. Evidence: the ability `Config/ConfigAbility/BattleEvent/GridFight/4.7/SeasonAbility/GridFight_SpotLight_01.json` in the resource dump selects the character by `RoleID`, checks the ultimate and the use count in `OnAfterSkillUse`, then delays battle event 62200; the binding key `role_id` corresponds to the original script hash 1535408766.
+- New trait effect type `GainOtherRoleTrait` (4.7.51): trait `400502` (type Spotlight, effect `4005021`) loads.
+- Spotlights that grant a trait count their role as a member of that trait; the client learns this only from `GridFightUnlockTraitMember` items (`GridFightGameItemInfo` oneof 1763).
 
-### 经济策略、开拓商品、阿哈与最高档对标（2026-10-13）
+### Owlbert
 
-新增 `EconomyEffectsRegression`，覆盖10项经济策略、战力飙升、22种开拓属性商品、阿哈角色级成长同步，以及最高S2职级对标S1财富造物主50。包含额外选择流程、存档恢复、一次性奖励和奖励回滚。新增 `BattleEffectsRegression`，覆盖独立MazeBuff表、21种克拉拉模块、升级替换、黑洞引力角色绑定和下场/丢失/出售/存档恢复。使用补齐93条战斗Buff记录后的缓存，全量回归387/387通过。详见[本次修改与未完成项](grid-fight-effect-fixes-2026-10-13.md)。
+`OwlbertRegression`. Owlbert NPCs, their equipment and claim progress are saved with the run. If an old save already chose an Owlbert but has no NPC, restoring builds it and grants once; restoring again does not grant twice. The back row gains one slot, still within the total limit of 9.
 
-随后增加S2当前赛季模块选择及基础信息协议往返检查，全量回归389/389通过；客户端头像显示仍待实测。
+- 金币大使叽米 (303201): NPC 901. The server accrues 1 gold every 500 ms, at most 200 gold per node. It reuses the existing heartbeat and gameplay requests for sync, so the UI may jump in batches; offline time does not accrue.
+- 星徽大使叽米 (303301): NPC 902, carrying 3 locked wealth diamonds. Selecting it grants 9 copies of one random emblem, not repeated per node.
+- 环保大使叽米 (332401): NPC 903, carrying 3 locked gold garbage bags, and also grants 9 usable gold garbage bags.
 
-再增加 `ElationUiRegression`，覆盖欢愉阿哈初始装备和合成后装备的配置ID同步、解锁状态、战斗一致性与存档恢复，全量396/396通过。
+Rule references: [HoYoWiki overview](https://wiki.hoyolab.com/pc/hsr/entry/4646?lang=zh-cn), [community wiki investment strategies](https://honkai-star-rail.fandom.com/wiki/Currency_Wars%3A_Zero-Sum_Game/Investment_Strategy), [BWIKI investment strategy list](https://wiki.biligame.com/sr/%E6%8A%95%E8%B5%84%E7%AD%96%E7%95%A5%E4%B8%80%E8%A7%88). The community wiki gives the gold pace and the emblem count.
 
-### 战力提升、采购专员·彩、苦战寻宝（2026-10-13）
+### Clara modules and battle buffs
 
-- 战力提升（136）：开局赠送的角色被单独标记，每次正常进入新节点随机增加一项永久属性；同步到备战和战斗，升星保留标记和累积值，购买同名副本不复制效果。按用户确认的暂定规则，属性池为攻击、生命、伤害、前台强度、后台强度，每次一项增加5%，使用千分比值50。[BWIKI 的 S1条目](https://wiki.biligame.com/sr/%E6%88%98%E5%8A%9B%E6%8F%90%E5%8D%87)仅公布随机成长机制，没有具体属性池与数值；这里的5%不是官方数值。
-- 采购专员·彩（303101）：获得后每累计5次手动刷新（含免费刷新），按触发时备战席最左角色的费用生成5个同费角色；空备战席或没有可售同费角色时沿用正常商店。自动刷新与失败请求不计数，重登保留计数，客户端同步 `Augment303101_SavedValue01`。触发的整店角色报价不混入阿哈特殊商品，继续遵守角色限制和已满星角色过滤。
-- 苦战寻宝（120202）：仅绑定角色获得20%治疗和护盾强度，备战和战斗使用相同属性；遭遇达成原有结算条件时额外抽取一份同档奖励，保留原卡片奖励，不改变原奖励预览。与免费升舱叠加时额外奖励也使用升级后的档位；失效或目标已不存在时不发额外奖励。
-- 回归入口 `ThreeEffectsRegression.cs` 覆盖节点成长、消息同步、升星、旧角色存档读取、保存恢复、刷新计数与空备战席、遭遇奖励与失效光环、重复请求。
-- 存档只在角色快照末尾追加字段，旧存档能读取但没有成长目标标记；更新后新开的战力提升对局才具备完整成长效果。升级前备份玩家数据库，回滚程序时恢复配套的升级前数据库副本。
-- 验收仍需客户端实机检查属性面板、刷新计数文案、第5次整店报价、实际治疗/护盾量和遭遇奖励展示。
+`BattleEffectsRegression`.
 
-### 对局存档与战斗中退出（2026-10-07）
+- `MazeBuffExcel` registers `GridFightSpotLightMazebuff.json` and `GridFightTraitMazebuffS2.json` (see Prerequisites); the 93 records they hold are separate from the main `MazeBuff.json`.
+- The 21 Clara modifications with a non-zero BuffID are wired into battle. For the counter, missile and summon upgrade chains only the highest current level is sent, so an older level never overrides it; independent add-on modules are kept. The Clara ability is in `OriginAbility/GridFight_Origin_300502_StageAbility.json` next to the spotlight ability. The cache contains Clara's original level 1 and level 2 data; battle uses the normal level 1.
+- Covered: the independent MazeBuff table, the 21 Clara modules, upgrade replacement, Black Hole Gravity role binding, and leaving the field, losing the spotlight, selling and save restore.
+- The season 2 module selection of the current season and the basic info protocol round trip.
 
-- 进行中的对局此前只在内存中：每次登录都会新建 `PlayerInstance`，重进游戏即丢失对局。现在对局快照（`GridFightRunSnapshot`，MemoryPack，Base64）存入新表 `GridFight` 的 `RunInstance`，下一局编号存于 `NextSessionUniqueId`；新表随启动自动建表，重置账号时随其他玩法数据删除。
-- 保存时机：每个币战请求结束（`GridFightHandler<T>`，失败也保存）、战斗结算、`QuitBattleCsReq`、`/grid` 指令和下线；登录时由 `GridFightManager` 恢复。快照与当前赛季不符、引用的怪物已不在资源中或无法解析时丢弃该局并记录警告，不影响登录。
-- 恢复时若对局仍处于战斗中（断线或重启时战斗未结算），按 `BATTLE_END_QUIT` 结算为失败：连胜清零、战斗计数 +1，不发金币经验、不推进路线；客户端随后通过 GetData 拿到解锁后的完整状态。
-- `QuitBattleCsReq` 清除币战战斗时同样按失败结算并下发解锁同步（与 `PVEBattleResultCsReq` 的 `BATTLE_END_QUIT` 一致），此前对局会卡在战斗阶段、再也无法出战。2026-10-06/07 的日志中客户端未发送过该请求，退出都走 `PVEBattleResultCsReq`。
-- 快照只追加成员，不重排或删除。会话中 15 个仅用于下一次同步的通知缓冲（`GridFightSession.PersistenceTransientFields`）不保存，其状态变化已写入其余字段。
-- 回归覆盖：逐个字段写入样本值后保存/恢复比对（新增字段若未映射会失败）、完整路线每一步的保存/恢复比对（含共享对象，如所选遭遇与当前战斗计划为同一实例）、在每一步恢复后的副本上打完整路线、异赛季快照被拒绝，以及临时 SQLite 上的重新登录、重启后恢复并结算未完成战斗、离开对局清除存档、损坏存档被丢弃。
+### Rewards and orbs
 
-### 遭遇奖励、免费升舱与佩佩客串（2026-10-07）
+- `AllAvatarByRarity` (new in 4.7.51): `GridFightBasicBonusPoolV2` 116–130, parameters `[rarity, star]`, laid out like the neighbouring RandomAvatar 101–115. It grants every role in the pool of that rarity.
+- Random role reward pool: `RandomAvatar` and `AllAvatarByRarity` exclude the roles in `GridFight_InitialExceptRoleIdList`, as the shop does (season 1 is unchanged). Before, they took roles only by `IsInPool`, cost and star rows, so a random 5-cost reward could hand out Dan Heng • Permansor Terrae `141402` (which exists only as the 双龙吟 summon) or Aha's upgraded forms (`151122`, `151132` in 4.7.51; also `151112` in 4.6.52). The regression draws 80 times per RandomAvatar reward row: `141402`, `151122` and `151132` used to appear, now none do; it also checks that every upgraded form is in that list. Fake roles (for example season 2's Pom-Pom king 604202) do not enter the shop pool but can still be granted as rewards, and `TryAddRole` in the native layout no longer rejects a fake role without an AvatarConfig.
+- Orbs: 121006/121007/121008 dropped by burst orbs map to rewards 21006–21008, which are in no table; they are opened as the general orb of the same colour (199/204/305). "Open all" skips an orb that cannot be opened instead of failing the whole batch.
+- Rewards generated in battle (reported by the client in field 5 of `GridFightBattleResultStatistics`, for example the scavenger of season talent 4061) grant orbs as reported: only orbs the server can open, at most one per kill, minus orbs of the same kind already granted by plan in that battle. The server logs the reported content at Debug level.
 
-- 遭遇（EliteBranch）选项卡的掉落此前只显示不发放；现在完美通关或进度达到惩罚规则阈值时，按卡片上的奖励经投资效果队列在下一回合开始时发放。
-- 官方遭遇奖励表在服务端、未公开。wiki 仅说明：低档给少量金币、经验或免费刷新，高档数量更多并可能给基础装备或 4/5 费角色，难度 4 给财富宝钻、进阶装备自选。按此为品质 1–4 各设随机池（数值为估计），并放开此前被排除的品质 3；奖励在生成遭遇时抽定，卡片所见即所得。
-- 免费升舱（103901）：奖励档位 +1，难度 4 额外再抽一份难度 4 奖励。
-- 佩佩客串（331001）：复用赛季 1 佩佩 NPC（7 号、11 号位）；每完美通关一个战斗节点穿一件锁定的进阶装备（最多 3 件，溢出直接给玩家），进入 5 个节点后离开并解锁装备。加入/更新/离开沿用狸智手续 NPC 的抓包序列，随下一回合开始同步；无该策略的官方抓包。
+### Encounters, 免费升舱 and Pepe Cameo
+
+- Encounter (EliteBranch) cards used to show their drops without granting them. Now a perfect clear, or progress reaching the penalty rule threshold, grants the card's reward through the investment effect queue at the start of the next round.
+- The official encounter reward table is server-side and not public. The wiki only says that low tiers give a little gold, EXP or free refreshes, higher tiers give more and may give basic equipment or 4/5-cost characters, and difficulty 4 gives a wealth diamond and an advanced equipment of choice. Each quality 1–4 has a random pool built on that basis (the values are estimates), and quality 3, previously excluded, is allowed. Rewards are drawn when the encounter is generated, so the card shows what will be granted.
+- 免费升舱 (103901): reward tier +1; at difficulty 4 one extra difficulty 4 reward is drawn.
+- Pepe Cameo (佩佩客串, 331001): reuses the season 1 Pepe NPC (positions 7 and 11). For each battle node cleared perfectly it wears one locked advanced equipment (at most 3; overflow goes to the player); after 5 nodes it leaves and unlocks the equipment. Join, update and leave follow the capture sequence of the 狸智手续 NPC and are synced with the next round start.
+
+### Bonfire
+
+The bonfire (幕后茶歇) table has 84 option rows. Following the actual dispatch of `InitializeBonfireNodes` and `BuildBonfireOptions`, 63 rows can appear as options; the other 21 are parent-event placeholders, undispatched child events or unused configuration, so they are not options a player meets. Calling the real `SelectBonfireOption` for every row and comparing the full run snapshot before and after (ignoring the separate "already chosen" flag) gives:
+
+| Dispatchable options | Count | Observed |
+| --- | ---: | --- |
+| Special-effect placeholders | 15 | Succeed and lock the chosen state, but change no reward, attribute or other run state; the branch is not implemented. |
+| Coffee pool option 5 | 2 | Also succeed without effect. Their `OptionShowType` is `None`, so they bypass the existing random-coffee branch. |
+| Commissions | 18 | Whichever commission is chosen, only the same orb 203 is generated; their own quest parameters are not used. Partially implemented. |
+| Copy a character | 9 | A character is copied, picked by highest star level, highest cost or most equipment. |
+| Coffees with explicit parameters | 8 | The reward and the HP cost are applied. |
+| Other basic rewards | 11 | Equipment, consumables, gold or healing are applied. |
+
+The ordinary rest button goes through `HealAtBonfire` separately and is not one of the 84 rows. The implementation is `ApplyBonfireOption` in `GameServer/Game/GridFight/GridFightSeasonTwoBonfire.cs`; the source tables are `GridFightBonfireEventOption.json`, `GridFightPrayQuest.json` and `GridFightPrayQuestFinishWay.json`.
+
+### Highest division
+
+The highest season 2 division is benchmarked against the season 1 A8 Wealth Creator 50 (财富造物主50) tier (`EconomyEffectsRegression`). `GridFightDivisionStage.json` contains that row as `10950`; the highest season 2 division in the cache is `20920`.
+
+| Parameter | Season 2 highest, 20920 | Season 1 target, 10950 |
+| --- | ---: | ---: |
+| Base enemy difficulty | 89 | 120 |
+| Base HP multiplier | 1.4 | 1.6 |
+| Base attack multiplier | 24 | 48 |
+
+Only the battle data of the highest division uses row 10950; the division, route, rewards and save outside battle keep their season 2 identity. Difficulty added by investments and encounters stacks on top of 120; other divisions are not affected. On the base curve of the same resources, without investments or encounters, chapter 1/2/3 HP is about 3.41/3.92/4.49 times and attack about 2.24/2.25/2.26 times that of the old highest division. Because the whole difficulty curve of that tier is used, speed also rises by about 14%/16%/18%; this is not a separate speed change. Final monster values also depend on templates, star level, waves and extra effects.
+
+### Sync order
+
+When one grant adds several roles (Talent Gift Pack (人才大礼包), orbs, Aha goods), a later role can land in a bench cell that an earlier merge in the same grant has just freed. The sync used to send every `AddRoleInfo` before the merges, so the cell was still occupied when the client received it: the cell looked empty while the server still had the role, and dragging into it returned "message fetch failed". Now each grant's new roles are sent right after their merge, and the season 2 follow-up sync, which used to leave out the merge steps of grants, includes them. The attribute refresh of `AppendRewardApplication` no longer updates roles of this grant that have not been sent yet. `SyncOrderRegression` replays the syncs in order on a client board model; the old order reports "role added on taken cell".
+
+### Run persistence and quitting
+
+- A run in progress is stored as a snapshot (`GridFightRunSnapshot`, MemoryPack, Base64) in `RunInstance` of the `GridFight` table, with the next run number in `NextSessionUniqueId`. The table is created automatically at startup and deleted with the other gameplay data when an account is reset.
+- Saved at the end of every Currency Wars request (`GridFightHandler<T>`, also on failure), at battle settlement, on `QuitBattleCsReq`, on the `/grid` command and at logout; restored at login by `GridFightManager`. A snapshot that does not match the current season, refers to roles or monsters no longer in the resources, or cannot be parsed is discarded with a warning without affecting login. This includes boards, bench roles or shop cards whose role is not in the loaded role table (for example a run that stored `151102` under a 4.6.52 cache).
+- If the restored run is still in battle (disconnected or restarted before the battle settled), it settles as a loss with `BATTLE_END_QUIT`: the win streak resets, the battle count goes up by 1, no gold or EXP, no route progress. The client then gets the unlocked full state through GetData.
+- `QuitBattleCsReq` clearing a Currency Wars battle also settles as a loss and sends the unlock sync (as `BATTLE_END_QUIT` in `PVEBattleResultCsReq`); before, the run stayed in the battle phase and could never start another battle. In observed client logs, quitting always went through `PVEBattleResultCsReq` and `QuitBattleCsReq` was never sent.
+- Retreat: after `BATTLE_END_QUIT` the official client immediately sends `GridFightQuitLeaveGamePlayCsReq` to return to the overworld. The server still settles as a loss (no free retry) but sends only the unlock sync, not the settlement page, route sync and settlement notification, which avoids a black screen; the client gets the result through GetData when it re-enters.
+- Snapshot members are only appended, never reordered or removed. The 15 notification buffers used only for the next sync (`GridFightSession.PersistenceTransientFields`) are not saved; their state changes are already in other fields.
+- Checks: writing a sample value into every field and comparing after save/restore (an unmapped new field fails); comparing after save/restore at every step of a complete route (including shared objects, such as the chosen encounter and the current battle plan being the same instance); playing a complete route on a copy restored at each step; rejecting snapshots of another season; and, on a temporary SQLite database, re-login, restoring and settling an unfinished battle after a restart, leaving a run clearing the save, and discarding a corrupt save.
+
+### OSBETAWin4.7.51 table compatibility
+
+The tables were exported from the OSBETAWin4.7.51 client together with a gap-filled cache (see [Rebuilding the resource cache from a client export](../operations/resource-cache-from-client-export.md)) and compared table by table with the 4.6.52 cache.
+
+- When the new native skill layout is detected, `BetaTableRegression` checks the current tables' roles, camps and seasons instead of reusing old role ID assertions, then the full regression continues. Covered: every portal opening and message round trip, merging of split tables, atomic rejection of missing monsters and duplicate seasons, keeping old tables, cross-season reward isolation, and a complete battle and settlement route from the opening to the final boss.
+- After the new base tables and GridFightCampSeason are merged, current-season camps keep their original ID index and other seasons are stored under the internal key `(SeasonID << 20) | CampID`; row IDs and protocol IDs are unchanged. New roles resolve skills through GridFightRoleStar and the cache stores the layout flag; an old cache lacking this adaptation is rebuilt automatically when the raw tables are available. Back up before updating the program and cache, and restore both together to roll back.
+- Season 2 no longer reuses talent 2011 for end-of-round healing.
+- Dynamic values in the new export format are bare JSON values; `GridFightDynamicValueConverter` accepts both the old format and bare values. The field names of `UpgradeAvatarSubType/Equipment/SubRelic` are the actual 4.6.51/4.6.52 names (they used to load as one invalid row per table).
+
+## Expected result
+
+The run prints `PASS`/`FAIL` per check and ends with `GridFight regression: <n>/<n> passed.`, exiting with code 0. The number of checks depends on the cache: the season 2 route is shorter than the season 1 route, so fewer battle-related checks run.
+
+## Known gaps
+
+None of the checks have been verified on a real client: UI, animations and real battles are untested.
+
+### Not implemented
+
+- Season 2 companion effects themselves; only the companion and its effect are rolled and synced.
+- Clara: the default enhancement 4001 and the special rules around 5001; only the 21 modules with a real BuffID are wired in, so the full modification ruleset is not restored. The basis for switching between Clara's normal and special level 2 is still missing.
+- Aha consumables; Elation recast / template-switch pending actions.
+- 千星商会 tiers 3–6: the server lacks complete lobby handling. Part of the tier 6 battle logic exists in the client ability files, so "no server branch" does not mean the tier has no effect; this still needs checking against the actual display and battles.
+- Moon Game naming rules.
+- Season 2 investment mechanics 换角开演, 刷新连锁, 片场解散, 奇美成长记 and 全速开拓; pure battle effects of investments and portals are executed by the client by ID.
+- Investment entries whose gain alone would unbalance the run (max level 7, doubled damage taken, no interest, trait population cap, win-streak / difficulty costs and similar) are not in the effect table and are only recorded.
+- Spotlight node choice: the client marks spotlight nodes only through route param 4. Which nodes the official server flags, the candidate weighting and the reroll price are not in the client and follow guesses (nodes 1-2 and 2-1, two candidates, 2 gold, 2 rerolls). Per-spotlight lobby and battle effects live in server JSON that is not shipped; implemented entries follow the in-game description and `EffectParamList`.
+- The spotlight that grants `GainOtherRoleTrait` in 4.7.51 is in the `GridFightSpotLight` table, which the 4.7.51 export does not contain.
+- 4.7.51 Aha goods 307, 314, 326, 335, 338 and 458–466: their effects are in the server configuration; not implemented and not offered. "球球了!" (349/449): its parameter changed from empty to `[1]` and 466 `[1, 3, 151132]` was added; what 349 grants now cannot be confirmed, so it is no longer offered. (In 4.6.52, 449 read "get 1 gold orb, which opens into a 3-star Aha", which needs an orb ID the client knows.)
+- Effects of the new 4.7.51 portals 149–152 and 1015 are in the server configuration and not implemented.
+- Elation consumables, 350110, 350118 and other partial season 2 rewards still lack complete target/conversion rules or protocol evidence; no values or behaviour were guessed.
+- The bonfire: the 17 dispatchable options below succeed without doing anything. The local Chinese TextMap lacks their titles, so they are identified by event/option ID only. Restoring them needs their real rules first.
+
+  | Event ID | Option ID | Current behaviour |
+  | --- | --- | --- |
+  | 10600301, 10600401, 10600801, 10600901 | 1 | No parameters; returns success. |
+  | 10300501, 10300601, 10300701 | 1 | No parameters; returns success. |
+  | 10300801 | 1 | Parameters `[201001, 8009, 1213]`, not handled. |
+  | 10200401 | 1 | No parameters; returns success. |
+  | 10200501 | 1 | Parameters `[12]`, not handled. |
+  | 10200601 | 1 | Parameters `[50]`, not handled. |
+  | 11100101 | 1 | Parameters `[200]`, not handled. |
+  | 11100301 | 1 | Parameters `[27971503.953125, 0]`; the reward parser produces no reward. |
+  | 11100601, 11100701 | 1 | No parameters; returns success. |
+  | 10400102, 10400202 | 5 | No parameters and show type None; bypasses the random-coffee branch. |
+
+- Bonfire commissions `10800402/1–9` and `10800502/1–9`: `GridFightPrayQuest.json` / `GridFightPrayQuestFinishWay.json` give each one's quest ID and conditions, but `ApplyBonfireOption` does not read them and always calls `TryAddOrb(203)`. The commission lifecycle (accept, progress, completion, claim) still needs to be wired in; granting the orb is not the commission's effect.
+- The "current increase" text of the spotlight card: the client's `GetExtraDescText` call was found, but its value source and encoding are not confirmed. Nothing is written to field 14 of `FMBACDOFCAL`; its `repeated uint64` type is not enough to tell what it means. The strength bonus and free refreshes themselves work on the server.
+- The battle-side "purple text" damage bonus of Stellaron Hunter Script Equipment needs the battle equipment source type (`PMAEBPKJCLL`), whose value could not be confirmed from the client.
+- "The Aha in the shop is 3-star" could not be reproduced on the server (shop cards have the same star levels as ordinary roles).
+
+### Not confirmed
+
+- Tables still hard-coded from 4.6.51 content cannot be checked against 4.7.51 because their source tables are not in the 4.7.51 export: TraitEquipTemplate, PhanionUniqueTrait, ClaraEnhance, ChimeraInfo, TrailblazeGoods, JadeUniqueTrait, ElationGoods, the spotlight, bonfire and companion effect tables. `GFTraitElationTemplate` (272 rows) is unchanged. In the spotlight adaptation list `151102` became `151112` and matching is by AvatarID so every Aha tier counts; whether the 4.7.51 list was updated cannot be confirmed.
+- The 4.7.51 client's TextMap has no season 2 text (all 102 text keys of season 2 traits are missing), so everything marked as unconfirmed here had no description to check against.
+- How much growth each Aha copy provides is in the server configuration, not in the tables; "1 point for a lowest-tier copy" is kept. Shop peek probabilities are self-chosen per cost (20% / 30% / 40%); with the new tables and Aha present the minimum is the 4-cost 30%.
+- What triggers `AllAvatarByRarity`: no combined reward or orb in the tables points at rows 116–130.
+- The 3rd and 4th parameters `[3, 6]` added to each tier of Xianzhou `1001021` are not used; their meaning is unknown.
+- In a season 2 route, entering the elite encounter choice right after a supply node is not confirmed by captures; it follows from the client needing an encounter choice before it can start a battle. The current season 2 route has no investment node directly after a supply node.
+- Season 2 trait rules not in the client (goods pools, trigger nodes, thresholds) follow the trait descriptions; the 黄金裔 list was a guess until the official list in `GridFightTraitConstValueS2.json` replaced it, and the Aha growth thresholds 3/6 are guesses.
+- Investment and portal lobby effects follow description text only; there is no official server logic or capture to compare with. Pepe Cameo has no official capture. Encounter reward values are estimates.
+- Tentative values that are not official: 战力提升 uses 5% per step on the attribute pool listed above ([BWIKI's season 1 entry](https://wiki.biligame.com/sr/%E6%88%98%E5%8A%9B%E6%8F%90%E5%8D%87) only describes the random growth mechanism, not the pool or the values). 环保大使叽米's 9 gold garbage bags are tentative and not checked against an official value.
+- Battle-generated rewards in field 5 of `GridFightBattleResultStatistics` have no capture yet. Bonus orbs 21006–21008 are opened with guessed contents.
+- Economy strategies follow the current resource parameters and were checked against the season 1 mechanics in [BWIKI's investment strategy list](https://wiki.biligame.com/sr/%E6%8A%95%E8%B5%84%E7%AD%96%E7%95%A5%E4%B8%80%E8%A7%88). The client text for the 采购专员·金 counter still needs checking.
+- Capture conclusions quoted in comments of the imported GridFight implementation have not been re-verified with new captures.
+- With a 4.6.0 season 1 cache, three checks were reported failing: the spotlight reward 23156 and two season 1 investment-pool checks.
+
+### Save compatibility
+
+- New snapshot fields are appended at the end, and lists missing from old snapshots restore as empty. Spending history that an old run never recorded cannot be recovered; recording starts from the first new node. Likewise, old character snapshots read but carry no growth-target mark, so only 战力提升 runs started after the update have the full growth effect, and Advanced Refresh Vision counts start from refreshes made after the update.
+- Back up the player database before upgrading; to roll back, restore the program together with the matching pre-upgrade database copy.
+
+### Needs checking on a real client
+
+- Clara modification effects in battle and Black Hole Gravity behaviour.
+- Blank spotlight and Aha texts: no client text resources were changed. An empty `JsonPath` in the main resource table is not by itself evidence that an effect does not exist. Aha skill descriptions are still blank.
+- The client avatar display after the season 2 module selection.
+- 开源节流: the interest preview shows 8/9 at 85/90 gold.
+- The three Owlbert strategies: the NPC, its equipment and the usable rewards appear, and gold updates with heartbeats or actions.
+- 纳米改件: with advanced equipment, one piece becomes privileged in battle and is back to the original in preparation.
+- 刷新视界·进阶: after the holder fights, the next node adds 1 free refresh, and two refreshes in a row raise front/back-line strength by 4%. The card's "current increase" text is not fixed.
+- 战力提升's attribute panel, the 采购专员·彩 counter text and the fifth-refresh full-shop offer, the actual healing/shield amounts of 苦战寻宝, and the encounter reward display.
+- The 晋升名额 shop display.
+- Results of the copy, explicit-coffee and basic-reward bonfire options (only the reward logic is confirmed; animations are unverified).
+- Monster values at the highest division in actual battles.

@@ -1,18 +1,42 @@
-using March7thHoney.Database.TrainParty;
 using March7thHoney.Data;
+using March7thHoney.Data.Excel;
+using March7thHoney.Database.Inventory;
+using March7thHoney.Database.TrainParty;
+using March7thHoney.Enums.Item;
+using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Server.Packet.Send.Scene;
 using March7thHoney.Proto;
 
 namespace March7thHoney.GameServer.Game.TrainParty;
 
-// 4.4 port note: the TrainParty proto surface was fully re-obfuscated between 4.2 and 4.4 (field
-// numbers reshuffled, names rotated). The static/decoration half (self-display, areas, prop timers,
-// passengers, basic info) is mapped 1:1 against the 4.4 protos by structure. The gameplay board
-// minigame was re-architected in 4.4 into a turn-based "next_pending_action" protocol; it is
-// simulated server-side by TrainPartyGameplayRun with semantics inferred from field shapes — see the
-// note on that class before changing the flow.
+// Field mappings verified in OSBETAWin4.7.51 (TrainPartyBuildManager and TrainPartyGameInstance);
+// some generated names describe older versions:
+// * TrainPartyData: unlock_area_num (11) is the current TrainPartyProgress turn ID; _SetCurTurnID
+//   requires a matching row. HCJJPLKELGC (15) holds the running board; absent means clear it.
+// * TrainPartyArea: step_id_list (12) is unlocked static props, static_prop_id_list (8) finished steps,
+//   verify_step_id_list (13) blueprints excluding FirstStep, area_step_info (1) the current goal and
+//   step states (0 locked, 1 buildable, 3 finished), and progress (5) completion (>= 100 is complete).
+// * TrainPartyInfo: cur_fund (2), star_num (4), JJGKIPDGOGP (9) highest claimed build level,
+//   CMCNNJKJNPK (11) exhibits, MHABCMLHCGD (13) owned DIY props, area_list (14) unlocked areas,
+//   BHEJCEJHLIB (15) build level. TrainPartyTakeBuildLevelAwardScRsp.FPHFHCGNNGM (12) updates
+//   the claimed level; the client offers a reward while that level is below the build level.
+// * TrainPartyBuildStartStepScRsp updates only funds; TrainPartyBuildingUpdateNotify sends results.
+// * The server owns the floor values used by group conditions and item bindings: Progress_<Room>,
+//   Build_<Room>_Finished, Progress_PartyTrainGlobal and Build_Has*.
+// See TrainPartyGameplayRun for the board simulation's limits.
 public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainData>(player)
 {
+    // Areas layout version; see TrainData.AreaDataVersion.
+    public const int CurrentAreaDataVersion = 1;
+
+    // The first TrainPartyProgress row, where the gameplay turn starts.
+    private const int FirstTurnId = 1;
+
+    private const JIIEHEBIBMO StepLocked = 0;
+    private const JIIEHEBIBMO StepBuildable = (JIIEHEBIBMO)1;
+    private const JIIEHEBIBMO StepFinished = (JIIEHEBIBMO)3;
+
     public TrainPartyGameplayRun? GameplayRun { get; private set; }
 
     public void MarkDataDirty()
@@ -22,7 +46,7 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
 
     public void EnsureDefaults()
     {
-        var changed = false;
+        var changed = EnsureBuildState();
 
         if (Data.RecordId == 0)
         {
@@ -42,18 +66,6 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
             changed = true;
         }
 
-        if (Data.Fund == 0)
-        {
-            Data.Fund = 111712;
-            changed = true;
-        }
-
-        if (Data.SelfDisplay.Count == 0)
-        {
-            Data.SelfDisplay.AddRange(DefaultSelfDisplay);
-            changed = true;
-        }
-
         if (Data.PassengerRecordMarks.Count == 0)
         {
             Data.PassengerRecordMarks.Add(1004);
@@ -66,54 +78,31 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
             changed = true;
         }
 
-        if (Data.PropTimes.Count == 0)
-        {
-            foreach (var (propId, time) in Props)
-                Data.PropTimes[propId] = time;
-            changed = true;
-        }
-
-        if (Data.TimedDynamicPropTimes.Count == 0)
-        {
-            foreach (var (_, dynamicId, time) in TimedDynamicProps)
-                Data.TimedDynamicPropTimes[(int)dynamicId] = time;
-            changed = true;
-        }
-
-        if (Data.Areas.Count == 0)
-        {
-            // Copies: DefaultAreas is static, and a player's build steps and DIY slots are written into these objects.
-            foreach (var area in DefaultAreas)
-                Data.Areas[area.AreaId] = new TrainAreaInfo
-                {
-                    AreaId = area.AreaId,
-                    StepList = [.. area.StepList],
-                    DynamicInfo = new Dictionary<int, int>(area.DynamicInfo)
-                };
-            changed = true;
-        }
-
         if (Data.Cards.Count == 0)
         {
-            Data.Cards.AddRange(DefaultCards);
+            Data.Cards.AddRange(DefaultCards.Select(x => new TrainCardInfo
+                { CardId = x.CardId, UniqueId = x.UniqueId, CurIndex = x.CurIndex }));
             changed = true;
         }
 
         if (Data.MoveHistory.Count == 0)
         {
-            Data.MoveHistory.AddRange(DefaultMoveHistory);
+            Data.MoveHistory.AddRange(DefaultMoveHistory.Select(x => new TrainMoveInfo
+                { CardId = x.CardId, BoardIndex = x.BoardIndex, UniqueId = x.UniqueId }));
             changed = true;
         }
 
         if (Data.GameplayPassengers.Count == 0)
         {
-            Data.GameplayPassengers.AddRange(DefaultGameplayPassengers);
+            Data.GameplayPassengers.AddRange(DefaultGameplayPassengers.Select(x => new TrainPendingPassengerInfo
+                { PassengerId = x.PassengerId, Hp = x.Hp, Atk = x.Atk }));
             changed = true;
         }
 
         if (Data.GameplaySkills.Count == 0)
         {
-            Data.GameplaySkills.AddRange(DefaultGameplaySkills);
+            Data.GameplaySkills.AddRange(DefaultGameplaySkills.Select(x => new TrainSkillInfo
+                { SkillId = x.SkillId, SkillLevel = x.SkillLevel, Count = x.Count }));
             changed = true;
         }
 
@@ -132,51 +121,550 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
         if (changed) MarkDirty();
     }
 
-    public TrainAreaInfo? SetDynamicId(int areaId, int slotId, int dynamicId)
+    #region Build state
+
+    // Brings the persisted build state in line with the build tables; returns whether anything changed.
+    private bool EnsureBuildState()
+    {
+        var changed = false;
+
+        if (Data.AreaDataVersion < CurrentAreaDataVersion)
+        {
+            if (Data.Areas.Count == 0)
+                CompleteAllAreas();
+            else
+                ConvertLegacyAreas();
+
+            Data.AreaDataVersion = CurrentAreaDataVersion;
+            changed = true;
+        }
+
+        // Areas added by a later table version open once their requirement is met.
+        if (UnlockReachableAreas().Count > 0) changed = true;
+
+        // Every DIY prop of the table is owned; keep the acquire time of props owned before.
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (var propId in GameData.TrainPartyDynamicConfigData.Keys)
+            if (Data.PropTimes.TryAdd(propId, now))
+                changed = true;
+
+        if (Data.TurnId <= 0)
+        {
+            Data.TurnId = FirstTurnId;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    // A new party car starts with every area of the tables built; keeps the DIY placements of areas already owned.
+    public void CompleteAllAreas()
+    {
+        foreach (var areaConfig in TrainPartyBuildCatalog.Areas)
+        {
+            var area = GetOrAddArea(areaConfig.ID);
+            area.StepList = TrainPartyBuildCatalog.GetAreaSteps(areaConfig.ID).Select(step => step.ID).ToList();
+        }
+
+        Data.AreaDataVersion = CurrentAreaDataVersion;
+        MarkDirty();
+    }
+
+    // The old defaults stored the captured static prop IDs in StepList. Keep real step IDs and turn the static props
+    // back into the steps that unlock them.
+    private void ConvertLegacyAreas()
+    {
+        foreach (var area in Data.Areas.Values)
+        {
+            var legacy = area.StepList.ToHashSet();
+            area.StepList = TrainPartyBuildCatalog.GetAreaSteps(area.AreaId)
+                .Where(step => legacy.Contains(step.ID) ||
+                               (step.StaticPropIDList.Count > 0 && step.StaticPropIDList.All(legacy.Contains)))
+                .Select(step => step.ID)
+                .ToList();
+        }
+    }
+
+    private TrainAreaInfo GetOrAddArea(int areaId)
+    {
+        if (Data.Areas.TryGetValue(areaId, out var area)) return area;
+
+        area = new TrainAreaInfo { AreaId = areaId };
+        Data.Areas[areaId] = area;
+        return area;
+    }
+
+    // Opens every area whose RequireAreaID is complete (or that has none); returns the newly opened area IDs.
+    private List<int> UnlockReachableAreas()
+    {
+        var unlocked = new List<int>();
+        foreach (var areaConfig in TrainPartyBuildCatalog.Areas)
+        {
+            if (Data.Areas.ContainsKey(areaConfig.ID)) continue;
+            if (areaConfig.RequireAreaID != 0 &&
+                (!Data.Areas.TryGetValue(areaConfig.RequireAreaID, out var required) || GetProgress(required) < 100))
+                continue;
+
+            Data.Areas[areaConfig.ID] = new TrainAreaInfo { AreaId = areaConfig.ID };
+            unlocked.Add(areaConfig.ID);
+        }
+
+        return unlocked;
+    }
+
+    private static HashSet<int> FinishedSteps(TrainAreaInfo area)
+    {
+        return area.StepList.ToHashSet();
+    }
+
+    private static int GetProgress(TrainAreaInfo area)
+    {
+        return TrainPartyBuildCatalog.GetProgress(area.AreaId, FinishedSteps(area));
+    }
+
+    private bool OwnsProp(int propId)
+    {
+        return Data.PropTimes.ContainsKey(propId);
+    }
+
+    public int GetStarNum()
+    {
+        return Data.Areas.Values.Sum(area => TrainPartyBuildCatalog.GetStars(area.AreaId, GetProgress(area)));
+    }
+
+    public int GetBuildLevel()
+    {
+        return TrainPartyBuildCatalog.GetBuildLevel(GetStarNum());
+    }
+
+    #endregion
+
+    #region Floor saved values
+
+    private const string GlobalProgressValue = "Progress_PartyTrainGlobal";
+
+    // Emit floor values for floors declaring Progress_PartyTrainGlobal. Area blocks match Progress_<Room>
+    // and, case-insensitively, Build_<Room>_Finished. Set unmapped Build_Has* and Build_ExRoom_Finished
+    // only on full completion; return nothing if the cache lacks the area blocks.
+    public Dictionary<int, Dictionary<string, int>> BuildFloorSavedValues()
     {
         EnsureDefaults();
 
-        if (!Data.Areas.TryGetValue(areaId, out var area))
-            return null;
+        var result = new Dictionary<int, Dictionary<string, int>>();
+        var rooms = TrainPartyBuildCatalog.Areas
+            .Select(area => (Area: area, Room: TrainPartyBuildCatalog.GetRoomName(area)))
+            .Where(x => x.Room != null)
+            .ToList();
+        if (rooms.Count == 0) return result;
 
-        area.DynamicInfo[slotId] = dynamicId;
-        if (!Data.PropTimes.ContainsKey(dynamicId))
-            Data.PropTimes[dynamicId] = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MarkDirty();
-        return area;
+        var finishedByArea = Data.Areas.ToDictionary(x => x.Key, x => FinishedSteps(x.Value));
+        var global = TrainPartyBuildCatalog.GetGlobalProgress(finishedByArea);
+
+        foreach (var floor in GameData.FloorInfoData.Values)
+        {
+            var names = floor.FloorSavedValue.Select(x => x.Name).ToList();
+            if (!names.Contains(GlobalProgressValue)) continue;
+
+            var values = new Dictionary<string, int> { [GlobalProgressValue] = global };
+            foreach (var (area, room) in rooms)
+            {
+                var progress = finishedByArea.TryGetValue(area.ID, out var finished)
+                    ? TrainPartyBuildCatalog.GetProgress(area.ID, finished)
+                    : 0;
+                var progressName = names.FirstOrDefault(name =>
+                    string.Equals(name, $"Progress_{room}", StringComparison.OrdinalIgnoreCase));
+                if (progressName != null) values[progressName] = progress;
+                var finishedName = names.FirstOrDefault(name =>
+                    string.Equals(name, $"Build_{room}_Finished", StringComparison.OrdinalIgnoreCase));
+                if (finishedName != null) values[finishedName] = progress >= 100 ? 1 : 0;
+            }
+
+            if (global >= 100)
+                foreach (var name in names.Where(name => name.StartsWith("Build_", StringComparison.Ordinal)))
+                    values.TryAdd(name, 1);
+
+            result[floor.FloorID] = values;
+        }
+
+        return result;
     }
+
+    // Writes the build-derived floor saved values into the player's scene data; returns the changed values per floor.
+    public Dictionary<int, Dictionary<string, int>> ApplyFloorSavedValues()
+    {
+        var changed = new Dictionary<int, Dictionary<string, int>>();
+        var sceneData = Player.SceneData;
+        if (sceneData == null) return changed;
+
+        foreach (var (floorId, values) in BuildFloorSavedValues())
+        foreach (var (name, value) in values)
+        {
+            if (sceneData.GetFloorSavedValue(floorId, name) == value) continue;
+            if (!sceneData.FloorSavedData.TryGetValue(floorId, out var saved))
+                sceneData.FloorSavedData[floorId] = saved = [];
+            saved[name] = value;
+            if (!changed.TryGetValue(floorId, out var floorChanges)) changed[floorId] = floorChanges = [];
+            floorChanges[name] = value;
+        }
+
+        if (changed.Count > 0) MarkDirty();
+        return changed;
+    }
+
+    // Applies the floor saved values and refreshes the scene when the player stands on a changed party-car floor.
+    public async ValueTask SyncFloorSavedValuesAsync()
+    {
+        var changed = ApplyFloorSavedValues();
+        var scene = Player.SceneInstance;
+        if (scene == null || !changed.TryGetValue(scene.FloorId, out var current)) return;
+
+        await Player.SendPacket(new PacketUpdateFloorSavedValueNotify(current, Player));
+        await Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.FloorSavedValue);
+        await scene.SyncGroupInfo();
+    }
+
+    #endregion
+
+    #region Build requests
+
+    public (TrainPartyBuildStartStepScRsp Rsp, TrainPartyBuildingUpdateNotify? Notify) BuildStartStep(
+        TrainPartyBuildStartStepCsReq req)
+    {
+        EnsureDefaults();
+
+        var rsp = new TrainPartyBuildStartStepScRsp { CurFund = (uint)Data.Fund };
+        var areaId = (int)req.AreaId;
+        var stepId = (int)req.DNLIGEOFPEL;
+
+        if (!Data.Areas.TryGetValue(areaId, out var area) || TrainPartyBuildCatalog.GetArea(areaId) == null)
+        {
+            rsp.Retcode = (uint)Retcode.RetReqParaInvalid;
+            return (rsp, null);
+        }
+
+        var finished = FinishedSteps(area);
+        var goal = TrainPartyBuildCatalog.GetGoals(areaId)
+            .FirstOrDefault(x => TrainPartyBuildCatalog.GetGoalSteps(x).Any(step => step.ID == stepId));
+        var step = goal == null ? null : GameData.TrainPartyStepConfigData.GetValueOrDefault(stepId);
+        if (goal == null || step == null || finished.Contains(stepId) ||
+            (req.GKENFCLLLJC != 0 && req.GKENFCLLLJC != goal.ID) ||
+            !TrainPartyBuildCatalog.IsStepUnlocked(areaId, stepId, finished))
+        {
+            rsp.Retcode = (uint)Retcode.RetReqParaInvalid;
+            return (rsp, null);
+        }
+
+        if (Data.Fund < step.CoinCost)
+        {
+            rsp.Retcode = (uint)Retcode.RetTrainPartyCoinNotEnough;
+            return (rsp, null);
+        }
+
+        var starsBefore = GetStarNum();
+        var levelBefore = TrainPartyBuildCatalog.GetBuildLevel(starsBefore);
+
+        Data.Fund -= step.CoinCost;
+        area.StepList.Add(stepId);
+        finished.Add(stepId);
+
+        // The client may place a prop in a slot the step opens; take it when it names an owned prop of this area.
+        if (req.PFICNBHIHBA is { DiyDynamicId: not 0 } placement && IsAreaSlot(areaId, (int)placement.DiceSlotId) &&
+            OwnsProp((int)placement.DiyDynamicId))
+            PlaceProp(areaId, (int)placement.DiceSlotId, (int)placement.DiyDynamicId);
+
+        var notify = new TrainPartyBuildingUpdateNotify();
+        notify.OOABOBHEKEH.Add(new FFMMFBMOBEG { FCKNCNDEKAE = new NFNKNNFJILK { IOJOIOHIEAB = (uint)Data.Fund } });
+        foreach (var staticId in step.StaticPropIDList)
+            notify.OOABOBHEKEH.Add(new FFMMFBMOBEG
+                { NEFBGMNGKBN = new CNFPBAJNIEL { AreaId = (uint)areaId, JBEEKBJMIIA = (uint)staticId } });
+
+        var areaUpdate = new AIOCPFLCNLB
+        {
+            AreaId = (uint)areaId,
+            Progress = (uint)GetProgress(area),
+            GKENFCLLLJC = (uint)goal.ID
+        };
+        areaUpdate.FOOMIPJJKOG.AddRange(BuildStepStates(areaId, goal, finished));
+        notify.OOABOBHEKEH.Add(new FFMMFBMOBEG { MFNELHNLNGI = areaUpdate });
+
+        // Finishing the first step hands out the blueprints of the area's other steps.
+        if (TrainPartyBuildCatalog.GetArea(areaId)?.FirstStep == stepId)
+        {
+            var blueprints = new CBJGONHJAAC { AreaId = (uint)areaId };
+            blueprints.FOOMIPJJKOG.AddRange(BuildBlueprints(areaId, finished));
+            if (blueprints.FOOMIPJJKOG.Count > 0)
+                notify.OOABOBHEKEH.Add(new FFMMFBMOBEG { FPMNNMMPOKL = new IGNNGONLFAJ { AreaList = { blueprints } } });
+        }
+
+        foreach (var unlockedAreaId in UnlockReachableAreas())
+        {
+            notify.OOABOBHEKEH.Add(new FFMMFBMOBEG { CNGOKIKBGAJ = new FAHBCNPNBNC { NLJMJCGFFMD = (uint)unlockedAreaId } });
+            var unlockedGoal = TrainPartyBuildCatalog.GetCurrentGoal(unlockedAreaId, new HashSet<int>());
+            if (unlockedGoal == null) continue;
+
+            var newGoal = new PPLKBFMCGLD { BPGBEEOHPLJ = (uint)unlockedGoal.ID };
+            newGoal.FOOMIPJJKOG.AddRange(BuildStepStates(unlockedAreaId, unlockedGoal, new HashSet<int>()));
+            notify.OOABOBHEKEH.Add(new FFMMFBMOBEG { LLCOCEJHKLD = newGoal });
+        }
+
+        var stars = GetStarNum();
+        var level = TrainPartyBuildCatalog.GetBuildLevel(stars);
+        if (stars != starsBefore || level != levelBefore)
+            notify.OOABOBHEKEH.Add(new FFMMFBMOBEG
+                { FHBMGFFBOLP = new DOCMDCPJIEH { StarNum = (uint)stars, BHEJCEJHLIB = (uint)level } });
+
+        MarkDirty();
+        rsp.CurFund = (uint)Data.Fund;
+        return (rsp, notify);
+    }
+
+    public TrainPartyBuildDiyScRsp BuildDiy(TrainPartyBuildDiyCsReq req)
+    {
+        EnsureDefaults();
+
+        var areaId = (int)req.AreaId;
+        var slotId = (int)req.DiceSlotId;
+        var propId = (int)req.DiyDynamicId;
+        var rsp = new TrainPartyBuildDiyScRsp { AreaId = req.AreaId };
+
+        if (!Data.Areas.ContainsKey(areaId) || !IsAreaSlot(areaId, slotId) || (propId != 0 && !OwnsProp(propId)))
+        {
+            rsp.Retcode = (uint)Retcode.RetReqParaInvalid;
+            return rsp;
+        }
+
+        rsp.JKPJFKCBIEM.AddRange(PlaceProp(areaId, slotId, propId));
+        MarkDirty();
+        return rsp;
+    }
+
+    // Slot IDs are prefixed by their area ID (slot 1100101 belongs to area 11).
+    private static bool IsAreaSlot(int areaId, int slotId)
+    {
+        return slotId > 0 && slotId / 100000 == areaId;
+    }
+
+    // Puts a prop in a slot (0 empties it). A prop belongs to one slot at a time, so it leaves any other slot first.
+    // Returns every slot that changed.
+    private List<BHOPIKPAMPJ> PlaceProp(int areaId, int slotId, int propId)
+    {
+        var changes = new List<BHOPIKPAMPJ>();
+
+        if (propId != 0)
+            foreach (var other in Data.Areas.Values)
+            foreach (var otherSlot in other.DynamicInfo.Where(x => x.Value == propId).Select(x => x.Key).ToList())
+            {
+                if (other.AreaId == areaId && otherSlot == slotId) continue;
+                other.DynamicInfo.Remove(otherSlot);
+                changes.Add(SlotUpdate(other.AreaId, otherSlot, 0));
+            }
+
+        var area = Data.Areas[areaId];
+        if (propId == 0)
+            area.DynamicInfo.Remove(slotId);
+        else
+            area.DynamicInfo[slotId] = propId;
+
+        changes.Add(SlotUpdate(areaId, slotId, propId));
+        return changes;
+    }
+
+    private static BHOPIKPAMPJ SlotUpdate(int areaId, int slotId, int propId)
+    {
+        return new BHOPIKPAMPJ
+        {
+            AreaId = (uint)areaId,
+            OOFPPPCEIDP = new AreaDynamicInfo { DiceSlotId = (uint)slotId, DiyDynamicId = (uint)propId }
+        };
+    }
+
+    // The display wall is sent whole on every change and replaces the stored one; props the player does not own
+    // are dropped.
+    public OIIPJFDNPAH SetSelfDisplay(OIIPJFDNPAH? selfDisplay)
+    {
+        EnsureDefaults();
+
+        if (selfDisplay != null)
+        {
+            Data.SelfDisplay = selfDisplay.OFOKOHGPEDO
+                .Select(x => new TrainSelfDisplayEntry { Id = x.Id, Slot = x.Slot, Type = x.Type }).ToList();
+            Data.SelfDisplayDynamics = selfDisplay.GOEJIMNENDC
+                .Where(x => x.DiceSlotId != 0 && x.DiyDynamicId != 0 && OwnsProp((int)x.DiyDynamicId))
+                .GroupBy(x => (int)x.DiceSlotId)
+                .ToDictionary(x => x.Key, x => (int)x.Last().DiyDynamicId);
+            Data.SelfDisplayBadges = selfDisplay.POLMJFIKNHN
+                .Select(x => new TrainSelfDisplayBadge
+                    { Slot = x.DiceSlotId, BadgeId = x.EIKLMFPMJJD, ExpireTime = x.ExpireTime })
+                .ToList();
+            MarkDirty();
+        }
+
+        return BuildSelfDisplayProto();
+    }
+
+    public uint SetBadgeAutoFill(bool enabled)
+    {
+        EnsureDefaults();
+        Data.BadgeAutoFill = enabled;
+        MarkDirty();
+        return 0;
+    }
+
+    // Takes every build level reached but not yet taken in one go (the request names no level).
+    public async ValueTask<TrainPartyTakeBuildLevelAwardScRsp> TakeBuildLevelAward()
+    {
+        EnsureDefaults();
+
+        var rsp = new TrainPartyTakeBuildLevelAwardScRsp
+            { FPHFHCGNNGM = (uint)Data.TakenBuildLevel, ItemList = new ItemList() };
+        var level = GetBuildLevel();
+        var rows = GameData.TrainPartyRewardConfigData.Values
+            .Where(row => row.Level > Data.TakenBuildLevel && row.Level <= level)
+            .OrderBy(row => row.Level)
+            .ToList();
+        if (rows.Count == 0 || rows.Any(row => !GameData.RewardDataData.ContainsKey(row.RewardID)))
+        {
+            rsp.Retcode = (uint)Retcode.RetReqParaInvalid;
+            return rsp;
+        }
+
+        var items = new List<ItemData>();
+        foreach (var reward in rows.Select(row => GameData.RewardDataData[row.RewardID]))
+        {
+            if (reward.Hcoin > 0) items.Add(new ItemData { ItemId = (int)VirtualItemEnum.Hcoin, Count = reward.Hcoin });
+            items.AddRange(reward.GetItems().Select(item => new ItemData { ItemId = item.Item1, Count = item.Item2 }));
+        }
+
+        // Commit the taken level before granting, so a repeated request cannot take the same levels again.
+        Data.TakenBuildLevel = level;
+        MarkDirty();
+
+        rsp.FPHFHCGNNGM = (uint)level;
+        rsp.ItemList.ItemList_.AddRange(items.Select(item => item.ToProto()));
+        await Player.InventoryManager!.AddItems(items);
+        return rsp;
+    }
+
+    #endregion
+
+    #region Build protos
 
     public TrainPartyData ToProto()
     {
         EnsureDefaults();
-        return new TrainPartyData
+        var data = new TrainPartyData
         {
             RecordId = (uint)Data.RecordId,
-            HCJJPLKELGC = BuildGamePlayData(),
             TrainPartyInfo = ToPartyInfo(),
             PassengerInfo = ToPassenger(),
-            UnlockAreaNum = (uint)Data.Areas.Count
+            UnlockAreaNum = (uint)Data.TurnId
         };
+
+        if (GameplayRun != null) data.HCJJPLKELGC = GameplayRun.BuildGameplayData();
+        return data;
     }
 
     public TrainPartyInfo ToPartyInfo()
     {
         EnsureDefaults();
 
+        var stars = GetStarNum();
         var info = new TrainPartyInfo
         {
-            IEEAPCFKOJC = true,                     // 4.2 EKLIAOBCHPI (bool flag)
+            IEEAPCFKOJC = true,
             CurFund = (uint)Data.Fund,
-            CMCNNJKJNPK = BuildSelfDisplayProto()   // 4.2 FCLJEACKGLE (self-display payload)
-            // 4.2 cosmetic uint constants (HIHKGPJCDPK/NMBFMHLNPLM/OBAMHCIFFOC = 30/100/30) have no
-            // recoverable 4.4 anchor — left unset rather than guess a wrong field.
+            StarNum = (uint)stars,
+            BHEJCEJHLIB = (uint)TrainPartyBuildCatalog.GetBuildLevel(stars),
+            JJGKIPDGOGP = (uint)Data.TakenBuildLevel,
+            CMCNNJKJNPK = BuildSelfDisplayProto()
         };
 
-        foreach (var pair in Data.PropTimes)
-            info.MHABCMLHCGD.Add(new GAGGCODGDLB { PropId = (uint)pair.Key, Time = pair.Value });
+        info.MHABCMLHCGD.AddRange(Data.PropTimes.OrderBy(x => x.Key)
+            .Select(x => new GAGGCODGDLB { PropId = (uint)x.Key, Time = x.Value }));
 
-        info.AreaList.AddRange(Data.Areas.OrderBy(x => x.Key).Select(x => x.Value.ToProto()));
+        // The client looks every listed area up in its area table and throws on an unknown one.
+        info.AreaList.AddRange(Data.Areas.Values
+            .Where(area => TrainPartyBuildCatalog.GetArea(area.AreaId) != null)
+            .OrderBy(area => area.AreaId)
+            .Select(BuildAreaProto));
         return info;
+    }
+
+    private TrainPartyArea BuildAreaProto(TrainAreaInfo area)
+    {
+        var finished = FinishedSteps(area);
+        var steps = TrainPartyBuildCatalog.GetAreaSteps(area.AreaId);
+        var proto = new TrainPartyArea
+        {
+            AreaId = (uint)area.AreaId,
+            Progress = (uint)TrainPartyBuildCatalog.GetProgress(area.AreaId, finished)
+        };
+
+        var goal = TrainPartyBuildCatalog.GetCurrentGoal(area.AreaId, finished);
+        if (goal != null)
+        {
+            proto.AreaStepInfo = new AreaStepInfo { GKENFCLLLJC = (uint)goal.ID };
+            proto.AreaStepInfo.BKKLGCLOBCD.AddRange(BuildStepStates(area.AreaId, goal, finished));
+        }
+
+        // Field 8: finished steps.
+        proto.StaticPropIdList.AddRange(steps.Where(step => finished.Contains(step.ID)).Select(step => (uint)step.ID));
+        // Field 12: the static props those steps unlocked.
+        proto.StepIdList.AddRange(steps.Where(step => finished.Contains(step.ID))
+            .SelectMany(step => step.StaticPropIDList).Distinct().Select(id => (uint)id));
+        // Field 13: blueprints.
+        proto.VerifyStepIdList.AddRange(BuildBlueprints(area.AreaId, finished));
+
+        proto.DynamicInfo.AddRange(area.DynamicInfo.OrderBy(x => x.Key).Select(x => new AreaDynamicInfo
+        {
+            DiceSlotId = (uint)x.Key,
+            DiyDynamicId = (uint)x.Value
+        }));
+        return proto;
+    }
+
+    private static IEnumerable<IDBCDHIOKEG> BuildStepStates(int areaId, TrainPartyAreaGoalConfigExcel goal,
+        IReadOnlySet<int> finished)
+    {
+        return TrainPartyBuildCatalog.GetGoalSteps(goal).Select(step => new IDBCDHIOKEG
+        {
+            DNLIGEOFPEL = (uint)step.ID,
+            Status = finished.Contains(step.ID) ? StepFinished
+                : TrainPartyBuildCatalog.IsStepUnlocked(areaId, step.ID, finished) ? StepBuildable
+                : StepLocked
+        });
+    }
+
+    // Blueprints are the buildable or built steps other than the area's FirstStep, which the client never lists.
+    private static IEnumerable<uint> BuildBlueprints(int areaId, IReadOnlySet<int> finished)
+    {
+        var firstStep = TrainPartyBuildCatalog.GetArea(areaId)?.FirstStep ?? 0;
+        return TrainPartyBuildCatalog.GetAreaSteps(areaId)
+            .Where(step => step.ID != firstStep && TrainPartyBuildCatalog.IsStepUnlocked(areaId, step.ID, finished))
+            .Select(step => (uint)step.ID);
+    }
+
+    private OIIPJFDNPAH BuildSelfDisplayProto()
+    {
+        var proto = new OIIPJFDNPAH();
+        proto.OFOKOHGPEDO.AddRange(Data.SelfDisplay.Select(x => new CLLBJDEJFNF
+        {
+            Id = x.Id,
+            Slot = x.Slot,
+            Type = x.Type
+        }));
+        proto.GOEJIMNENDC.AddRange(Data.SelfDisplayDynamics.OrderBy(x => x.Key).Select(x => new AreaDynamicInfo
+        {
+            DiceSlotId = (uint)x.Key,
+            DiyDynamicId = (uint)x.Value
+        }));
+        proto.POLMJFIKNHN.AddRange(Data.SelfDisplayBadges.Select(x => new POFNNGOCEOK
+        {
+            DiceSlotId = x.Slot,
+            EIKLMFPMJJD = x.BadgeId,
+            ExpireTime = x.ExpireTime
+        }));
+        return proto;
     }
 
     public TrainPartyPassengerInfo ToPassenger()
@@ -194,71 +682,9 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
         return info;
     }
 
-    public uint GetWorldId()
-    {
-        EnsureDefaults();
-        return Data.WorldId;
-    }
+    #endregion
 
-    public ulong GetRefreshTime()
-    {
-        EnsureDefaults();
-        return (ulong)Data.RefreshTime;
-    }
-
-    public OIIPJFDNPAH SetSelfDisplay(OIIPJFDNPAH? selfDisplay)
-    {
-        EnsureDefaults();
-
-        if (selfDisplay != null)
-        {
-            Data.SelfDisplay = selfDisplay.OFOKOHGPEDO
-                .Select(x => new TrainSelfDisplayEntry { Id = x.Id, Slot = x.Slot, Type = x.Type }).ToList();
-
-            foreach (var dynamic in selfDisplay.GOEJIMNENDC)
-            {
-                var areaId = (int)(dynamic.DiceSlotId / 100000);
-                if (Data.Areas.TryGetValue(areaId, out var area))
-                    area.DynamicInfo[(int)dynamic.DiceSlotId] = (int)dynamic.DiyDynamicId;
-            }
-
-            MarkDirty();
-        }
-
-        return BuildSelfDisplayProto();
-    }
-
-    public uint SetBadgeAutoFill(bool enabled)
-    {
-        EnsureDefaults();
-        Data.BadgeAutoFill = enabled;
-        MarkDirty();
-        return 0;
-    }
-
-    public uint BuildStartStep(uint areaId, uint stepId, AreaDynamicInfo? dynamicInfo, out uint curFund)
-    {
-        EnsureDefaults();
-        curFund = (uint)Data.Fund;
-
-        if (!Data.Areas.TryGetValue((int)areaId, out var area))
-            return (uint)Retcode.RetFail;
-
-        if (!area.StepList.Contains((int)stepId))
-            area.StepList.Add((int)stepId);
-
-        if (dynamicInfo != null)
-            area.DynamicInfo[(int)dynamicInfo.DiceSlotId] = (int)dynamicInfo.DiyDynamicId;
-
-        var cost = 0;
-        if (GameData.TrainPartyStepConfigData.TryGetValue((int)stepId, out var stepExcel))
-            cost = stepExcel.CoinCost;
-
-        Data.Fund = Math.Max(0, Data.Fund - cost);
-        curFund = (uint)Data.Fund;
-        MarkDirty();
-        return 0;
-    }
+    #region Gameplay
 
     public uint UseCard(uint cardUniqueId)
     {
@@ -324,24 +750,6 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
         return true;
     }
 
-    public uint TakeBuildLevelAward(out ItemList itemList)
-    {
-        EnsureDefaults();
-        itemList = new ItemList();
-        return 0;
-    }
-
-    public TrainPartyBuildingUpdateNotify BuildBuildingUpdateNotify(params uint[] areaIds)
-    {
-        var notify = new TrainPartyBuildingUpdateNotify();
-        return notify;
-    }
-
-    public TrainPartySyncUpdateScNotify BuildSyncUpdateNotify(params TrainAreaInfo[] areas)
-    {
-        return new TrainPartySyncUpdateScNotify();
-    }
-
     public TrainPartyMoveScNotify BuildMoveNotify()
     {
         var notify = new TrainPartyMoveScNotify { DNGKGLFMGGE = (uint)Data.GameplayRound };
@@ -358,10 +766,12 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
 
     public TrainPartyGamePlaySettleNotify BuildGamePlaySettleNotify()
     {
+        EnsureDefaults();
         var notify = new TrainPartyGamePlaySettleNotify
         {
             RecordId = (uint)Data.RecordId,
-            UnlockAreaNum = (uint)Data.Areas.Count,
+            // Field 6 is the turn after the settle (TrainPartyGameInstance.OnGameplaySettle -> _SetCurTurnID).
+            UnlockAreaNum = (uint)Data.TurnId,
             ENBJCMPCMLK = ToPassenger()
         };
 
@@ -369,129 +779,10 @@ public class TrainPartyManager(PlayerInstance player) : BasePlayerManager<TrainD
         return notify;
     }
 
-    private EPHKIEHONGB BuildGamePlayData()
-    {
-        // With an active run, expose its full state; otherwise return only the safely-known scalar
-        // (gameplay type) so GetData always succeeds.
-        if (GameplayRun != null) return GameplayRun.BuildGameplayData();
+    #endregion
 
-        return new EPHKIEHONGB
-        {
-            IDBDBICPBBG = (uint)Data.GameplayType
-        };
-    }
-
-    private OIIPJFDNPAH BuildSelfDisplayProto()
-    {
-        var proto = new OIIPJFDNPAH();
-        proto.OFOKOHGPEDO.AddRange(Data.SelfDisplay.Select(x => new CLLBJDEJFNF
-        {
-            Id = x.Id,
-            Slot = x.Slot,
-            Type = x.Type
-        }));
-
-        proto.GOEJIMNENDC.AddRange(DefaultSelfDisplayDynamics.Select(x => new AreaDynamicInfo
-        {
-            DiceSlotId = x.DiceSlotId,
-            DiyDynamicId = x.DiyDynamicId
-        }));
-
-        proto.POLMJFIKNHN.AddRange(TimedDynamicProps.Select(x => new POFNNGOCEOK
-        {
-            DiceSlotId = x.DiceSlotId,
-            EIKLMFPMJJD = x.DynamicId,
-            ExpireTime = x.Time
-        }));
-
-        return proto;
-    }
-
-    private static readonly TrainSelfDisplayEntry[] DefaultSelfDisplay =
-    [
-        new() { Id = 1415, Slot = 1600301, Type = 1 },
-        new() { Id = 1308, Slot = 1600302, Type = 1 },
-        new() { Id = 5161, Slot = 1600303, Type = 4 },
-        new() { Id = 5037, Slot = 1600304, Type = 4 },
-        new() { Id = 23024, Slot = 1600305, Type = 3 },
-        new() { Id = 23052, Slot = 1600306, Type = 3 }
-    ];
-
-    private static readonly AreaDynamicInfo[] DefaultSelfDisplayDynamics =
-    [
-        new() { DiceSlotId = 1600101, DiyDynamicId = 295603 },
-        new() { DiceSlotId = 1600102, DiyDynamicId = 295610 },
-        new() { DiceSlotId = 1600103, DiyDynamicId = 294003 },
-        new() { DiceSlotId = 1600104, DiyDynamicId = 295609 },
-        new() { DiceSlotId = 1600105, DiyDynamicId = 295604 },
-        new() { DiceSlotId = 1600201, DiyDynamicId = 295601 }
-    ];
-
-    private static readonly (uint DiceSlotId, uint DynamicId, long Time)[] TimedDynamicProps =
-    [
-        (1600106, 295523, 1780264800),
-        (1600107, 295527, 1783893600),
-        (1600108, 295531, 1787522400)
-    ];
-
-    private static readonly (int propId, long time)[] Props =
-    [
-        (295123, 1776823846), (293008, 1776823846), (291006, 1776823846), (295606, 1776823846),
-        (292005, 1776823846), (294005, 1776823846), (295603, 1776823846), (292006, 1776823846),
-        (293001, 1776823846), (295125, 1776824028), (293005, 1776823846), (291005, 1776823846),
-        (295611, 1776879877), (294001, 1776823846), (294004, 1776823846), (295602, 1776873318),
-        (295124, 1776823846), (291007, 1776823846), (295607, 1776823846), (291001, 1776823846),
-        (295605, 1776823846), (293006, 1776823846), (295121, 1776823846), (291004, 1776823846),
-        (295610, 1776823846), (294002, 1776823846), (292001, 1776823846), (293004, 1776823846),
-        (295609, 1776823846), (291003, 1776823846), (295604, 1776823846), (294006, 1776823846),
-        (292004, 1776823846), (295122, 1776823846), (293007, 1776823846), (292003, 1776823846),
-        (293003, 1776823846), (291002, 1776823846), (295608, 1776823846), (292002, 1776823846),
-        (293002, 1776823846), (294003, 1776823846), (295601, 1776828054)
-    ];
-
-    private static readonly TrainAreaInfo[] DefaultAreas =
-    [
-        new()
-        {
-            AreaId = 11,
-            StepList = [10001, 10003, 11001, 11002, 11003, 11004, 11005, 11006, 11007, 11008, 11009, 11011],
-            DynamicInfo = new Dictionary<int, int> { [1100101] = 291004, [1100201] = 291005, [1100901] = 291006 }
-        },
-        new()
-        {
-            AreaId = 12,
-            StepList = [10007, 10009, 10010, 12001, 12002, 12003, 12004, 12005, 12006, 12007, 12008, 12009, 12011, 12012, 12013],
-            DynamicInfo = new Dictionary<int, int>
-            {
-                [1200201] = 294002, [1200401] = 292002, [1200501] = 294001,
-                [1200701] = 293003, [1200703] = 291007, [1201201] = 291001
-            }
-        },
-        new()
-        {
-            AreaId = 13,
-            StepList = [10002, 10014, 13001, 13002, 13003, 13004, 13005, 13007],
-            DynamicInfo = new Dictionary<int, int> { [1300301] = 293005, [1300302] = 293008, [1300401] = 292005, [1300402] = 292006 }
-        },
-        new()
-        {
-            AreaId = 14,
-            StepList = [10004, 10008, 14001, 14002, 14003, 14004, 14005, 14006, 14007, 14008, 14009, 14010, 14011],
-            DynamicInfo = new Dictionary<int, int> { [1400501] = 294006 }
-        },
-        new()
-        {
-            AreaId = 15,
-            StepList = [10006, 10011, 15001, 15002, 15005, 15006, 15007, 15008],
-            DynamicInfo = new Dictionary<int, int> { [1500101] = 293007, [1500601] = 292001, [1500701] = 292004 }
-        },
-        new()
-        {
-            AreaId = 16,
-            StepList = [10005, 10012, 10013, 16001, 16002, 16003]
-        }
-    ];
-
+    // Board-minigame and passenger seed data captured from a 4.2 account. Out of the build flow above; copied per
+    // player, never shared.
     private static readonly TrainCardInfo[] DefaultCards =
     [
         new() { CardId = 107, UniqueId = 1 },

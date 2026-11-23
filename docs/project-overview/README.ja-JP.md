@@ -1,97 +1,96 @@
-# March7thHoney
+<div align="center">
 
-<p align="center">
-  <img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white" alt=".NET 10" />
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-2ea44f" alt="Platform" />
-  <img src="https://img.shields.io/badge/Status-Active%20Development-f39c12" alt="Status" />
-  <img src="https://img.shields.io/badge/License-GPLv3-blue" alt="License" />
-</p>
+<a href="https://github.com/Mar7thDev/March7thHoney"><img src="../assets/banner.svg" alt="March7thHoney" width="100%" /></a>
 
-March7thHoneyは、.NET 10をベースとしたサーバープロジェクトです。
-このプロジェクトは現在も継続的に開発が進められており、新機能の追加やバグ修正が行われています。
+[クイックスタート](#クイックスタート) · [機能](#機能) · [ドキュメント](../README.md) · [コントリビューション](../../CONTRIBUTING.md) · [Discord](https://discord.gg/CyreneEchoes)
 
-[EN](../../README.md) | [简中](README.zh-CN.md) | [繁中](README.zh-TW.md) | [JP](README.ja-JP.md)
+<a href="https://github.com/Mar7thDev/March7thHoney/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Mar7thDev/March7thHoney/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white&style=for-the-badge&labelColor=161b33&color=ff8fb1" alt="CI" /></a>
+<a href="https://github.com/Mar7thDev/March7thHoney/stargazers"><img src="https://img.shields.io/github/stars/Mar7thDev/March7thHoney?logo=github&logoColor=white&style=for-the-badge&labelColor=161b33&color=ff8fb1" alt="Stars" /></a>
+<a href="https://discord.gg/CyreneEchoes"><img src="https://img.shields.io/badge/Discord-Join-7fd8ff?logo=discord&logoColor=white&style=for-the-badge&labelColor=161b33" alt="Discord" /></a>
 
-## 目次
+[English](../../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | 日本語
 
-- [機能進捗](#機能進捗)
-- [ロードマップ](#ロードマップ)
-- [リポジトリ構成](#リポジトリ構成)
-- [必要環境](#必要環境)
-- [クイックスタート](#クイックスタート)
-- [ビルド](#ビルド)
-- [CI成果物](#ci成果物)
-- [補足](#補足)
-- [トラブルシューティング](#トラブルシューティング)
-- [クレジット](#クレジット)
+</div>
 
-## 機能進捗
+<table>
+<tr>
+<td width="50%" valign="top">
 
-| モジュール | 状態 | メモ |
+### 🎮 最初から最後まで遊べる
+
+ショップ、跳躍、戦闘、オープンワールド、エンドゲームの各チャレンジモードが実際のクライアントで動作します。任務は拡充中です。
+
+</td>
+<td width="50%" valign="top">
+
+### 🚀 運用を前提にした作り
+
+SQLite または MySQL、Web 管理画面、MUIP API、systemd に対応した Linux 構成を備えています。Windows、Linux、macOS の `x64` と `arm64` に対応します。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### ⚡ 実行時にリフレクションを使わない
+
+パケットハンドラー、コマンド、データベースストアは Roslyn ソースジェネレーターが登録するため、NativeAOT でも発行できます。
+
+</td>
+<td width="50%" valign="top">
+
+### ✅ 変更のたびに検証
+
+警告をエラーとして扱うビルドと、アカウント、Web サーバー、KCP、ソースジェネレーターの回帰スイートが CI で実行されます。ログイン、シーン、各ゲームモードには実リソースを使う回帰スイートが別にあります。
+
+</td>
+</tr>
+</table>
+
+このページ以外のドキュメントは英語と簡体字中国語で提供されています。以下のリンクは英語版を指します。
+
+## 機能
+
+| モジュール | 状態 | 説明 |
 |---|---|---|
-| ショップ | 安定 | 閲覧・購入フローに対応 |
-| 編成 | 安定 | 編成切替・スロット変更に対応 |
-| ガチャ | 安定 | 一連の抽選・表示フローに対応 |
-| バトル | 安定 | コア戦闘ループはプレイ可能 |
-| フィールド/シーン | 安定 | 読み込み・インタラクション・探索に対応 |
-| キャラ育成 | 安定 | レベル/昇格の基本ループに対応 |
-| クエスト | 改善中 | 進行可能だが一部エッジケースあり |
-| フレンド | 安定 | 基本機能に対応 |
-| 異相仲裁 | 安定 | 解放・挑戦・報酬受取に対応 |
-| チャレンジ系 | 安定 | FH / PF / AS はプレイ可能 |
-| 差分宇宙関連 | 改善中 | 基本フロー導入済み |
-| 実績 | 安定 | 多くの実績に対応 |
+| ショップ | 安定 | 閲覧と購入の流れが動作 |
+| 編成 | 安定 | チームとスロットの切り替えに対応 |
+| 跳躍/ガチャ | 安定 | 抽選の流れと結果表示が完全に動作 |
+| 戦闘フロー | 安定 | 基本の戦闘ループをプレイ可能 |
+| オープンワールド | 安定 | シーンの読み込み、インタラクション、探索 |
+| キャラクター育成 | 安定 | レベルアップと昇格が利用可能 |
+| 任務 | 開発中 | メインと共通の進行は動作、例外的なケースが残る |
+| フレンド | 安定 | 基本のやり取りと表示 |
+| 異相の仲裁 | 安定 | 入場、挑戦、報酬に対応 |
+| チャレンジモード | 安定 | 忘却の庭、虚構叙事、末日の幻影をプレイ可能 |
+| 貨幣戦争 | 開発中 | 基本のゲームフローが利用可能 |
+| アチーブメント | 安定 | ほとんどのアチーブメントに対応 |
 
-詳細な開発進捗： [英語](../development/gameplay-implementation.md) | [簡体字中国語](../development/gameplay-implementation.zh-CN.md) | [繁体字中国語](../development/gameplay-implementation.zh-TW.md) | [日本語](../development/gameplay-implementation.ja-JP.md)
-
-## Muip API 入口
-
-- ドキュメント索引：[docs/](../README.md)
-- Muip API ドキュメント： [英語](../api/muip-api.md) | [簡体字中国語](../api/muip-api.zh-CN.md) | [繁体字中国語](../api/muip-api.zh-TW.md) | [日本語](../api/muip-api.ja-JP.md)
-
-## ロードマップ
-
-1. 差分宇宙と高複雑コンテンツの安定化。
-2. 残タスクと特殊トリガー処理の補完。
-3. 精算・同期の安定性をさらに改善。
-4. イベント系コンテンツ対応範囲の拡張。
-5. UI/状態同期の不整合を継続修正。
-6. サーバー設定項目の拡充。
-
-## リポジトリ構成
-
-- `Program/` 起動エントリと全体オーケストレーション
-- `GameServer/` ゲームロジック、パケット処理、ランタイム管理
-- `WebServer/` ディスパッチ/HTTP サービス
-- `Command/` コマンド実装
-- `Common/` 共有データモデル、設定、列挙、DBエンティティ
-- `Config/` 実行時リソースとカスタムデータ
-- `docs/` 多言語ドキュメント/API
-
-## 必要環境
-
-- .NET SDK 10
-- Git
-- Windows、Linux または macOS（`x64` / `arm64`）
+全体の一覧は[ゲームプレイ実装ツリー](../development/gameplay-implementation.md)を参照してください。
 
 ## クイックスタート
 
+.NET SDK 10（10.0.100 以降）と Git が必要です。Windows、Linux、macOS（`x64` または `arm64`）に対応しています。
+
 ```bash
-git clone --recurse-submodules https://github.com/Mar7thLover/March7thHoney.git
+git clone https://github.com/Mar7thDev/March7thHoney.git
 cd March7thHoney
-dotnet restore
-dotnet run --project program
+dotnet run --project Program/Program.csproj
 ```
+
+リポジトリにはゲームリソースは含まれていません。サーバーはローカルのリソースキャッシュから読み込みます。作成方法は[クライアントのエクスポートからリソースキャッシュを再構築する](../operations/resource-cache-from-client-export.md)を参照してください。
+
+Linux サーバーでの運用（systemd サービスと更新を含む）は[ネイティブ Linux ガイド](../getting-started/native-linux.md)に従ってください。
 
 ## ビルド
 
 ```bash
-dotnet build program/program.csproj -c Release
+dotnet build Program/Program.csproj -c Release
 ```
 
-## CI成果物
+ビルド時に、バージョンを固定した `Google.Protobuf.Tools` 3.33.1 を使って、リポジトリ内にある有効なプロトコルバージョン `Proto/4.7/` の定義からプロトコルの C# を生成します。有効なバージョンは `Proto/Proto.csproj` の `ActiveProtocolVersion` で指定します。生成されたファイルは `Proto/obj/` に置かれ、バージョン管理の対象外です。旧バージョンのプロトコルは `Proto/Archives/` に可逆圧縮の ZIP アーカイブとして保存されています。定義の更新方法とプラットフォーム要件は[プロトコルガイド](../development/protobuf.md)を参照してください。
 
-現在のワークフローは以下の自己完結ビルドを出力します。
+CI は `main` の自己完結型ビルドをワークフローの成果物として公開します。
 
 | ランタイム | 成果物名 |
 |---|---|
@@ -99,40 +98,70 @@ dotnet build program/program.csproj -c Release
 | `linux-x64` | `March7thHoney-linux-x64` |
 | `linux-arm64` | `March7thHoney-linux-arm64` |
 
-<details>
-<summary>手動公開メモ</summary>
+publish の出力には、`Config/` でバージョン管理されている既定の設定が含まれます。`Config/Security/` のログイン用 RSA 鍵ペアもその一つです。サーバーは作業ディレクトリから `Config/` を読み込み、`Config/Security/LoginRsaPrivateKey.pem` がないと暗号化されたログインをすべて拒否します。この鍵ペアは CyreneLauncher と共有する公開のテスト用素材で（ランチャーは既定でその公開鍵で暗号化します）、他人がアクセスできるサーバーでは何も保護しません。リソースキャッシュは含まれません。
 
-- Actions のストレージ逼迫時は手動実行時のみ成果物アップロードを推奨。
-- 容量超過時は過去成果物の削除、または再計算待ちが必要です。
+[Releases](https://github.com/Mar7thDev/March7thHoney/releases) には CyreneLauncher がダウンロードする Windows パッケージ `win-x64.zip` があります。CI がリリースタグに対して公開する自己完結型の `win-x64` ビルドに `Config/Resource.bin` を加えたものです。ランチャーはこれをサーバーフォルダーに上書き展開するため、更新しても `Config.json` と `Config/Database/` は残ります。
 
-</details>
+## ドキュメント
 
-## 補足
+[ドキュメント索引](../README.md)にすべての文書が載っています。主な入口：
 
-- 更新後に挙動不整合が出る場合、まずキャッシュ/実行データを整理して再検証してください。
-- 一部モジュールはリファクタ中のため、ドキュメントと実装に一時的な差分が出ることがあります。
+- サーバーの運用：[ネイティブ Linux ガイド](../getting-started/native-linux.md)、[アカウントセキュリティ](../operations/account-security.md)
+- API：[MUIP API](../api/muip-api.md)、[Web アカウント API](../api/web-account-api.md)
+- 開発に参加する：[コントリビューションガイド](../../CONTRIBUTING.md)、[プロトコル](../development/protobuf.md)、[ソースジェネレーター](../development/source-generators.md)
+- 回帰テスト：[セキュリティゲート](../testing/security-regression.md)と `docs/testing/` 以下の文書
+
+## コントリビューション
+
+変更の提案を歓迎します。ビルド方法、実行すべき回帰テスト、コミットとプルリクエストの規約は[コントリビューションガイド](../../CONTRIBUTING.md)を参照してください。脆弱性は[セキュリティポリシー](../../SECURITY.md)に従って非公開で報告してください。
+
+## ロードマップ
+
+1. 貨幣戦争と階差宇宙の改善。
+2. 残りの任務と特殊なトリガーロジックの補完。
+3. 例外的なケースでの精算と同期の安定性向上。
+4. イベントモードの対応範囲の拡大。
+5. UI と状態同期の問題の継続的な修正。
+6. 設定可能なサーバーオプションの追加。
 
 ## トラブルシューティング
 
-- まず設定済みログ出力先を確認してください。
-- よく使う復旧コマンドは `/scene reload`。
-- コミュニティサポート: <https://discord.gg/castoriceps>
+- 設定したログディレクトリのサーバーログを確認してください。
+- `/scene reload` でほとんどのシーンの問題が解決します。
+- 更新後に動作がおかしい場合は、ランタイムのキャッシュとデータを消去し、新しいアカウントで再確認してください。
+- コミュニティサポート：<https://discord.gg/CyreneEchoes>
 
 ## クレジット
 
-### 共同開発者
+### コラボレーター
 
-- [Mar7thLover](https://github.com/Mar7thLover)
-- [Cyrup](https://github.com/March7thHoney)
+- [Oriha](https://github.com/OrihaWeave)
+- Cyrup
 - [Melioli](https://github.com/Melioli)
 
-### 貢献者
+### コントリビューター
 
 - [Yuki](https://github.com/Yuki8859)
 - [Cyt](https://github.com/qinfyy)
+- [Glzd001](https://github.com/Glzd001)
+- [blamefire159-debug](https://github.com/blamefire159-debug)
+- [AzureXuanVerse](https://github.com/AzureXuanVerse)
+- [AcheronWife](https://github.com/AcheronWife)
+- [Yuuki](https://github.com/akbaryahya)
+- [ShuaiyuMiao](https://github.com/ShuaiyuMiao)
 
 ### 関連プロジェクト
 
-- [SqlSugar](https://github.com/donet5/SqlSugar)
 - [LunarCore](https://github.com/Melledy/LunarCore)
-- [DanhengServer](https://github.com/Mar7thLover/DanhengServer-OpenSource)
+- [DanhengServer](https://github.com/OrihaWeave/DanhengServer-OpenSource)
+- [KcpSharp](https://github.com/yigolden-oss/KcpSharp)
+
+<a href="https://github.com/Mar7thDev/March7thHoney/graphs/contributors"><img src="https://contrib.rocks/image?repo=Mar7thDev/March7thHoney" alt="コントリビューター" /></a>
+
+## Star の推移
+
+<a href="https://www.star-history.com/#Mar7thDev/March7thHoney&Date"><img src="https://api.star-history.com/svg?repos=Mar7thDev/March7thHoney&type=Date" alt="Star History Chart" width="100%" /></a>
+
+## ライセンス
+
+March7thHoney は [GNU Affero General Public License v3.0](../../LICENSE) の下でライセンスされています。

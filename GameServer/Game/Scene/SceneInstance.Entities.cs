@@ -21,6 +21,33 @@ public partial class SceneInstance
 {
     #region Entity Management
 
+    /// <summary>
+    ///     Replaces a lineup avatar's field actor with a fresh one. The actor is built from the avatar's current path,
+    ///     so a path change keeps the previous model until the actor is rebuilt.
+    /// </summary>
+    public async ValueTask RefreshAvatarActor(int baseAvatarId)
+    {
+        var existing = AvatarInfo.Values.FirstOrDefault(x => x.AvatarInfo.BaseAvatarId == baseAvatarId);
+        if (existing == null) return;
+
+        await existing.ClearAllBuff();
+        AvatarInfo.Remove(existing.EntityId);
+        Entities.Remove(existing.EntityId);
+        await existing.OnDestroyInstance();
+
+        var fresh = new AvatarSceneInfo(existing.AvatarInfo, existing.AvatarType, Player)
+        {
+            EntityId = ++LastEntityId
+        };
+        AvatarInfo[fresh.EntityId] = fresh;
+        Entities[fresh.EntityId] = fresh;
+        if (LeaderEntityId == existing.EntityId)
+            LeaderEntityId = fresh.EntityId;
+
+        await Player.SendPacket(new PacketSceneGroupRefreshScNotify(Player,
+            new List<BaseGameEntity> { fresh }, new List<BaseGameEntity> { existing }));
+    }
+
     public async ValueTask AddEntity(BaseGameEntity entity)
     {
         await AddEntity(entity, IsLoaded);

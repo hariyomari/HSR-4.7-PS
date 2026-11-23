@@ -1,8 +1,8 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Avatar;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
-using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Game.Pet;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
@@ -176,7 +176,10 @@ public partial class InventoryManager(PlayerInstance player) : BasePlayerManager
         return item;
     }
 
-    /// <summary>宠物材料变化后让宠物实例对账，并给新实例推送 PetDataChangeScNotify（组件注册前为空操作）。</summary>
+    /// <summary>
+    ///     After pet materials change, has the pet instances reconciled and PetDataChangeScNotify pushed for the new
+    ///     instances (a no-op before the component is registered).
+    /// </summary>
     private async ValueTask NotifyPetItemsChanged()
     {
         var pets = Player.GetComponentOrDefault<PetManager>();
@@ -197,10 +200,92 @@ public partial class InventoryManager(PlayerInstance player) : BasePlayerManager
         return removedItems;
     }
 
+    /// <summary>
+    ///     How many of a stackable item or removable currency the player holds; 0 for anything RemoveItem cannot take
+    ///     by count (equipment, relics, unknown items, non-removable virtual items).
+    /// </summary>
+    public long GetRemovableCount(int itemId)
+    {
+        GameData.ItemConfigData.TryGetValue(itemId, out var itemConfig);
+        if (itemConfig == null) return 0;
+        long owned = itemConfig.ItemMainType switch
+        {
+            ItemMainTypeEnum.Material or ItemMainTypeEnum.Pet or ItemMainTypeEnum.Mission or ItemMainTypeEnum.Usable =>
+                Data.MaterialItems.Find(x => x.ItemId == itemId)?.Count ?? 0,
+            ItemMainTypeEnum.Virtual => (VirtualItemEnum)itemConfig.ID switch
+            {
+                VirtualItemEnum.Hcoin => Player.Data.Hcoin,
+                VirtualItemEnum.Scoin => Player.Data.Scoin,
+                VirtualItemEnum.Mcoin => Player.Data.Mcoin,
+                VirtualItemEnum.TalentPoint => Player.Data.TalentPoints,
+                _ => 0
+            },
+            _ => 0
+        };
+        return Math.Max(0, owned);
+    }
+
+    /// <summary>
+    ///     Merges the costs per item and checks every one of them: null when any amount is not positive, a total does
+    ///     not fit an int, or the player holds less than the total.
+    /// </summary>
+    private Dictionary<int, int>? ResolveAffordableCosts(IEnumerable<(int itemId, long count)> costs)
+    {
+        var totals = new Dictionary<int, long>();
+        foreach (var (itemId, count) in costs)
+        {
+            if (count <= 0 || count > int.MaxValue) return null;
+            var total = totals.GetValueOrDefault(itemId) + count;
+            if (total > int.MaxValue) return null;
+            totals[itemId] = total;
+        }
+
+        if (totals.Any(cost => GetRemovableCount(cost.Key) < cost.Value)) return null;
+        return totals.ToDictionary(cost => cost.Key, cost => (int)cost.Value);
+    }
+
+    public bool CanAfford(IEnumerable<(int itemId, long count)> costs)
+    {
+        return ResolveAffordableCosts(costs) != null;
+    }
+
+    /// <summary>
+    ///     All-or-nothing removal of stackable items and currencies: nothing is removed unless every cost is positive
+    ///     and affordable. Returns false when the costs were rejected.
+    /// </summary>
+    public async ValueTask<bool> TryRemoveItems(IEnumerable<(int itemId, long count)> costs, bool sync = true)
+    {
+        var resolved = ResolveAffordableCosts(costs);
+        if (resolved == null) return false;
+
+        List<ItemData> removedItems = [];
+        var currencyChanged = false;
+        foreach (var (itemId, count) in resolved)
+        {
+            var removed = await RemoveItem(itemId, count, sync: false);
+            if (removed == null) continue;
+            if (GameData.ItemConfigData[itemId].ItemMainType == ItemMainTypeEnum.Virtual) currencyChanged = true;
+            else removedItems.Add(removed);
+        }
+
+        if (!sync) return true;
+        if (removedItems.Count > 0) await Player.SendPacket(new PacketPlayerSyncScNotify(removedItems));
+        if (currencyChanged) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+        return true;
+    }
+
+    /// <summary>
+    ///     Removes up to <paramref name="count" /> of a stackable item (the stack is emptied when it holds less), the
+    ///     exact amount of a currency, or the equipment/relic with <paramref name="uniqueId" />. Returns null and changes
+    ///     nothing for a non-positive count, a missing item or an unaffordable currency amount. Use TryRemoveItems for
+    ///     costs that must be paid in full.
+    /// </summary>
     public async ValueTask<ItemData?> RemoveItem(int itemId, int count, int uniqueId = 0, bool sync = true)
     {
         GameData.ItemConfigData.TryGetValue(itemId, out var itemConfig);
         if (itemConfig == null) return null;
+        if (count <= 0 && itemConfig.ItemMainType is not (ItemMainTypeEnum.Equipment or ItemMainTypeEnum.Relic))
+            return null;
 
         ItemData? itemData = null;
 
@@ -224,21 +309,22 @@ public partial class InventoryManager(PlayerInstance player) : BasePlayerManager
                     Player.GetComponentOrDefault<PetManager>()?.Reconcile();
                 break;
             case ItemMainTypeEnum.Virtual:
-                switch (itemConfig.ID)
+                if (GetRemovableCount(itemId) < count) return null;
+                switch ((VirtualItemEnum)itemConfig.ID)
                 {
-                    case 1:
+                    case VirtualItemEnum.Hcoin:
                         Player.Data.Hcoin -= count;
                         itemData = new ItemData { ItemId = itemId, Count = count };
                         break;
-                    case 2:
+                    case VirtualItemEnum.Scoin:
                         Player.Data.Scoin -= count;
                         itemData = new ItemData { ItemId = itemId, Count = count };
                         break;
-                    case 3:
+                    case VirtualItemEnum.Mcoin:
                         Player.Data.Mcoin -= count;
                         itemData = new ItemData { ItemId = itemId, Count = count };
                         break;
-                    case 32:
+                    case VirtualItemEnum.TalentPoint:
                         Player.Data.TalentPoints -= count;
                         itemData = new ItemData { ItemId = itemId, Count = count };
                         break;
@@ -302,53 +388,8 @@ public partial class InventoryManager(PlayerInstance player) : BasePlayerManager
                     ? Data.RelicItems.Find(x => x.UniqueId == uniqueId)
                     : Data.RelicItems.Find(x => x.ItemId == itemId);
             case ItemMainTypeEnum.Virtual:
-                switch (itemConfig?.ID ?? 0)
-                {
-                    case 1:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.Hcoin
-                        };
-                    case 2:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.Scoin
-                        };
-                    case 3:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.Mcoin
-                        };
-                    case 11:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.Stamina
-                        };
-                    case 22:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.Exp
-                        };
-                    case 32:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.Data.TalentPoints
-                        };
-                    case DailyActiveManager.DailyActivePointItemId:
-                        return new ItemData
-                        {
-                            ItemId = itemId,
-                            Count = Player.GetComponentOrDefault<DailyActiveManager>()?.Point ?? 0
-                        };
-                }
-
-                break;
+                var balance = GetVirtualItemCount(itemConfig?.ID ?? 0);
+                return balance == null ? null : new ItemData { ItemId = itemId, Count = balance.Value };
         }
 
         return null;

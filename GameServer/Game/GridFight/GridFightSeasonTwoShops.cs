@@ -9,9 +9,10 @@ public sealed record GridFightJadeShopGoodState(uint SlotId, uint GoodId, IReadO
 public sealed record GridFightTrailblazeGoodState(uint GoodId, uint Cost);
 
 /// <summary>
-///     Season-2 shop-like traits: 黑市主理人 (Jade, 3004021), 开拓银轨 (1005021) and 千星商会 (1006021), plus the free
-///     shop refreshes several of them hand out. Wire layout: artifacts/gf-season2/re-g1-shops.md. Pools, unlocks and
-///     node triggers are not encoded in the client and follow the trait descriptions (marked where guessed).
+///     Season-2 shop-like traits: Jade (黑市主理人, 3004021), Trailblaze (开拓银轨, 1005021) and Astropolis
+///     (千星商会, 1006021), plus the free shop refreshes several of them hand out.
+///     Pools, unlocks and node triggers are not encoded in the client and follow the trait descriptions (marked where
+///     guessed).
 /// </summary>
 public sealed partial class GridFightSession
 {
@@ -22,10 +23,13 @@ public sealed partial class GridFightSession
     public const uint TrailblazeTraitId = 100502;
     public const uint TrailblazeEffectId = 1005021;
     public const uint TrailblazeRefreshGoodId = 999;
-    /// <summary>星穹列车，前进IV! — has no price; the train evolves into it at the top layer.</summary>
+    /// <summary>Forward IV ("星穹列车，前进IV!") has no price; the train evolves into it at the top layer.</summary>
     private const uint TrailblazeFinalTrainGoodId = 400;
     public const uint PamKingRoleId = 604202;
-    /// <summary>帕姆王 "累计消耗解锁": the client's own default when no modifier is synced (no table carries it).</summary>
+    /// <summary>
+    ///     Pam King (帕姆王) unlock by total spending ("累计消耗解锁"): the client's own default when no modifier is synced
+    ///     (no table carries it).
+    /// </summary>
     public const uint PamKingCostedThreshold = 500;
     public const uint AstropolisTraitId = 100602;
     public const uint AstropolisEffectId = 1006021;
@@ -52,12 +56,12 @@ public sealed partial class GridFightSession
     public uint TrailblazeCoin => _trailblazeCoin;
     public IReadOnlyList<GridFightTrailblazeGoodState> TrailblazeGoods => _trailblazeGoods;
     public IReadOnlyDictionary<uint, uint> TrailblazeBought => _trailblazeBought;
-    /// <summary>开拓力 spent in the Trailblaze shop this run (帕姆王 progress).</summary>
+    /// <summary>Trailblaze coin (开拓力) spent in the Trailblaze shop this run (Pam King progress).</summary>
     public uint TrailblazeCostedCoin => _trailblazeCostedCoin;
     public uint PamKingModifierUniqueId => _pamKingModifierUniqueId;
     public bool PamKingUnlocked => _pamKingUnlocked;
 
-    /// <summary>Returns and clears the 帕姆王 grant made by the last Trailblaze purchase.</summary>
+    /// <summary>Returns and clears the Pam King grant made by the last Trailblaze purchase.</summary>
     public GridFightRewardApplication? TakePamKingUnlock()
     {
         var unlock = _pendingPamKingUnlock;
@@ -97,7 +101,7 @@ public sealed partial class GridFightSession
         RefreshAstropolis(layers, changes);
     }
 
-    // ---------------------------------------------------------------- 黑市主理人
+    // ---------------------------------------------------------------- Jade
 
     private uint ResolveJadeStar() =>
         Roles.Where(role => role.RoleId == JadeRoleId && IsActivePosition(role.Position))
@@ -259,7 +263,7 @@ public sealed partial class GridFightSession
         return application;
     }
 
-    // ---------------------------------------------------------------- 开拓银轨
+    // ---------------------------------------------------------------- Trailblaze
 
     private void RefreshTrailblazeShop(
         IReadOnlyDictionary<uint, GridFightTraitLayerState> layers,
@@ -268,12 +272,12 @@ public sealed partial class GridFightSession
         if (!layers.TryGetValue(TrailblazeTraitId, out var state) || state.Layer == 0) return;
         if (!_trailblazeActivated)
         {
-            // 星穹列车，跃迁！(101) is the base train every later MazeBuff good upgrades (FatherGoodID chain).
+            // Good 101 ("星穹列车，跃迁！") is the base train every later MazeBuff good upgrades (FatherGoodID chain).
             _trailblazeActivated = true;
             _trailblazeBought[101] = 1;
             _pamKingModifierUniqueId = _nextEntityUniqueId++;
         }
-        // Layer 10 (tier 5) "列车进化！": the train evolves to 前进IV (400, a good without a price).
+        // Layer 10 (tier 5) "列车进化！": the train evolves to Forward IV (400, a good without a price).
         if (ResolveTrailblazeTier(state.Layer) >= 5 && _trailblazeBought.TryAdd(TrailblazeFinalTrainGoodId, 1))
             changes.ShopChanged = true;
         if (_trailblazeGoods.Count > 0 && _trailblazeGoodsNode == (ChapterId, SectionId)) return;
@@ -289,8 +293,8 @@ public sealed partial class GridFightSession
     ///     indexes whose good changed, so the list always has the same shape: TrailblazeGoodsCount distinct goods, then
     ///     the refresh good (999). The tier gating is a guess (the table has no tier column) that follows the layer
     ///     texts: tier 1 train upgrades, level-I properties and 15-cost roles; tier 2 "商品变得更好" (level II, the
-    ///     员工投影仪, 前进III); tier 3 "出现羁绊专属改件" (the 353201-353206 implants, level III); tier 4 level IV and
-    ///     the 完美投影仪; tier 5 the 100-cost roles.
+    ///     Employee Projector, Forward III); tier 3 "出现羁绊专属改件" (the 353201-353206 implants, level III); tier 4
+    ///     level IV and the Perfect Projector; tier 5 the 100-cost roles.
     /// </summary>
     private void RollTrailblazeGoods(uint layer)
     {
@@ -343,7 +347,7 @@ public sealed partial class GridFightSession
                 if (_trailblazeBought.ContainsKey(row.Id) || IsTrailblazeTrainSuperseded(row.Id)) return false;
                 return row.FatherGoodId == 0 || _trailblazeBought.ContainsKey(row.FatherGoodId);
             case "TrailFuel":
-                // +30/+60 开拓力 for 1 开拓力 would be a free loop; how fuel is really priced is unknown.
+                // +30/+60 Trailblaze coin for 1 coin would be a free loop; how fuel is really priced is unknown.
                 return false;
             case "Role":
                 return row.Params.Length > 0 && GameData.GridFightRoleBasicInfoData.ContainsKey(row.Params[0]);
@@ -355,7 +359,9 @@ public sealed partial class GridFightSession
         }
     }
 
-    /// <summary>True when a bought train good already descends from this one (e.g. 前进III once 前进IV is reached).</summary>
+    /// <summary>
+    ///     True when a bought train good already descends from this one (e.g. Forward III once Forward IV is reached).
+    /// </summary>
     private bool IsTrailblazeTrainSuperseded(uint goodId)
     {
         foreach (var boughtId in _trailblazeBought.Keys)
@@ -439,10 +445,10 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     帕姆王 "累计消耗解锁": every 开拓力 spent in the shop counts; reaching the threshold grants 帕姆王 (604202) once.
-    ///     The client shows CostedCoin / CostedThreshold from the GridFightGameItemInfo oneof 1466 modifier and plays the
-    ///     unlock for a result with update source 42 whose params[1] is that modifier's UID. Whether refreshes count and
-    ///     whether the role comes as 1 star are guesses.
+    ///     Pam King unlock by total spending ("累计消耗解锁"): every Trailblaze coin spent in the shop counts; reaching the
+    ///     threshold grants Pam King (604202) once. The client shows CostedCoin / CostedThreshold from the
+    ///     GridFightGameItemInfo oneof 1466 modifier and plays the unlock for a result with update source 42 whose
+    ///     params[1] is that modifier's UID. Whether refreshes count and whether the role comes as 1 star are guesses.
     /// </summary>
     private void AddTrailblazeCostedCoin(uint cost)
     {
@@ -454,7 +460,10 @@ public sealed partial class GridFightSession
         _pendingPamKingUnlock = unlock;
     }
 
-    /// <summary>每个战斗阶段后积攒【开拓力】: layer param 1 per finished battle (20/45/75/125/225).</summary>
+    /// <summary>
+    ///     Trailblaze coin accrues after every battle stage ("每个战斗阶段后积攒【开拓力】"): layer param 1 per finished
+    ///     battle (20/45/75/125/225).
+    /// </summary>
     private void GrantTrailblazeBattleCoin()
     {
         var layer = ResolveTraitLayer(TrailblazeTraitId);
@@ -490,7 +499,7 @@ public sealed partial class GridFightSession
         }
     }
 
-    // ---------------------------------------------------------------- 千星商会
+    // ---------------------------------------------------------------- Astropolis
 
     public uint ResolveAstropolisTier()
     {
@@ -526,7 +535,7 @@ public sealed partial class GridFightManager
     private string _sentPamKingProgress = "";
 
     /// <summary>
-    ///     帕姆王 progress modifier (GridFightGameItemInfo oneof 1466, client HKAKBNNKOID): CONKAFGLHFE field 6 is
+    ///     Pam King progress modifier (GridFightGameItemInfo oneof 1466, client HKAKBNNKOID): CONKAFGLHFE field 6 is
     ///     CostedCoin, field 7 CostedThreshold (WriteTo tags 0x30/0x38). GridFightTrailblazePurchaseBonus reads them through
     ///     GridFightModifierInfo.GetModifier; without it the bar stays at 0/500.
     /// </summary>
@@ -554,7 +563,9 @@ public sealed partial class GridFightManager
         result.UpdateDynamicList.Add(new GridFightSyncData { GameDataItemInfo = item });
     }
 
-    /// <summary>Adds the 帕姆王 unlock (update source 42, params [trait, modifier UID]) after a Trailblaze purchase.</summary>
+    /// <summary>
+    ///     Adds the Pam King unlock (update source 42, params [trait, modifier UID]) after a Trailblaze purchase.
+    /// </summary>
     public void AppendPamKingUnlock(GridFightSyncUpdateResultScNotify notify)
     {
         if (Session is not { } session || session.TakePamKingUnlock() is not { } unlock) return;

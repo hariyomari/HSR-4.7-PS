@@ -11,7 +11,7 @@ public class HandlerAvatarQuickUpCsReq : Handler<EKLIDIDKFHC>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, EKLIDIDKFHC req)
     {
-        var (retcode, items) = await player.InventoryManager!.QuickLevelUpAvatar(req);
+        var (retcode, items) = await player.AvatarManager!.QuickLevelUpAvatar(req);
         await connection.SendPacket(new PacketAvatarQuickUpScRsp(retcode, items));
     }
 }

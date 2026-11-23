@@ -1,7 +1,8 @@
 # 玩法开发进度树状图
 
-[EN](gameplay-implementation.md) | [简中](gameplay-implementation.zh-CN.md) | [繁中](gameplay-implementation.zh-TW.md) | [JP](gameplay-implementation.ja-JP.md)
-[多语言玩法名映射表](gameplay-name-map.md)
+[English](gameplay-implementation.md) | 简体中文
+
+[多语言玩法名映射表](gameplay-name-map.zh-CN.md)
 
 说明：
 - [x] 已实现（主流程可用）
@@ -48,7 +49,7 @@
   - [x] 抽卡请求与结果
   - [x] 卡池基础数据链路
 
-- [ ] 任务与剧情
+- [ ] 任务与开拓任务
   - [ ] 任务全边界覆盖
   - [ ] 开拓任务特殊条件
   - [ ] 剧情线分支完整性
@@ -59,9 +60,9 @@
   - [ ] 战斗教学完整覆盖
 
 - [ ] 模拟宇宙系列
-  - [ ] 模拟宇宙基础完整覆盖
-  - [ ] 差分宇宙完整覆盖
-  - [ ] 不可知域完整覆盖
+  - [ ] 模拟宇宙基础
+  - [ ] 差分宇宙
+  - [ ] 不可知域
 
 - [ ] 货币战争
   - [x] 基础对局流程
@@ -76,12 +77,12 @@
   - [ ] 常时传略
   - [ ] Fate
   - [ ] 三月七学剑
-  - [ ] 列车派对
+  - [ ] 派对车厢
   - [ ] 抓猫猫糕
   - [ ] 滚动商店
   - [ ] 地图轮转
   - [ ] 钟表把戏
-  - [ ] 宝藏副本/临时副本完整流程
+  - [ ] 宝藏副本/临时场景完整流程
 
 - [x] 项目自定义扩展
   - [x] Muip 管理接口（`/muip/*`）

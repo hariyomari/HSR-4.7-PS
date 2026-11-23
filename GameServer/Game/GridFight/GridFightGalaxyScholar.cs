@@ -7,9 +7,9 @@ public sealed record GridFightGalaxyScholarRoundUpdate(
     IReadOnlyList<GridFightOrbState> RewardOrbs);
 
 /// <summary>
-/// 银河学者（Trait 1003）协议状态。官服抓包中 effect 10031 的 ECEMNCJBFOP
-/// 保存累计 DNA，并在跨过等级阈值时在同一 TraitEffectUpdate 中下发奖励 Orb。
-/// DNA 基础值按成员星级 1/2/3/4+ = 2/4/8/20；4层为 1.5x，6层为 2x。
+/// Protocol state of Galaxy Scholar (银河学者, trait 1003). In official-server captures, ECEMNCJBFOP of effect 10031
+/// holds the accumulated DNA, and the reward orbs are sent in the same TraitEffectUpdate when a level threshold is
+/// crossed. Base DNA per member by star 1/2/3/4+ = 2/4/8/20; layer 4 gives 1.5x and layer 6 gives 2x.
 /// </summary>
 public sealed partial class GridFightSession
 {

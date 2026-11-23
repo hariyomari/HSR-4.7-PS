@@ -5,6 +5,7 @@ using March7thHoney.Database.Inventory;
 using March7thHoney.Database;
 using March7thHoney.Database.Expedition;
 using March7thHoney.Util;
+using March7thHoney.Enums.Item;
 
 namespace March7thHoney.GameServer.Game.Expedition;
 
@@ -85,7 +86,7 @@ public class ExpeditionManager : BasePlayerManager<ExpeditionData>
             if (reward.Hcoin > 0)
                 rewards.Add(new ItemData
                 {
-                    ItemId = 1,
+                    ItemId = (int)VirtualItemEnum.Hcoin,
                     Count = reward.Hcoin
                 });
 

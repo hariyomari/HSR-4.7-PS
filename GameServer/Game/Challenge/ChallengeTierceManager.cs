@@ -17,8 +17,8 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
 {
     public ChallengeTierceInstance? CurrentInstance { get; private set; }
 
-    public ChallengeData ChallengeData =>
-        DatabaseHelper.Instance!.GetInstanceOrCreateNew<ChallengeData>(Player.Uid);
+    // ChallengeManager owns the player's ChallengeData; every challenge mode reads it through that one instance.
+    public ChallengeData ChallengeData => Player.ChallengeManager!.ChallengeData;
 
     public async ValueTask<bool> StartChallenge(uint challengeId,
         IList<ChallengeTierceStageLineupInfo> stageInfoList)
@@ -107,7 +107,8 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
         var teamLineup = Player.LineupManager.GetExtraLineup(lineupType);
         if (teamLineup != null) teamLineup.Mp = Player.LineupManager.GetMaxMp();
 
-        // 切关场景走 NextStageScRsp.Scene 下发(同首关/单关), sendPacket=false 避免重复整场景重进致卡顿
+        // The next node's scene is delivered in NextStageScRsp.Scene, as for the first node and single-stage runs;
+        // sendPacket=false avoids a second full scene re-entry, which makes the client stutter.
         var entranceId = GetEntranceForStage(CurrentInstance, CurrentInstance.CurStageIndex);
         var entry = await ChallengeStageNavigator.EnterStage(Player, lineupType, entranceId,
             GetLobbyEntryId(CurrentInstance.PreConfig), sendPacket: false);
@@ -124,7 +125,7 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
         if (stageIndex > 2) return false;
         if (!ResolveNodes((int)challengeId, out var tierceConf, out var preConf)) return false;
 
-        // 单关使用编辑态编队，未编辑的节点沿用已结算编队。
+        // A single-stage run uses the lineups from the editor; nodes that were not edited keep their settled lineup.
         var lineupTypes = new[] { ExtraLineupType.LineupChallenge, ExtraLineupType.LineupChallenge2, ExtraLineupType.LineupChallenge3 };
         var rosters = new List<List<uint>>();
         var buffs = new List<uint> { 0u, 0u, 0u };
@@ -162,7 +163,8 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
         var snapshot = new List<List<uint>>();
         for (var i = 0; i < 3; i++)
         {
-            // 空节点不覆盖客户端仍在编辑的其他节点编队。
+            // Nodes with no roster are skipped so they do not overwrite lineups the client is still editing for the
+            // other nodes.
             if (rosters[i].Count > 0)
             {
                 var avatarIds = rosters[i].Select(x => (int)x).ToList();
@@ -248,7 +250,9 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
 
         ClearInstance();
 
-        // 「重新挑战」只在末关结算出现, 统一重进当前(末)关而非重打整轮; 队伍由 StartSingleStage 从历史/现存编队还原
+        // The retry button (重新挑战) only appears on the final node's settlement, so always re-enter the current
+        // (final) node instead of replaying the whole run; StartSingleStage restores the lineups from history or the
+        // existing extra lineups.
         return await StartSingleStage(challengeId, stageIndex);
     }
 
@@ -289,11 +293,8 @@ public partial class ChallengeTierceManager(PlayerInstance player) : BasePlayerM
         DatabaseHelper.MarkDirty(Player.Uid);
     }
 
-    // 星启模式 (Tierce) relogin workaround. Restoring a Tierce pre-battle scene on login leaves
-    // the scene/boss correct but the client never re-attaches the challenge UI. So if the player
-    // disconnected mid-Tierce, abandon the in-progress run and hand OnLogin the matching mode's
-    // lobby entrance to respawn at instead. Returns null when there is no in-progress Tierce run,
-    // which leaves every other mode's relogin path completely untouched.
+    // The client restores a Tierce (星启模式) scene on relogin but not its challenge UI.
+    // Discard an in-progress run and return its mode's lobby; null leaves other modes alone.
     public int? ConsumeReloginRedirect()
     {
         if (CurrentInstance == null) return null;

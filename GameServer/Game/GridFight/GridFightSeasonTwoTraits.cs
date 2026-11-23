@@ -58,7 +58,7 @@ public sealed class GridFightSeasonTwoChanges
 
 /// <summary>
 ///     Season-2 (4.6.51 client) unique/origin trait effects. Wire layouts come from disassembling the client's
-///     GridFight*TraitEffect.OnUpdate / request senders (artifacts/gf-season2/re-g*.md); rules the client does not
+///     GridFight*TraitEffect.OnUpdate / request senders; rules the client does not
 ///     encode (pools, triggers) follow the trait descriptions and are marked as such.
 /// </summary>
 public sealed partial class GridFightSession
@@ -196,11 +196,12 @@ public sealed partial class GridFightSession
     private void AddSeasonTwoGrantedTraitIds(GridFightRoleState role, HashSet<uint> traits)
     {
         if (!IsSeasonTwoRules) return;
-        // GridFightGameTrait.GetChooseTraitByManualTraitIDs: the chosen trait goes to every 丹恒•饮月 while 双龙吟 is active.
+        // GridFightGameTrait.GetChooseTraitByManualTraitIDs: the chosen trait goes to every Dan Heng IL (丹恒•饮月) while
+        // the Dan Heng trait (双龙吟) is active.
         if (_danHengChosenTraitId != 0 && role.RoleId == DanHengMainRoleId && IsBaseTraitOnBoard(DanHengTraitId))
             traits.Add(_danHengChosenTraitId);
         // GetAdditionalTraitRoleChooseTraitIDs: role ids in the appointment list carry 300302 while it is active.
-        // 星神★阿哈 3星7费: 所有人加入【幻月游戏】/【欢愉】.
+        // A confirmed 3★ 7-cost Aha (星神★阿哈): every fielded role joins MoonGame (幻月游戏) and Elation (欢愉).
         if (_ahaUltraConfirmed && IsActivePosition(role.Position) && IsAhaMaxStarReached)
         {
             traits.Add(MoonGameTraitId);
@@ -252,9 +253,10 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     The summoned 丹恒•腾荒 never uses population (client GridFightTeam.IsRoleUsePopulation) and brings its own back
-    ///     cell, like the Pepe/Asta NPCs: the client only unlocks back cells from the server's MaxBackRoleNum, so without
-    ///     it the summon took a cell from the population and, with all cells full, landed in a locked one (invisible).
+    ///     The summoned Tenglong (丹恒•腾荒) never uses population (client GridFightTeam.IsRoleUsePopulation) and brings its
+    ///     own back cell, like the Pepe/Asta NPCs: the client only unlocks back cells from the server's MaxBackRoleNum, so
+    ///     without it the summon takes a cell from the population and, with all cells full, lands in a locked one
+    ///     (invisible).
     /// </summary>
     private uint DanHengSubBackCellBonus => IsSeasonTwoRules && _danHengSubUniqueId != 0 ? 1u : 0u;
 
@@ -311,7 +313,7 @@ public sealed partial class GridFightSession
             if (changed) changes.UpdatedRoles.Add(sub);
             return;
         }
-        // GridFightTwoInOneEffect: the summoned 丹恒•腾荒 has the main's star and must stay in the back area, inside the
+        // GridFightTwoInOneEffect: the summoned Tenglong has the main's star and must stay in the back area, inside the
         // unlocked cells including the one it brings.
         var position = GetFreeBackPosition(LastUnlockedBackPosition(extraCells: 1));
         if (position == 0) position = GetFreeBackPosition();
@@ -355,8 +357,8 @@ public sealed partial class GridFightSession
             // GetTraitEffectLayerParams falls back to the lowest row, so an inactive bond is handled here.
             var unlocked = layer == 0 ? 0 : Math.Min((int)GetTraitEffectLayerParams(effectId, layer).FirstOrDefault(),
                 template.EquipList.Length);
-            // 星核猎手 "按羁绊等级解锁并分配" its Script Equipment: the pieces follow the bond level and leave when it drops
-            // (they used to stay as ordinary items for good). 大饭店 meal components still stay once handed out.
+            // Stellaron Hunter (星核猎手) "按羁绊等级解锁并分配" its Script Equipment: the pieces follow the bond level and
+            // leave when it drops. Golden Hotel (大饭店) meal components stay once handed out.
             var bondBound = traitId == StellaronHunterTraitId;
             if (bondBound)
             {
@@ -401,10 +403,10 @@ public sealed partial class GridFightSession
     private void IssueSeasonTwoPending(GridFightSeasonTwoChanges changes)
     {
         if (_seasonTwoPending != null || HasPendingSelection) return;
-        // 幕后茶歇 replaces the node itself, so it opens before any trait prompt.
+        // The bonfire (幕后茶歇) replaces the node itself, so it opens before any trait prompt.
         if (TryStartBonfirePending(changes)) return;
         if (TryStartAhaUltraPending(changes)) return;
-        // 主角光环 is not pushed here: the client opens it itself through 8508 (see StartSpotLightFromEnter).
+        // Spotlight (主角光环) is not pushed here: the client opens it itself through 8508 (see StartSpotLightFromEnter).
         var layers = ResolveTraitLayers();
         if (layers.TryGetValue(DanHengTraitId, out var danHeng) && danHeng.Layer > 0 && _danHengChosenTraitId == 0 &&
             Roles.Any(role => role.RoleId == DanHengMainRoleId && IsActivePosition(role.Position)))
@@ -458,7 +460,7 @@ public sealed partial class GridFightSession
         queuePosition == 0 || _seasonTwoPending is { } pending && pending.Kind == kind &&
         pending.QueuePosition == queuePosition;
 
-    // ---------------------------------------------------------------- 双龙吟
+    // ---------------------------------------------------------------- Dan Heng (双龙吟)
 
     public IReadOnlyList<uint> GetDanHengCandidateTraits(uint layer)
     {
@@ -484,7 +486,7 @@ public sealed partial class GridFightSession
         return FinishSeasonTwoPending(GridFightSeasonTwoPendingKind.DanHengChooseTrait);
     }
 
-    // ---------------------------------------------------------------- 巡海游侠
+    // ---------------------------------------------------------------- Ranger (巡海游侠)
 
     private bool HasThreeStarMortenaxOnBoard() =>
         Roles.Any(role => IsActivePosition(role.Position) && role.Star >= 3 &&
@@ -525,7 +527,7 @@ public sealed partial class GridFightSession
         return FinishSeasonTwoPending(GridFightSeasonTwoPendingKind.RangerAppoint);
     }
 
-    // ---------------------------------------------------------------- 盗火行者
+    // ---------------------------------------------------------------- Phainon (盗火行者)
 
     public bool PhainonCanConsume =>
         IsSeasonTwoRules && Phase == GridFightSessionPhase.Preparing &&
@@ -541,7 +543,8 @@ public sealed partial class GridFightSession
                       .FirstOrDefault();
         if (row == null) return 0;
         if (!ChrysosHeirRoleIds.Contains(roleId)) return row.SavedValueAdd;
-        // 盗火行者: 黄金裔被转化时额外获得30% (MazeBuff 130020201 #14 = TraitBasicInfo 300202 BaseDescParamList[0] = 0.3).
+        // Phainon trait text: a converted Chrysos heir (黄金裔) gives 30% more (MazeBuff 130020201 #14 = TraitBasicInfo
+        // 300202 BaseDescParamList[0] = 0.3).
         // The table's Special column is <= ceil(1.3x) everywhere except (4,3) 1000, (5,3) 6330 and (5,4) 33550
         // (1.39x/1.89x/2.05x, beta data slips); clamp those to the documented bonus. 3★ 5-cost: 3355 -> 4362.
         var withBonus = (uint)Math.Min(uint.MaxValue, ((ulong)row.SavedValueAdd * 13 + 9) / 10);
@@ -549,8 +552,8 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     ConsumeRole (TraitUpdate 1278): the dragged role is absorbed into 薪火, stored in Phainon's role saved value
-    ///     GP_Avatar_S2_Phainon_00. Equipment of the absorbed role goes back to the bag.
+    ///     ConsumeRole (TraitUpdate 1278): the dragged role is absorbed into kindling (薪火), stored in Phainon's role
+    ///     saved value GP_Avatar_S2_Phainon_00. Equipment of the absorbed role goes back to the bag.
     /// </summary>
     public GridFightSessionChange ConsumeRoleForPhainon(uint uniqueId, out uint kindlingGain)
     {
@@ -575,7 +578,7 @@ public sealed partial class GridFightSession
             values[PhainonSavedValueKey] = _phainonKindling;
     }
 
-    // ---------------------------------------------------------------- 梦境交织 / 反击
+    // ---------------------------------------------------------------- Member Link (梦境交织) / Counter (反击)
 
     /// <summary>TraitMemberLink: TraitUpdate 1698 / HandlePendingAction 1765 with two member unique ids.</summary>
     public bool SetMemberLink(IReadOnlyList<uint> uniqueIds)
@@ -596,7 +599,7 @@ public sealed partial class GridFightSession
         _memberLinkUniqueIds.Clear();
     }
 
-    /// <summary>反击王: the front 反击 member with the most equipment (ties: lower position).</summary>
+    /// <summary>Counter King (反击王): the front Counter member with the most equipment (ties: lower position).</summary>
     public GridFightRoleState? ResolveCounterKing()
     {
         if (!IsSeasonTwoRules) return null;

@@ -5,7 +5,7 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     幻乐之主 (Aha) shop influence and 7-cost progress. "星神★阿哈将持续投下瞥视，对商店施加影响": while an Aha is on the
+///     Aha trait (幻乐之主) shop influence and 7-cost progress. "星神★阿哈将持续投下瞥视，对商店施加影响": while an Aha is on the
 ///     board, a shop roll may turn one slot into an Aha special good (GridFightSpecialGoods group 2, the upgraded group 3
 ///     once Aha reaches 5 cost). How often the official server does this is not known; see AhaShopGlanceChance.
 ///     Only goods whose effect maps onto existing server state are offered.
@@ -18,9 +18,13 @@ public sealed partial class GridFightSession
     private const uint MoonGameEmblemId = 355100302;
     private const uint ElationEmblemId = 355200702;
 
+    // 349 (球球了！) is not offered: 4.6.5x described it as a 3★ Aha (星神★阿哈) without parameters, OSBETAWin4.7.51
+    // gives it EffectParamList [1] and adds 466 ([1, 3, 151132], cost 30) next to it. What 349 hands out now is in
+    // the server JSON and the season-2 texts are not in that client's TextMap, so it cannot be confirmed. The rows
+    // new in 4.7.51 (307, 314, 326, 335, 338 and 458-466) are not offered for the same reason.
     private static readonly HashSet<uint> ImplementedAhaGoods =
     [
-        301, 302, 303, 306, 308, 309, 311, 312, 325, 332, 333, 337, 339, 340, 341, 342, 346, 347, 349, 353, 354,
+        301, 302, 303, 306, 308, 309, 311, 312, 325, 332, 333, 337, 339, 340, 341, 342, 346, 347, 353, 354,
     ];
 
     private uint _ahaModifierUniqueId;
@@ -30,7 +34,7 @@ public sealed partial class GridFightSession
 
     public uint AhaModifierUniqueId => _ahaModifierUniqueId;
 
-    /// <summary>星神★阿哈 3星7费 confirmed: everyone joins 幻月游戏 and 欢愉.</summary>
+    /// <summary>The 3★ 7-cost Aha prompt was confirmed: every fielded role joins MoonGame and Elation.</summary>
     public bool AhaUltraConfirmed => _ahaUltraConfirmed;
 
     public bool IsAhaMaxStarReached =>
@@ -38,9 +42,10 @@ public sealed partial class GridFightSession
                                               IsActivePosition(role.Position));
 
     /// <summary>
-    ///     达到3星7费后迎来真正的主人. The client opens GridFightS2MainCharacterUltraBuffPanel for a pending block action
-    ///     (GridFightPendingAction oneof 1240, type 2) showing both GridFightAhaMaxStar rows (幻月之主, 欢愉之主) with a single
-    ///     confirm and no choice, so confirming applies both: every fielded role joins 幻月游戏 and 欢愉.
+    ///     "达到3星7费后迎来真正的主人": for a fielded 3★ 7-cost Aha the client opens GridFightS2MainCharacterUltraBuffPanel
+    ///     for a pending block action (GridFightPendingAction oneof 1240, type 2) showing both GridFightAhaMaxStar rows
+    ///     (幻月之主, 欢愉之主) with a single confirm and no choice, so confirming applies both: every fielded role joins
+    ///     MoonGame (幻月游戏) and Elation (欢愉).
     /// </summary>
     private bool TryStartAhaUltraPending(GridFightSeasonTwoChanges changes)
     {
@@ -91,32 +96,35 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     Chance that a shop roll gets an Aha good, by the highest Aha tier on the board. The client only says "可能"; the
-    ///     official numbers are server-side, so 3-cost 20% / 4-cost 30% / 5- and 7-cost 40% is a chosen value. 欢愉 says
-    ///     "商店中也有概率出现阿哈道具" on its own, so an active 欢愉 bond without an Aha uses the 3-cost chance.
+    ///     Chance that a shop roll gets an Aha good, by the highest Aha cost on the board. The client only says "可能"; the
+    ///     official numbers are server-side, so 3-cost 20% / 4-cost 30% / 5- and 7-cost 40% is a chosen value (the 4.7.51
+    ///     tables start Aha at 4-cost, so their lowest chance with an Aha is 30%). The Elation trait text says
+    ///     "商店中也有概率出现阿哈道具" on its own, so an active Elation bond without an Aha uses the 20% step.
     /// </summary>
     public double AhaShopGlanceChance
     {
         get
         {
-            var ahaIds = Roles.Where(role => IsAhaRole(role.RoleId) && IsActivePosition(role.Position))
-                .Select(role => role.RoleId).ToList();
-            if (ahaIds.Count == 0) return ResolveTraitLayer(ElationTraitId) > 0 ? 0.2 : 0;
-            return ahaIds.Max() switch
-            {
-                AhaThreeCostRoleId => 0.2,
-                AhaFourCostRoleId => 0.3,
-                _ => 0.4,
-            };
+            var ahaCosts = Roles.Where(role => IsAhaRole(role.RoleId) && IsActivePosition(role.Position))
+                .Select(role => AhaCost(role.RoleId)).ToList();
+            if (ahaCosts.Count == 0) return ResolveTraitLayer(ElationTraitId) > 0 ? AhaGlanceChanceForCost(3) : 0;
+            return AhaGlanceChanceForCost(ahaCosts.Max());
         }
     }
+
+    public static double AhaGlanceChanceForCost(uint cost) => cost switch
+    {
+        <= 3 => 0.2,
+        4 => 0.3,
+        _ => 0.4,
+    };
 
     private void ApplyAhaShopGlance()
     {
         if (!IsSeasonTwoRules || Shop.Count == 0) return;
         var chance = AhaShopGlanceChance;
         if (chance <= 0 || Random.Shared.NextDouble() >= chance) return;
-        var upgraded = Roles.Any(role => role.RoleId is AhaFiveCostRoleId or AhaSevenCostRoleId);
+        var upgraded = Roles.Any(role => IsAhaRole(role.RoleId) && AhaCost(role.RoleId) >= 5);
         var group = upgraded ? AhaGoodsUpgradedGroup : AhaGoodsBaseGroup;
         var pool = GridFightSeasonTwoTables.AhaGoods
             .Where(row => row.GroupId == group && ImplementedAhaGoods.Contains(AhaGoodsBaseId(row)))
@@ -195,14 +203,11 @@ public sealed partial class GridFightSession
             case 337: // 我5费呢？！
                 return Give([.. RolesOfRarity(5).Where(id => !IsAhaRole(id)).Select(id => Role(id))]);
             case 346: // 星神降临
-                return Give(Role(AhaThreeCostRoleId));
-            case 349: // 球球了！: 3 星【星神★阿哈】
-                return Give(Role(AhaSevenCostRoleId, 3));
+                return AhaBaseRoleId != 0 ? Give(Role(AhaBaseRoleId)) : new GridFightRewardApplication();
             case 347: // 开拓之旅 (only the 开拓力 part)
-                // 哈基维利 (447): the 4.6.53 client describes 200 开拓力 while the 4.6.51/4.6.52 tables still say 1000 (player
-                // report 2026-10-17); hand out what the player is shown until a 4.6.53 table confirms it.
-                return Give(new GridFightRewardEntry(GridFightBonusTypeEnum.TrailblazeShopCoin, 0,
-                    row.Id == 447 ? 200u : Param(0)));
+                // The amount is the table value: 150 (347) / 500 (哈基维利, 447) in OSBETAWin4.7.51. 4.6.51/4.6.52 had
+                // 1000 for both while the 4.6.53 client already described 200 for 447 (player report 2026-10-17).
+                return Give(new GridFightRewardEntry(GridFightBonusTypeEnum.TrailblazeShopCoin, 0, Param(0)));
             case 353: // 邀月入局
                 return Give(Item(MoonGameEmblemId));
             case 354: // 欢愉加席
@@ -213,8 +218,8 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     三费/四费/五费专场: "立即刷新商店，使其充满N费角色" refreshes the whole shop, including the slot of the good being
-    ///     bought, from the same pool an ordinary refresh uses (roles already at 3★ stay out of it).
+    ///     Aha goods 303/342/341 (三费/四费/五费专场): "立即刷新商店，使其充满N费角色" refreshes the whole shop, including the
+    ///     slot of the good being bought, from the same pool an ordinary refresh uses (roles already at 3★ stay out of it).
     /// </summary>
     private void RefillShopWithRarity(uint rarity)
     {

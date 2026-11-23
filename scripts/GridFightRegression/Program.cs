@@ -7,6 +7,7 @@ using March7thHoney.Database.GridFight;
 using March7thHoney.Database.Player;
 using March7thHoney.Enums.GridFight;
 using March7thHoney.GameServer.Game.GridFight;
+using March7thHoney.GameServer.Game.GridFight.Persistence;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Internationalization;
 using March7thHoney.Proto;
@@ -230,6 +231,53 @@ for (var sample = 0; sample < 8; sample++)
     break;
 }
 Check($"every resolvable orb opens current-season roles and items ({orbsChecked} samples)", orbsChecked > 0 && orbsInSeason);
+// Random role rewards leave out the roles a season-2 run never hands out on their own, the same list the shop pool
+// leaves out: GridFight_InitialExceptRoleIdList. Tenglong (丹恒•腾荒, 141402) is only the Dan Heng trait (双龙吟) summon
+// and the Aha tiers above the sold one are upgrade products; without the list a random 5-cost reward could be a
+// 7-cost Aha or the summon.
+var neverGranted = catalog.IsSeasonOne ? new HashSet<uint>() : catalog.InitialExcludedRoleIds.ToHashSet();
+if (!catalog.IsSeasonOne)
+{
+    Check("upgrade-only cost tiers are on the list of roles that are never handed out",
+        catalog.UpgradeOnlyRoleIds.All(neverGranted.Contains));
+    var leakedRoles = new SortedSet<uint>();
+    var randomRoleDraws = 0;
+    foreach (var row in GameData.GridFightBasicBonusPoolV2Data.Values
+                 .Where(row => row.BonusType == GridFightBonusTypeEnum.RandomAvatar).OrderBy(row => row.BonusID))
+    for (var sample = 0; sample < 80; sample++)
+    {
+        if (!GridFightSpecialFeatures.TryResolveBonus(row.BonusID, out var rewards)) break;
+        randomRoleDraws++;
+        leakedRoles.UnionWith(rewards.Select(reward => reward.ItemId).Where(neverGranted.Contains));
+    }
+    Check($"random role rewards never hand out a role of GridFight_InitialExceptRoleIdList ({randomRoleDraws} draws)" +
+          (leakedRoles.Count == 0 ? "" : $" (handed out: {string.Join(", ", leakedRoles)})"),
+        randomRoleDraws > 0 && leakedRoles.Count == 0);
+}
+// OSBETAWin4.7.51 adds BonusType AllAvatarByRarity (BasicBonusPoolV2 116-130, [rarity, star] like the RandomAvatar
+// rows before them); older caches have no such row.
+var allByRarityRows = GameData.GridFightBasicBonusPoolV2Data.Values
+    .Where(row => row.BonusType == GridFightBonusTypeEnum.AllAvatarByRarity)
+    .OrderBy(row => row.BonusID)
+    .ToList();
+if (allByRarityRows.Count > 0)
+{
+    var wrongRows = allByRarityRows.Where(row =>
+    {
+        var (rarity, star) = (row.BonusTypeParamList[0], row.BonusTypeParamList[1]);
+        var expected = GameData.GridFightRoleBasicInfoData.Values
+            .Where(role => role.SeasonID == season && role.IsInPool && role.Rarity == rarity &&
+                           !neverGranted.Contains(role.ID) &&
+                           GameData.GridFightRoleStarData.ContainsKey(role.ID << 4 | star))
+            .Select(role => role.ID).Order().ToList();
+        var resolved = GridFightSpecialFeatures.TryResolveBonus(row.BonusID, out var rewards);
+        return resolved != expected.Count > 0 || !rewards.All(reward =>
+                   reward.Type == GridFightBonusTypeEnum.SpecificAvatar && reward.RoleStar == star && reward.Count == 1) ||
+               !rewards.Select(reward => reward.ItemId).Order().SequenceEqual(expected);
+    }).Select(row => row.BonusID).ToList();
+    Check($"AllAvatarByRarity: each of the {allByRarityRows.Count} rows hands out every pool role of its rarity at its star" +
+          (wrongRows.Count == 0 ? "" : $" (wrong: {string.Join(", ", wrongRows)})"), wrongRows.Count == 0);
+}
 var forgesInSeason = GameData.GridFightForgeData.Keys
     .Where(id => ItemInSeason(id))
     .All(id => Enumerable.Range(0, 20).All(_ => catalog.RollForgeEquipment(id).All(ItemInSeason)));
@@ -265,7 +313,6 @@ if (season == 2)
 }
 var tutorialStages = GameData.GridFightConstValueData.GetValueOrDefault("GridFight_TutorialStageList")?.AsUInt32List() ?? [];
 Check("permanent info reports every tutorial stage as finished", tutorialStages.Count > 0 &&
-    systemInfo.PermanentInfo.ENECKKGPKHI == tutorialStages.Max() &&
     tutorialStages.All(stage => systemInfo.PermanentInfo.FBJMBJKMAJA.TryGetValue(stage, out var progress) &&
                                 progress.EABKMELHIML == stage && progress.GDAKCOICIDA > 0 &&
                                 (progress.MPJPLKKJNGE > 0 || GameData.GridFightTutorialStageNodeData.All(node => node.UnlockTutorialTask == 0))));
@@ -664,7 +711,7 @@ if (luckyTokenInPool)
         route.Consumables.Any(item => item.ItemId == GridFightSession.LuckyTokenConsumableId && item.Count >= 1));
 Check("full route keeps roles, shop, items and offers in the current season", routeStaysInSeason);
 
-// 遭遇: every option card carries a reward rolled from its tier, and clearing it pays exactly that card.
+// Encounters (遭遇): every option card carries a reward rolled from its tier, and clearing it pays exactly that card.
 var eliteNode = catalog.StandardRoute.FirstOrDefault(node => node.NodeType == GridFightNodeTypeEnum.EliteBranch);
 if (eliteNode != null)
 {
@@ -714,7 +761,7 @@ if (eliteNode != null)
             topOption.Quality < 4 ? topOption.Rewards is { Count: > 0 } : topOption.Rewards is { Count: 2 });
 }
 
-// 奇巧零食 (350119, UpgradeChimera): raises a role-exclusive chimera by one star and is consumed.
+// Chimera upgrade consumable (奇巧零食, 350119, UpgradeChimera): adds one star to a role-exclusive chimera and is consumed.
 var exclusiveChimera = GridFightSeasonTwoTables.Chimera.FirstOrDefault(row => row.RoleId != 0 &&
     GridFightSeasonTwoTables.Chimera.Where(other => other.Id == row.Id).Max(other => other.Star) > 1);
 if (exclusiveChimera != null && GameData.GridFightConsumablesData.ContainsKey(350119))
@@ -732,7 +779,8 @@ if (exclusiveChimera != null && GameData.GridFightConsumablesData.ContainsKey(35
         !snackRun.UseConsumable(snackGroup, 0, 0, pet.UniqueId).Success);
 }
 
-// 主角光环 follows a star-up merge, and 刷新视界 (100100) grants a refresh after a battle and stacks strength per refresh.
+// A spotlight (主角光环) follows a star-up merge, and Refresh Vision (刷新视界, 100100) grants a refresh after a battle
+// and stacks strength per refresh.
 {
     var mergeRun = NewRun(routePortal).Session!;
     mergeRun.Roles.Clear();
@@ -779,7 +827,8 @@ if (exclusiveChimera != null && GameData.GridFightConsumablesData.ContainsKey(35
     }
 }
 
-// 主角光环 charges: the 幻月游戏 golden orb bonus (23156) pays 1 重选主角 and 8 free spotlight rerolls.
+// Spotlight charges: the MoonGame (幻月游戏) golden orb bonus (23156) pays 1 replace (重选主角) and 8 free spotlight
+// rerolls.
 if (GridFightSpecialFeatures.TryResolveBonus(23156, out var chargeRewards))
 {
     var chargeRun = NewRun(routePortal).Session!;
@@ -805,7 +854,7 @@ else Check("主角光环: bonus 23156 resolves", false);
         !rankRun.RoleSavedValues.ContainsKey("SomeOtherKey"));
 }
 
-// 聘用书 (role forge) is redeemed for a role of its cost; 爆晶矿 drops loot orbs on kills.
+// A role forge (聘用书) is redeemed for a role of its cost; the loot orb augments (爆晶矿) drop loot orbs on kills.
 {
     var hireRun = NewRun(routePortal).Session!;
     hireRun.Roles.Clear();
@@ -848,7 +897,8 @@ else Check("主角光环: bonus 23156 resolves", false);
         trotterRun.Orbs.Skip(trotterOrbs).All(orb => orb.OrbItemId == 199));
 }
 
-// 佩佩客串: Pepe arrives on pick, wears an advanced item per perfect clear and leaves after 5 nodes with it unlocked.
+// Pepe Cameo (佩佩客串): Pepe arrives on pick, wears an advanced item per perfect clear and leaves after 5 nodes with
+// it unlocked.
 var cameoRun = NewRun(routePortal).Session!;
 cameoRun.Roles.Clear();
 AddRole(cameoRun, roleA).Position = 1;
@@ -891,8 +941,16 @@ if (routePortal == GridFightSession.DotContractPortalId)
         .Select(pair => (pair.Key, pair.Value))
         .Concat(GridFightSession.AugmentRecurringEffects.SelectMany(pair => pair.Value.Select(effect => (pair.Key, effect.Grant))))
         .ToList();
-    Check("augment effects: every configured investment is in the current pool",
-        grantTables.All(entry => catalog.AugmentPool.Contains(entry.Key)));
+    // The effect tables are shared by both seasons, so an entry has to be an investment of some season's list
+    // rather than of the running one: OSBETAWin4.7.51 moved 103601 (经验就是财富) out of season 2 and kept it in
+    // season 1. What a run can offer is still decided by the running season's pool alone.
+    var listedAugments = GameData.GridFightSeasonAugmentData.Values.SelectMany(ids => ids).ToHashSet();
+    var unlistedGrants = grantTables.Select(entry => entry.Key).Where(id => !listedAugments.Contains(id))
+        .Distinct().Order().ToList();
+    Check($"augment effects: every configured investment is in a season's investment list{(unlistedGrants.Count == 0 ? "" : " (missing: " + string.Join(", ", unlistedGrants) + ")")}",
+        unlistedGrants.Count == 0);
+    Check("augment effects: investments are only offered from the running season's list",
+        catalog.AugmentPool.All(GameData.GridFightSeasonAugmentData[season].Contains));
     var invalidGrantItems = grantTables.SelectMany(entry => entry.Item2.Items.Select(item => (entry.Key, item.ItemId)))
         .Where(pair => !(GameData.GridFightEquipmentData.ContainsKey(pair.ItemId) ||
                          GameData.GridFightConsumablesData.ContainsKey(pair.ItemId) ||
@@ -950,7 +1008,7 @@ if (routePortal == GridFightSession.DotContractPortalId)
             result.UpdateDynamicList.Any(data => data.AddForgeItemInfo != null) &&
             result.UpdateDynamicList.Any(data => data.ItemValue == syncSession.Gold)));
 
-    // Node triggers: 长期主义 pays on the next 3 node entries only, 人才激励+ pays once after 3 nodes.
+    // Node triggers: 201301 (长期主义) pays on the next 3 node entries only, 101602 (人才激励+) pays once after 3 nodes.
     var nodeManager = NewRun(101);
     var nodeSession = nodeManager.Session!;
     nodeSession.Roles.Clear();
@@ -1002,7 +1060,7 @@ if (routePortal == GridFightSession.DotContractPortalId)
         nodeSession.Consumables.Any(item => item.ItemId == 350105));
 }
 
-// ---- Season-2-only investments (GridFightSeason2AugmentEffects)
+// ---- Season-2-only investments (GridFightSeasonTwoAugmentEffects)
 if (season == 2)
 {
     const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
@@ -1270,7 +1328,7 @@ Check("QuitBattle at 1 HP ends the run",
     doomedQuitSettled && doomedQuitManager.Session == null && doomedQuitManager.HasSettledSession);
 
 // --- Season-2 unique / origin trait effects ---------------------------------------------------------------------
-// Wire layouts follow the 4.6.51 client (artifacts/gf-season2/re-g*.md); these checks pin the server-side rules.
+// Wire layouts follow the 4.6.51 client; these checks pin the server-side rules.
 if (!catalog.IsSeasonOne)
 {
     (GridFightManager Manager, GridFightSession Session) Board(params (uint RoleId, uint Position)[] roles)
@@ -1290,7 +1348,7 @@ if (!catalog.IsSeasonOne)
             .SelectMany(trait => trait.TraitEffectList)
             .FirstOrDefault(effect => effect.EffectId == effectId);
 
-    // 双龙吟: Dan Heng IL summons a same-star Tenglong in the back area and asks for a trait.
+    // Dan Heng trait (双龙吟): Dan Heng IL summons a same-star Tenglong in the back area and asks for a trait.
     var (danHengRun, danHeng) = Board((GridFightSession.DanHengMainRoleId, 1), (roleA, 2));
     var danHengSync = danHengRun.BuildSeasonTwoFollowUpSync();
     var sub = danHeng.Roles.FirstOrDefault(role => role.RoleId == GridFightSession.DanHengSubRoleId);
@@ -1341,7 +1399,8 @@ if (!catalog.IsSeasonOne)
     Check("S2 双龙吟: 丹恒•腾荒 is never in the role pool (shop, 我5费呢？！, supply)",
         catalog.RolePool.All(role => role.ID != GridFightSession.DanHengSubRoleId));
 
-    // 财富宝钻 from any source: the next sync raises the team size and opens a back cell without a level-up.
+    // A Wealth Diamond (财富宝钻) from any source: the next sync raises the team size and opens a back cell without a
+    // level-up.
     var (crownRun, crown) = Board((roleA, 1));
     crownRun.BuildCurrentInfo();
     var (rolesBefore, cellsBefore) = (crown.MaxActiveRoles, crown.OffFieldMaxCount);
@@ -1355,7 +1414,7 @@ if (!catalog.IsSeasonOne)
         crownBasic.MaxActiveRoleCount == crown.MaxActiveRoles && crownBasic.PlayerLevel == crown.PlayerLevel &&
         crownBasic.KeepWinCount == crown.KeepWinCount && crownBasic.MaxLineupHp == crown.MaxLineupHp);
 
-    // 盗火行者: dragging a role onto Phainon turns it into 薪火 (role saved value).
+    // Phainon trait (盗火行者): dragging a role onto Phainon turns it into kindling (薪火, a role saved value).
     var (phainonRun, phainon) = Board((GridFightSession.PhainonRoleId, 1), (roleA, 2));
     phainonRun.BuildSeasonTwoFollowUpSync();
     var food = phainon.Roles.First(role => role.RoleId == roleA);
@@ -1377,7 +1436,7 @@ if (!catalog.IsSeasonOne)
     Check("S2 盗火行者: Phainon cannot eat himself",
         !phainon.ConsumeRoleForPhainon(phainon.Roles.First(role => role.RoleId == GridFightSession.PhainonRoleId).UniqueId, out _).Success);
 
-    // 巡海游侠: Mortenax asks to appoint a front role, which then carries trait 300302.
+    // Ranger trait (巡海游侠): Mortenax asks to appoint a front role, which then carries trait 300302.
     var (rangerRun, ranger) = Board((150402, 5), (roleA, 1));
     var rangerSync = rangerRun.BuildSeasonTwoFollowUpSync();
     var rangerPending = rangerRun.BuildPendingAction();
@@ -1388,7 +1447,7 @@ if (!catalog.IsSeasonOne)
         appointedRanger && ranger.ResolveRoleTraitIds(ranger.Roles.First(role => role.RoleId == roleA))
             .Contains(GridFightSession.RangerTraitId));
 
-    // 黑市主理人: the signature good sits in slot 1 and never sells out.
+    // Jade trait (黑市主理人): the signature good sits in slot 1 and never sells out.
     var (jadeRun, jade) = Board((GridFightSession.JadeRoleId, 1));
     jadeRun.BuildSeasonTwoFollowUpSync();
     var jadeInfo = EffectInfo(jadeRun, GridFightSession.JadeTraitId, GridFightSession.JadeEffectId)?.GDAMHENIIDJ;
@@ -1402,7 +1461,8 @@ if (!catalog.IsSeasonOne)
         signature.Success && jade.LineupHp == hpBeforeJade - 10 && jade.Gold > goldBeforeJade &&
         jade.JadeGoods.Any(good => good.SlotId == 1 && good.GoodId != 0));
 
-    // 开拓银轨, 奇兽花园, 梦境交织, 反击, 星核猎手, 机心巧匠: stateful effects round-trip through GetData.
+    // Trailblaze (开拓银轨), Chimera (奇兽花园), Member Link (梦境交织), Counter (反击), Stellaron Hunter (星核猎手) and
+    // Clara (机心巧匠): stateful effects round-trip through GetData.
     var trailRoles = GameData.GridFightRoleBasicInfoData.Values
         .Where(role => role.SeasonID == season && role.TraitList.Contains(GridFightSession.TrailblazeTraitId) && role.IsInPool)
         .Select(role => role.ID).Take(2).ToArray();
@@ -1418,7 +1478,8 @@ if (!catalog.IsSeasonOne)
         trail.ResolveBattle(true, new GridFightBattleStatistics(100, [], [], [], [], 1, new Dictionary<string, uint>()));
         Check("S2 开拓银轨: a battle stage grants 开拓力", trail.TrailblazeCoin > 0);
 
-        // 帕姆王 "累计消耗解锁": spending 开拓力 fills CostedCoin of the oneof 1466 modifier; 500 grants 604202 once.
+        // Pam King (帕姆王) "累计消耗解锁": spending Trailblaze coins (开拓力) fills CostedCoin of the oneof 1466 modifier;
+        // 500 grants 604202 once.
         var (pamRun, pam) = Board((trailRoles[0], 1), (trailRoles[1], 2));
         pamRun.BuildSeasonTwoFollowUpSync();
         var pamStart = pamRun.BuildCurrentInfo()!.GameData.GameItemList
@@ -1532,8 +1593,26 @@ if (!catalog.IsSeasonOne)
     Check("S2 pending: a resent answer for a finished prompt is recognised",
         mixed.IsFinishedSeasonTwoPending(claraQueue) && !mixed.IsFinishedSeasonTwoPending(claraQueue + 100));
 
-    // 幻乐之主: an Aha on the board may put an Aha good into a shop roll (3-cost 20%); copies turn into growth.
-    var (ahaRun, aha) = Board((151102, 1));
+    // Aha trait (幻乐之主): an Aha on the board may put an Aha good into a shop roll; copies turn into growth. Which
+    // role ids are Aha's cost tiers, and what the tier the shop sells costs, comes from the tables: 3-cost 151102
+    // below 151112 / 151122 / 151132 in 4.6.5x, 4-cost 151112 below 151122 / 151132 from OSBETAWin4.7.51 (151102
+    // was removed).
+    var ahaTiers = catalog.AhaGrowthRoleIds;
+    var ahaSevenId = catalog.AhaSevenCostRoleId;
+    Check("S2 幻乐之主: the tables name the star-less Aha tiers in cost order and one seven-price tier",
+        ahaTiers.Count >= 2 && ahaSevenId != 0 &&
+        ahaTiers.Append(ahaSevenId).Select(id => GameData.GridFightRoleBasicInfoData[id].AvatarID).Distinct().Count() == 1 &&
+        ahaTiers.Zip(ahaTiers.Skip(1), (lower, higher) => GameData.GridFightRoleBasicInfoData[lower].Rarity <
+                                                          GameData.GridFightRoleBasicInfoData[higher].Rarity).All(ordered => ordered));
+    var ahaBaseId = ahaTiers[0];
+    var ahaBaseCost = GameData.GridFightRoleBasicInfoData[ahaBaseId].Rarity;
+    Check("S2 幻乐之主: only the cheapest Aha tier is sold; the tiers above it are upgrade products",
+        catalog.RolePool.Count(role => role.AvatarID == GameData.GridFightRoleBasicInfoData[ahaBaseId].AvatarID) == 1 &&
+        catalog.RolePool.Any(role => role.ID == ahaBaseId) &&
+        ahaTiers.Skip(1).Append(ahaSevenId).All(catalog.UpgradeOnlyRoleIds.Contains));
+    bool IsAhaTier(uint roleId) => roleId == ahaSevenId || ahaTiers.Contains(roleId);
+    var ahaChance = GridFightSession.AhaGlanceChanceForCost(ahaBaseCost);
+    var (ahaRun, aha) = Board((ahaBaseId, 1));
     ahaRun.BuildSeasonTwoFollowUpSync();
     var ahaRolls = 0;
     for (var roll = 0; roll < 400; roll++)
@@ -1541,8 +1620,8 @@ if (!catalog.IsSeasonOne)
         aha.RefreshShop(false);
         if (aha.Shop.Any(slot => GridFightSession.IsAhaGoods(slot.SpecialGoodsId))) ahaRolls++;
     }
-    Check("S2 幻乐之主: a 3-cost Aha glances at about one shop roll in five, not every roll",
-        aha.AhaShopGlanceChance == 0.2 && ahaRolls is >= 40 and <= 120);
+    Check($"S2 幻乐之主: a {ahaBaseCost}-cost Aha glances at about {ahaChance:P0} of the shop rolls, not every roll",
+        aha.AhaShopGlanceChance == ahaChance && ahaRolls >= 400 * ahaChance / 2 && ahaRolls <= 400 * ahaChance * 3 / 2);
     for (var roll = 0; roll < 100 && !aha.Shop.Any(slot => GridFightSession.IsAhaGoods(slot.SpecialGoodsId)); roll++)
         aha.RefreshShop(false);
     var ahaSlot = aha.Shop.FirstOrDefault(slot => GridFightSession.IsAhaGoods(slot.SpecialGoodsId));
@@ -1550,43 +1629,97 @@ if (!catalog.IsSeasonOne)
     Check("S2 幻乐之主: the shop offers an Aha good and it can be bought for its price",
         ahaSlot != null && aha.BuySpecialGoods([ahaSlot.Index]).Count == 1 && ahaSlot.SoldOut &&
         aha.RefreshShop(true));
-    // The rolled Aha good is random and some hand out Aha copies (346 星神降临, 349 球球了！), so the copy rule runs on
-    // its own board.
-    var (ahaCopyRun, ahaCopy) = Board((151102, 1));
+    // The rolled Aha good is random and 346 (星神降临) hands out an Aha copy, so the copy rule runs on its own board.
+    var (ahaCopyRun, ahaCopy) = Board((ahaBaseId, 1));
     ahaCopyRun.BuildSeasonTwoFollowUpSync();
-    AddRole(ahaCopy, 151102);
+    AddRole(ahaCopy, ahaBaseId);
     ahaCopyRun.BuildSeasonTwoFollowUpSync();
     Check("S2 幻乐之主: a second Aha becomes 幻月之力 instead of a merge",
-        ahaCopy.Roles.Count(role => role.RoleId is 151102 or 151112 or 151122 or 151132) == 1 && ahaCopy.AhaGrowth == 1 &&
+        ahaCopy.Roles.Count(role => IsAhaTier(role.RoleId)) == 1 && ahaCopy.AhaGrowth == 1 &&
         ahaCopy.RefreshRoleSavedValues().ContainsKey(GridFightSession.AhaGrowthSavedValueKey) == false);
+
+    // Growth steps. 4.7.51 (two star-less tiers): the client's GridFightAhaRarity turns the 4-cost form into the
+    // 5-cost form at growth 5 and ends the bar there. 4.6.5x (three tiers): 4-cost at 3 and 5-cost at 6, the
+    // server's earlier even spread below that client's 7-cost growth of 9.
+    {
+        var (growthRun, growth) = Board((ahaBaseId, 1));
+        growthRun.BuildSeasonTwoFollowUpSync();
+        var tierByGrowth = new Dictionary<uint, uint>();
+        for (var copy = 0; copy < 8; copy++)
+        {
+            AddRole(growth, ahaBaseId);
+            growthRun.BuildSeasonTwoFollowUpSync();
+            tierByGrowth[growth.AhaGrowth] = growth.Roles.Single(role => IsAhaTier(role.RoleId)).RoleId;
+        }
+        var (sevenGrowth, maxGrowth) = growth.AhaGrowthRule;
+        if (ahaTiers.Count == 2)
+            Check("S2 幻乐之主: 4.7.51 tiers stay 4-cost below growth 5, turn 5-cost at 5 and stop growing there",
+                sevenGrowth == 5 && maxGrowth == 5 && growth.AhaGrowth == 5 &&
+                Enumerable.Range(1, 4).All(step => tierByGrowth[(uint)step] == ahaTiers[0]) && tierByGrowth[5] == ahaTiers[1]);
+        else
+            Check("S2 幻乐之主: 4.6.5x tiers turn 4-cost at growth 3 and 5-cost at growth 6",
+                sevenGrowth == 9 && maxGrowth == 0 && growth.AhaGrowth == 8 &&
+                tierByGrowth[2] == ahaTiers[0] && tierByGrowth[3] == ahaTiers[1] && tierByGrowth[5] == ahaTiers[1] &&
+                tierByGrowth[6] == ahaTiers[2]);
+        // 7-cost: enough growth on the last star-less tier plus 10 Elation (欢愉) stars (trait 300602 BaseDescParamList
+        // [10, 12]).
+        var topTier = growth.Roles.Single(role => IsAhaTier(role.RoleId));
+        var stillStarless = topTier.RoleId == ahaTiers[^1];
+        var elationMates = catalog.RolePool
+            .Where(role => role.TraitList.Contains(GridFightSession.ElationTraitId) && !IsAhaTier(role.ID) &&
+                           growth.IsRestrictedRoleUnlockedForRun(role.ID) &&
+                           GameData.GridFightRoleStarData.ContainsKey(role.ID << 4 | 3))
+            .Select(role => role.ID).Take(3).ToList();
+        if (elationMates.Count == 3)
+        {
+            for (var index = 0; index < elationMates.Count; index++)
+            {
+                growth.TryAddRole(elationMates[index], 3, out var mate);
+                mate.AcquiredRoles.Single().Position = (uint)index + 2;
+            }
+            while (growth.AhaGrowth < sevenGrowth)
+            {
+                AddRole(growth, ahaBaseId);
+                growthRun.BuildSeasonTwoFollowUpSync();
+            }
+            growthRun.BuildSeasonTwoFollowUpSync();
+            Check("S2 幻乐之主: the last star-less tier turns 7-cost once growth and 10 欢愉 stars are reached",
+                stillStarless && topTier.RoleId == ahaSevenId &&
+                growth.GetAhaSevenCostProgress().Any(entry => entry.TraitId == GridFightSession.ElationTraitId &&
+                                                              entry.Progress >= entry.Target));
+        }
+    }
 
     // Aha goods placed directly into the shop (the glance itself is random).
     GridFightSession AhaGoodsBoard(uint goodsId, out uint index)
     {
-        var (_, session) = Board((151102, 1));
+        var (_, session) = Board((ahaBaseId, 1));
         session.AdjustGold(100);
         var slot = session.Shop[0];
         session.Shop[0] = new GridFightShopSlot { Index = slot.Index, SpecialGoodsId = goodsId, Price = 1 };
         index = slot.Index;
         return session;
     }
-    // 多回点血！(333): "获得#1点小队生命值和生命上限" raises the cap as well as the HP.
+    // Aha good 333 (多回点血！): "获得#1点小队生命值和生命上限" raises the cap as well as the HP.
     var moreHp = AhaGoodsBoard(333, out var moreHpIndex);
     var (maxHpBefore, moreHpBefore) = (moreHp.MaxLineupHp, moreHp.LineupHp);
     var moreHpBought = moreHp.BuySpecialGoods([moreHpIndex]);
     Check("S2 幻乐之主: 多回点血！ raises max squad HP and heals by the same amount",
         moreHpBought.Count == 1 && moreHp.MaxLineupHp == maxHpBefore + 15 &&
         moreHp.LineupHp == Math.Min(moreHp.MaxLineupHp, moreHpBefore + 15) && moreHpBought[0].Application.LineupHpChanged);
-    // 开拓之旅 (347) hands out its table value; 哈基维利 (447) the 200 the 4.6.53 client shows.
+    // Aha good 347 (开拓之旅) and its upgraded row 447 (哈基维利) hand out their GridFightSpecialGoods value (150 / 500 in
+    // the OSBETAWin4.7.51 table the server carries; 4.6.5x had 1000 with a 200 override for 447).
     uint TrailblazePowerOf(uint goodsId)
     {
         var board = AhaGoodsBoard(goodsId, out var index);
         var before = board.TrailblazeCoin;
         return board.BuySpecialGoods([index]).Count == 1 ? board.TrailblazeCoin - before : 0;
     }
-    Check("S2 幻乐之主: 开拓之旅 grants 1000 开拓力 and 哈基维利 the 200 its description shows",
-        TrailblazePowerOf(347) == 1000 && TrailblazePowerOf(447) == 200);
-    // 五费专场(341): the whole shop, the bought slot included, refills with 5-cost roles; 3★ roles stay out of it.
+    uint AhaGoodsParam(uint goodsId) => (uint)GridFightSeasonTwoTables.AhaGoods.Single(row => row.Id == goodsId).Params[0];
+    Check($"S2 幻乐之主: 开拓之旅 grants {AhaGoodsParam(347)} 开拓力 and 哈基维利 {AhaGoodsParam(447)}, their table values",
+        AhaGoodsParam(347) > 0 && AhaGoodsParam(447) > 0 &&
+        TrailblazePowerOf(347) == AhaGoodsParam(347) && TrailblazePowerOf(447) == AhaGoodsParam(447));
+    // Aha good 341 (五费专场): the whole shop, the bought slot included, refills with 5-cost roles; 3★ roles stay out.
     var fiveCost = AhaGoodsBoard(341, out var fiveCostIndex);
     var fiveCostRoles = catalog.RolePool.Where(role => role.Rarity == 5 && fiveCost.IsRestrictedRoleUnlockedForRun(role.ID))
         .Select(role => role.ID).ToList();
@@ -1603,9 +1736,9 @@ if (!catalog.IsSeasonOne)
     Check("S2 幻乐之主: GetData carries the 7-cost progress modifier",
         ahaCopyRun.BuildCurrentInfo()!.GameData.GameItemList.Any(item => item.GEKCCCPGBGJ?.GridFightTraitInfo.Count == 2));
 
-    // 星神★阿哈 3星7费: every fielded role joins the leading trait.
+    // A 3★ 7-cost Aha (星神★阿哈), once confirmed: every fielded role joins MoonGame and Elation.
     var (masterRun, master) = Board((roleA, 1));
-    master.TryAddRole(151132, 3, out var masterAcquisition);
+    master.TryAddRole(ahaSevenId, 3, out var masterAcquisition);
     masterAcquisition.AcquiredRoles.Single().Position = 2;
     masterRun.BuildSeasonTwoFollowUpSync();
     var ultra = masterRun.BuildPendingAction();
@@ -1618,7 +1751,7 @@ if (!catalog.IsSeasonOne)
             master.ResolveRoleTraitIds(role).Contains(GridFightSession.ElationTraitId)) &&
         master.GetAhaUltraTraitGrants().Count == 2);
 
-    // 主角光环: route nodes 1-2 / 2-1 carry the spotlight flag; entering one opens a two-card selection.
+    // Spotlight (主角光环): route nodes 1-2 / 2-1 carry the spotlight flag; entering one opens a two-card selection.
     var (spotRun, spot) = Board((roleA, 1), (roleB, 2));
     var spotNodes = spotRun.BuildCurrentInfo()!.GameInfoList
         .Where(info => info.LevelInfo != null)
@@ -1686,7 +1819,8 @@ if (!catalog.IsSeasonOne)
         spotRouteAfter.Single(node => node.DCAHJELNJNP == 2 && node.SectionId == 1).Param.HPNNLMBHOPF &&
         spot.ResolveStaleSpotLightNode() == null && spot.EnterBattle());
 
-    // 意志传承 (110002): the bound unit becomes a random role one cost higher, keeping slot, star and the crown.
+    // Will Inheritance (意志传承, 110002): the bound unit becomes a random role one cost higher, keeping slot, star and
+    // the crown.
     var (willRun, will) = Board((roleA, 1), (roleB, 2));
     will.TryMoveToSection(1, 2, out _);
     will.HandlePending(will.PendingQueuePosition, GridFightPendingRequestKind.RoundBegin);
@@ -1719,7 +1853,7 @@ if (!catalog.IsSeasonOne)
         will.GetSpotLightIdForRole(willUnique) == GridFightSession.WillInheritanceSpotLightId &&
         willSync.Any(data => data.UpdateRoleInfo?.Id == willUnit.RoleId));
 
-    // 本局奇遇: partner effects that change server rules.
+    // Partner (本局奇遇) effects that change server rules.
     GridFightSession? RunWithPetPal(uint effectId)
     {
         for (var seed = 0; seed < 3000; seed++)
@@ -1879,6 +2013,19 @@ catch (InvalidDataException)
     otherSeasonRejected = true;
 }
 Check("a run saved for another season is rejected instead of restored", otherSeasonRejected);
+// A run saved under other tables: OSBETAWin4.7.51 removed the 3-cost Aha 151102 that a 4.6.5x run can still hold.
+var missingRole = persistSession.CaptureSnapshot();
+missingRole.Roles[0].RoleId = GameData.GridFightRoleBasicInfoData.Keys.Max() + 1;
+var missingRoleRejected = false;
+try
+{
+    GridFightSession.Restore(persistCatalog, missingRole);
+}
+catch (InvalidDataException)
+{
+    missingRoleRejected = true;
+}
+Check("a run holding a role the loaded tables do not have is rejected instead of restored", missingRoleRejected);
 
 // A whole route played on a copy restored before every step (and between battle start and settlement).
 var replayManager = NewRun(routePortal);
@@ -2004,6 +2151,10 @@ Check("leaving a run clears its saved copy and the next run gets a new id",
 var doomedRestart = afterRestart.Session!;
 MoveToPenalizedNode(doomedRestart);
 typeof(GridFightSession).GetProperty(nameof(GridFightSession.LineupHp))!.SetValue(doomedRestart, 1u);
+// A rolled partner guard (effect 102001) would turn this loss into a clear; spend it so the partner roll cannot.
+typeof(GridFightSession).GetField("_petPalGuardUsed",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+    .SetValue(doomedRestart, true);
 var doomedRestartEntered = doomedRestart.EnterBattle();
 afterRestart.Persist();
 DatabaseHelper.Instance!.SaveUidData(PersistUid);

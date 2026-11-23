@@ -1,7 +1,7 @@
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 using March7thHoney.Util;
-using March7thHoney.Util.Security;
+using March7thHoney.Util.PacketCipher;
 
 namespace March7thHoney.GameServer.Server.Packet.Send.Player;
 
@@ -15,7 +15,7 @@ public class PacketPlayerGetTokenScRsp : BasePacket
             Uid = (uint)(connection.Player?.Uid ?? 0)
         };
 
-        if (ConfigManager.Config.GameServer.UsePacketEncryption)
+        if (Crypto.PacketEncryptionEnabled)
         {
             var tempRandom = new MT19937((ulong)DateTimeOffset.Now.ToUnixTimeSeconds());
             rsp.SecretKeySeed = connection.ClientSecretKeySeed = tempRandom.NextUInt64();

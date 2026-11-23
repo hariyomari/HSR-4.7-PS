@@ -16,7 +16,7 @@ public partial class InventoryManager
             return null;
         }
 
-        await Player.AddAvatar(itemId, sync, notify);
+        await Player.AvatarManager!.AddAvatar(itemId, sync, notify);
         await AddItem(itemId + 200000, 1, false);
         return null;
     }

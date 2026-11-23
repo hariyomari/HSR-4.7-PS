@@ -1,0 +1,14 @@
+{
+  "AvatarSkins": [
+    {
+      "ResourceVersion": "4.7.51",
+      "AvatarId": 1511,
+      "SkinId": 1151101,
+      "ItemNameHash": 18050157886040598656,
+      "ItemMainType": "Usable",
+      "ItemSubType": "AvatarSkin",
+      "Rarity": "SuperRare",
+      "PileLimit": 1
+    }
+  ]
+}

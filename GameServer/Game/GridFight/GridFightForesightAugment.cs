@@ -3,9 +3,10 @@ using March7thHoney.Enums.GridFight;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-/// 远见 (303601): "获得一个随机黄金投资策略和15金币。后续的投资策略节点改为获得随机1个棱彩投资策略（无法刷新），
-/// 并且不增加敌人难度。" The 15 gold comes from the selection grant table; this file owns the bonus augment,
-/// the single prismatic offer and the difficulty exemption.
+/// Foresight (远见, 303601), as its description reads: one random gold augment and 15 gold; every later investment
+/// node then offers a single random prismatic augment (no reroll) and does not raise enemy difficulty. The 15 gold
+/// comes from the selection grant table; this file owns the bonus augment, the single prismatic offer and the
+/// difficulty exemption.
 /// </summary>
 public partial class GridFightSession
 {
@@ -22,13 +23,13 @@ public partial class GridFightSession
         ActiveInvestmentIds.Add(bonus);
         _foresightBonusAugments.Add(bonus);
         PrepareInvestmentSelectionReward(bonus);
-        OnP0InvestmentSelected(bonus);
+        OnRewardInvestmentSelected(bonus);
         ApplyAugmentSelectionEffects(bonus);
     }
 
     public IReadOnlyList<uint> TakeForesightBonusAugments() => Drain(_foresightBonusAugments);
 
-    /// <summary>Returns the one-prismatic offer while 远见 is active, or null to use the ordinary offer.</summary>
+    /// <summary>Returns the one-prismatic offer while Foresight is active, or null to use the ordinary offer.</summary>
     private IReadOnlyList<uint>? RollForesightInvestmentOffer()
     {
         if (!IsForesightActive) return null;

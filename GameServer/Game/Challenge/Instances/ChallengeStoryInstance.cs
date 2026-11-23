@@ -120,12 +120,7 @@ public class ChallengeStoryInstance(PlayerInstance player, ChallengeStateData da
         });
 
         if (Config.StoryExcel == null) return;
-        // Target id 10003 = FantasticStory continuous-wave score container.
-        // Using 10002 (legacy PF) causes the client to settle after wave 1 only,
-        // capping a full-clear at ~2300 instead of the expected ~40000.
-        battle.AddBattleTarget(1, 10003, GetTotalScore());
-
-        foreach (var id in Config.StoryExcel.BattleTargetID!) battle.AddBattleTarget(5, id, GetTotalScore());
+        ChallengeScoreTargets.AddStoryTargets(battle, Config.StoryExcel.BattleTargetID!, GetTotalScore());
 
         if (Story.Buffs.Count < Story.CurrentStage) return;
         var buffId = Story.Buffs[(int)(Story.CurrentStage - 1)];
@@ -247,12 +242,14 @@ public class ChallengeStoryInstance(PlayerInstance player, ChallengeStateData da
         {
             Story.CurrentStage++;
 
-            // 先切到下半 lineup，这样 EnterScene 新建场景时 LoadEntity 会用 LineupChallenge2 加载角色实体。
+            // Switch to the second-half lineup first, so that LoadEntity uses LineupChallenge2 for the avatar entities
+            // when EnterScene builds the new scene.
             SetCurrentExtraLineup(ExtraLineupType.LineupChallenge2);
             await Player.LineupManager!.SetExtraLineup((ExtraLineupType)GetCurrentExtraLineupType());
 
-            // ChallengeStory 配置里 MapEntranceID == MapEntranceID2（92/92 验证），entrance 为 0 时回退到 MapEntranceID。
-            // EnterScene 触发 ChallengeEntityLoader.LoadEntity，按 CurrentStage==2 选 ChallengeMonsters2 加载下半 boss group。
+            // In the ChallengeStory config MapEntranceID == MapEntranceID2 (verified for 92/92 entries); fall back to
+            // MapEntranceID when MapEntranceID2 is 0. EnterScene triggers ChallengeEntityLoader.LoadEntity, which
+            // picks ChallengeMonsters2 for CurrentStage == 2 and loads the second-half boss group.
             var entranceId = Config.MapEntranceID2 != 0 ? Config.MapEntranceID2 : Config.MapEntranceID;
             await Player.EnterScene(entranceId, 0, true);
 

@@ -59,7 +59,9 @@ public class DatabaseHelper
         {
             case "sqlite":
                 SQLitePCL.Batteries_V2.Init();
-                var f = new FileInfo(config.Path.DatabasePath + "/" + config.Database.DatabaseName);
+                // The database name always lives inside DatabasePath, even when written with a leading separator.
+                var f = new FileInfo(Path.Combine(config.Path.DatabasePath,
+                    config.Database.DatabaseName.TrimStart('/', '\\')));
                 if (!f.Exists && f.Directory is { Exists: false }) f.Directory.Create();
                 _mysql = false;
                 _connString = $"Data Source={f.FullName}";
@@ -68,11 +70,10 @@ public class DatabaseHelper
                 _mysql = true;
                 var db = config.Database;
                 EnsureMySqlDatabase(db);
-                _connString =
-                    $"Server={db.MySqlHost};Port={db.MySqlPort};Database={db.MySqlDatabase};Uid={db.MySqlUser};Pwd={db.MySqlPassword};";
+                _connString = MySqlConnectionString(db, db.MySqlDatabase);
                 break;
             default:
-                logger.Error("Unsupported database type");
+                logger.Error(I18NManager.Translate("Server.Log.DatabaseTypeUnsupported"));
                 return;
         }
 
@@ -144,14 +145,27 @@ public class DatabaseHelper
         }
         catch (Exception e)
         {
-            logger.Error("WarmupFormatters failed", e);
+            logger.Debug("WarmupFormatters failed", e);
         }
+    }
+
+    /// <summary>The server connection, on <paramref name="database" /> or on none for server-level commands.</summary>
+    private static string MySqlConnectionString(DatabaseConfig db, string? database)
+    {
+        var builder = new MySqlConnectionStringBuilder
+        {
+            Server = db.MySqlHost,
+            Port = (uint)db.MySqlPort,
+            UserID = db.MySqlUser,
+            Password = db.MySqlPassword
+        };
+        if (database != null) builder.Database = database;
+        return builder.ConnectionString;
     }
 
     private static void EnsureMySqlDatabase(DatabaseConfig db)
     {
-        using var conn = new MySqlConnection(
-            $"Server={db.MySqlHost};Port={db.MySqlPort};Uid={db.MySqlUser};Pwd={db.MySqlPassword};");
+        using var conn = new MySqlConnection(MySqlConnectionString(db, null));
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"CREATE DATABASE IF NOT EXISTS `{db.MySqlDatabase}`";
@@ -170,7 +184,8 @@ public class DatabaseHelper
 
     public T? GetInstance<T>(int uid) where T : class
     {
-        var list = UidInstanceMap.GetOrAdd(uid, static _ => []);
+        // A read must not add a map entry: callers look up uids taken from client packets.
+        if (!UidInstanceMap.TryGetValue(uid, out var list)) return null;
         lock (list) return list.OfType<T>().FirstOrDefault();
     }
 
@@ -301,8 +316,9 @@ public class DatabaseHelper
         lock (list) return list.OfType<DeletedAccountData>().Any();
     }
 
+    // An entity without a generated store is treated as player data, the safe side for account deletion.
     private static bool IsPlayerData(BaseDatabaseDataHelper instance) =>
-        instance is not (IdentityBlockData or AuthAttemptData or DeletedAccountData);
+        !EntityStores.Map.TryGetValue(instance.GetType(), out var store) || store.IsPlayerData;
 
     public static void UpdateInstanceStrict<T>(T previous, T replacement) where T : BaseDatabaseDataHelper
     {
@@ -347,7 +363,7 @@ public class DatabaseHelper
                 catch
                 {
                     try { Exec(conn, "ROLLBACK"); }
-                    catch (Exception error) { logger.Error("Transaction rollback failed", error); }
+                    catch (Exception error) { logger.Error(I18NManager.Translate("Server.Log.DatabaseRollbackFailed"), error); }
                     finally { rollback(); }
                     throw;
                 }
@@ -367,7 +383,7 @@ public class DatabaseHelper
             }
             catch (Exception e)
             {
-                logger.Error("An error occurred while saving the database", e);
+                logger.Error(I18NManager.Translate("Server.Log.DatabaseSaveFailed"), e);
             }
         }
     }
@@ -448,7 +464,7 @@ public class DatabaseHelper
             }
             catch (Exception e)
             {
-                logger.Error("An error occurred while saving the database", e);
+                logger.Error(I18NManager.Translate("Server.Log.DatabaseSaveFailed"), e);
                 // Roll back so the pooled connection isn't returned mid-transaction.
                 if (conn != null)
                     try { Exec(conn, "ROLLBACK"); }
@@ -489,7 +505,7 @@ public class DatabaseHelper
             }
             catch (Exception e)
             {
-                logger.Error($"An error occurred while saving gameplay data for uid {uid}", e);
+                logger.Error(I18NManager.Translate("Server.Log.PlayerSaveFailed", uid.ToString()), e);
             }
         }
     }
@@ -630,7 +646,7 @@ public class DatabaseHelper
 
     public void UpgradeDatabase()
     {
-        logger.Info("Upgrading database...");
+        logger.Info(I18NManager.Translate("Server.Log.DatabaseUpgrading"));
         foreach (var instance in GetAllInstance<MissionData>() ?? []) instance.MoveFromOld();
     }
 }

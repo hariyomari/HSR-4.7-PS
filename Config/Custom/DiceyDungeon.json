@@ -1,0 +1,940 @@
+{
+  "_source": "OSBETAWin4.7.51 DesignData, unnamed ExcelOutput tables decoded with Demiurge by row type: levels 6ab08a7d3f739d62, nodes c1643faeeb64c1d6, monsters 2f85659fbe0aa4ca, avatars df826799821d351a, skill pool 427780f4afd6d5c4, miracle pool 215e3f5962540f7e, const 4288f0425c3c43d9. See docs/development/dicey-dungeon.md.",
+  "activityModuleId": 5014001,
+  "maxSkillNum": 5,
+  "maxMiracleNumChallenge": 3,
+  "maxRerollTime": 1,
+  "recoverUnlockNodeId": 103,
+  "rerollUnlockNodeId": 103,
+  "giveUpRecoverHp": 100,
+  "challengeStarPercent": [
+    80,
+    60,
+    20
+  ],
+  "rewardCandidateCount": 3,
+  "levels": [
+    {
+      "id": 1,
+      "activityModuleId": 5014001,
+      "type": "Story",
+      "avatarId": 1,
+      "preLevelId": 0,
+      "challengeAvatarIds": []
+    },
+    {
+      "id": 2,
+      "activityModuleId": 5014001,
+      "type": "Story",
+      "avatarId": 3,
+      "preLevelId": 1,
+      "challengeAvatarIds": []
+    },
+    {
+      "id": 3,
+      "activityModuleId": 5014001,
+      "type": "Story",
+      "avatarId": 4,
+      "preLevelId": 2,
+      "challengeAvatarIds": []
+    },
+    {
+      "id": 4,
+      "activityModuleId": 5014001,
+      "type": "Story",
+      "avatarId": 2,
+      "preLevelId": 3,
+      "challengeAvatarIds": []
+    },
+    {
+      "id": 5,
+      "activityModuleId": 5014001,
+      "type": "Challenge",
+      "avatarId": 0,
+      "preLevelId": 4,
+      "challengeAvatarIds": [
+        1,
+        3,
+        4,
+        2
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 101,
+      "levelId": 1,
+      "preNodeId": 0,
+      "monsterType": "Normal",
+      "monsterId": 101,
+      "fixedSkillIds": [
+        105,
+        108,
+        106
+      ],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 102,
+      "levelId": 1,
+      "preNodeId": 101,
+      "monsterType": "Normal",
+      "monsterId": 102,
+      "fixedSkillIds": [
+        104,
+        107,
+        109
+      ],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 103,
+      "levelId": 1,
+      "preNodeId": 102,
+      "monsterType": "Elite",
+      "monsterId": 103,
+      "fixedSkillIds": [
+        1011
+      ],
+      "fixedMiracleIds": [
+        122,
+        124,
+        125
+      ]
+    },
+    {
+      "id": 104,
+      "levelId": 1,
+      "preNodeId": 103,
+      "monsterType": "Normal",
+      "monsterId": 104,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 105,
+      "levelId": 1,
+      "preNodeId": 104,
+      "monsterType": "Elite",
+      "monsterId": 105,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 106,
+      "levelId": 1,
+      "preNodeId": 105,
+      "monsterType": "Normal",
+      "monsterId": 106,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 107,
+      "levelId": 1,
+      "preNodeId": 106,
+      "monsterType": "Boss",
+      "monsterId": 107,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 201,
+      "levelId": 2,
+      "preNodeId": 0,
+      "monsterType": "Normal",
+      "monsterId": 201,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 202,
+      "levelId": 2,
+      "preNodeId": 201,
+      "monsterType": "Normal",
+      "monsterId": 202,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 203,
+      "levelId": 2,
+      "preNodeId": 202,
+      "monsterType": "Elite",
+      "monsterId": 203,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 204,
+      "levelId": 2,
+      "preNodeId": 203,
+      "monsterType": "Normal",
+      "monsterId": 204,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 205,
+      "levelId": 2,
+      "preNodeId": 204,
+      "monsterType": "Elite",
+      "monsterId": 205,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 206,
+      "levelId": 2,
+      "preNodeId": 205,
+      "monsterType": "Normal",
+      "monsterId": 206,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 207,
+      "levelId": 2,
+      "preNodeId": 206,
+      "monsterType": "Boss",
+      "monsterId": 207,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 301,
+      "levelId": 3,
+      "preNodeId": 0,
+      "monsterType": "Normal",
+      "monsterId": 301,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 302,
+      "levelId": 3,
+      "preNodeId": 301,
+      "monsterType": "Normal",
+      "monsterId": 302,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 303,
+      "levelId": 3,
+      "preNodeId": 302,
+      "monsterType": "Elite",
+      "monsterId": 303,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 304,
+      "levelId": 3,
+      "preNodeId": 303,
+      "monsterType": "Normal",
+      "monsterId": 304,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 305,
+      "levelId": 3,
+      "preNodeId": 304,
+      "monsterType": "Elite",
+      "monsterId": 305,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 306,
+      "levelId": 3,
+      "preNodeId": 305,
+      "monsterType": "Normal",
+      "monsterId": 306,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 307,
+      "levelId": 3,
+      "preNodeId": 306,
+      "monsterType": "Boss",
+      "monsterId": 307,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 401,
+      "levelId": 4,
+      "preNodeId": 0,
+      "monsterType": "Normal",
+      "monsterId": 401,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 402,
+      "levelId": 4,
+      "preNodeId": 401,
+      "monsterType": "Normal",
+      "monsterId": 402,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 403,
+      "levelId": 4,
+      "preNodeId": 402,
+      "monsterType": "Elite",
+      "monsterId": 403,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 404,
+      "levelId": 4,
+      "preNodeId": 403,
+      "monsterType": "Normal",
+      "monsterId": 404,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 405,
+      "levelId": 4,
+      "preNodeId": 404,
+      "monsterType": "Elite",
+      "monsterId": 405,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 406,
+      "levelId": 4,
+      "preNodeId": 405,
+      "monsterType": "Normal",
+      "monsterId": 406,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 407,
+      "levelId": 4,
+      "preNodeId": 406,
+      "monsterType": "Boss",
+      "monsterId": 407,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    },
+    {
+      "id": 501,
+      "levelId": 5,
+      "preNodeId": 0,
+      "monsterType": "Boss",
+      "monsterId": 501,
+      "fixedSkillIds": [],
+      "fixedMiracleIds": []
+    }
+  ],
+  "monsters": [
+    {
+      "id": 101,
+      "hp": 300
+    },
+    {
+      "id": 102,
+      "hp": 450
+    },
+    {
+      "id": 103,
+      "hp": 700
+    },
+    {
+      "id": 104,
+      "hp": 650
+    },
+    {
+      "id": 105,
+      "hp": 1100
+    },
+    {
+      "id": 106,
+      "hp": 900
+    },
+    {
+      "id": 107,
+      "hp": 1900
+    },
+    {
+      "id": 201,
+      "hp": 300
+    },
+    {
+      "id": 202,
+      "hp": 450
+    },
+    {
+      "id": 203,
+      "hp": 750
+    },
+    {
+      "id": 204,
+      "hp": 650
+    },
+    {
+      "id": 205,
+      "hp": 1100
+    },
+    {
+      "id": 206,
+      "hp": 900
+    },
+    {
+      "id": 207,
+      "hp": 1900
+    },
+    {
+      "id": 301,
+      "hp": 300
+    },
+    {
+      "id": 302,
+      "hp": 450
+    },
+    {
+      "id": 303,
+      "hp": 750
+    },
+    {
+      "id": 304,
+      "hp": 650
+    },
+    {
+      "id": 305,
+      "hp": 1100
+    },
+    {
+      "id": 306,
+      "hp": 900
+    },
+    {
+      "id": 307,
+      "hp": 1900
+    },
+    {
+      "id": 401,
+      "hp": 300
+    },
+    {
+      "id": 402,
+      "hp": 450
+    },
+    {
+      "id": 403,
+      "hp": 750
+    },
+    {
+      "id": 404,
+      "hp": 650
+    },
+    {
+      "id": 405,
+      "hp": 1100
+    },
+    {
+      "id": 406,
+      "hp": 900
+    },
+    {
+      "id": 407,
+      "hp": 1900
+    },
+    {
+      "id": 501,
+      "hp": 5000
+    }
+  ],
+  "avatars": [
+    {
+      "id": 1,
+      "initialHp": 1000,
+      "storyInitialSkillIds": [
+        101,
+        102,
+        103
+      ],
+      "challengeInitialSkillIds": [
+        1011
+      ],
+      "challengeSkillIds": [
+        102,
+        103,
+        1041,
+        1051,
+        1061,
+        1071,
+        1081,
+        109
+      ],
+      "challengeMiracleIds": [
+        121,
+        122,
+        123,
+        124,
+        125
+      ]
+    },
+    {
+      "id": 2,
+      "initialHp": 1000,
+      "storyInitialSkillIds": [
+        209,
+        202,
+        204
+      ],
+      "challengeInitialSkillIds": [
+        2091
+      ],
+      "challengeSkillIds": [
+        2011,
+        202,
+        2031,
+        2041,
+        2051,
+        2061,
+        2071,
+        2081
+      ],
+      "challengeMiracleIds": [
+        221,
+        222,
+        223,
+        224,
+        225
+      ]
+    },
+    {
+      "id": 3,
+      "initialHp": 1000,
+      "storyInitialSkillIds": [
+        301,
+        302,
+        303
+      ],
+      "challengeInitialSkillIds": [
+        3011
+      ],
+      "challengeSkillIds": [
+        302,
+        303,
+        3041,
+        3051,
+        3061,
+        3071,
+        3081,
+        309
+      ],
+      "challengeMiracleIds": [
+        321,
+        322,
+        323,
+        324,
+        325
+      ]
+    },
+    {
+      "id": 4,
+      "initialHp": 1000,
+      "storyInitialSkillIds": [
+        401,
+        402,
+        403
+      ],
+      "challengeInitialSkillIds": [
+        4011
+      ],
+      "challengeSkillIds": [
+        4021,
+        403,
+        4041,
+        4051,
+        4061,
+        4071,
+        4081,
+        4091
+      ],
+      "challengeMiracleIds": [
+        421,
+        422,
+        423,
+        424,
+        425
+      ]
+    }
+  ],
+  "skillPool": [
+    {
+      "avatarId": 1,
+      "id": 1011,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 104,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 1041,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 105,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 1051,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 106,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 1061,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 107,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 1071,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 108,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 1081,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 109,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2091,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2041,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 203,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2031,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 201,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2011,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 205,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2051,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 206,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2061,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 207,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2071,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 208,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 2081,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3011,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 304,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3041,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 305,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3051,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 306,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3061,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 307,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3071,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 308,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 3081,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 309,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4011,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4021,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 404,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4041,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 405,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4051,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 406,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4061,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 407,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4071,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 408,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4081,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 409,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 4091,
+      "weight": 100
+    }
+  ],
+  "miraclePool": [
+    {
+      "avatarId": 1,
+      "id": 121,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 122,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 123,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 124,
+      "weight": 100
+    },
+    {
+      "avatarId": 1,
+      "id": 125,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 221,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 222,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 223,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 224,
+      "weight": 100
+    },
+    {
+      "avatarId": 2,
+      "id": 225,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 321,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 322,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 323,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 324,
+      "weight": 100
+    },
+    {
+      "avatarId": 3,
+      "id": 325,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 421,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 422,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 423,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 424,
+      "weight": 100
+    },
+    {
+      "avatarId": 4,
+      "id": 425,
+      "weight": 100
+    }
+  ]
+}

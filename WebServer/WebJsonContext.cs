@@ -158,6 +158,7 @@ namespace March7thHoney.WebServer;
 [JsonSerializable(typeof(AdminRoutes.AdminEditorModeRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminEditorPositionRequest))]
 [JsonSerializable(typeof(AdminRoutes.AdminEditorRawRequest))]
+[JsonSerializable(typeof(AdminRoutes.AdminEditorGearRequest))]
 // Website game-account provisioning (WebAccountRoutes)
 [JsonSerializable(typeof(WebAccountResult<WebAccountWrap>))]
 [JsonSerializable(typeof(WebAccountResult<WebAccountStatus>))]

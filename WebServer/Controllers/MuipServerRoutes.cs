@@ -16,7 +16,8 @@ public static class MuipServerRoutes
                 Results.Json(MuipManager.CreateSession(req.key_type, ctx.Connection.RemoteIpAddress?.ToString())));
 
         app.MapPost("/muip/auth_admin",
-            ([FromBody] AuthAdminKeyRequestBody req) => Results.Json(MuipManager.AuthAdmin(req.session_id, req.admin_key)));
+            ([FromBody] AuthAdminKeyRequestBody req, HttpContext ctx) => Results.Json(MuipManager.AuthAdmin(
+                req.session_id, req.admin_key, ctx.Connection.RemoteIpAddress?.ToString())));
 
         app.MapGet("/muip/exec_cmd",
             async ([AsParameters] AdminExecRequest req) =>

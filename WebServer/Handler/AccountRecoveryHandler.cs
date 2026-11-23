@@ -1,9 +1,12 @@
 using System.Net;
 using March7thHoney.Database.Account;
 using March7thHoney.Util;
+using March7thHoney.WebServer.Http;
 using March7thHoney.WebServer.Objects;
 using March7thHoney.WebServer.Pages;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Http;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Handler;
 
@@ -14,19 +17,18 @@ public class AccountRecoveryHandler
     private const string PasswordResetRequiresVerifiedEmailMessage =
         "Please verify your email before requesting a password reset.";
 
-    public async Task<IResult> SendVerificationEmail(SendVerificationEmailReqJson req, HttpRequest request)
+    public async Task<IResult> SendVerificationEmail(SendVerificationEmailReqJson req)
     {
         var account = ResolveAccount(req.account, req.username, req.email);
         if (account is { IsEmailVerified: false })
         {
-            await SendVerificationEmailForAccount(account, request);
+            await SendVerificationEmailForAccount(account);
         }
 
         return Ok(VerificationSentMessage);
     }
 
-    public static async Task<bool> SendVerificationEmailForAccount(AccountData account, HttpRequest request,
-        bool markUnverified = false)
+    public static async Task<bool> SendVerificationEmailForAccount(AccountData account, bool markUnverified = false)
     {
         if (string.IsNullOrWhiteSpace(account.Email))
             return false;
@@ -38,7 +40,7 @@ public class AccountRecoveryHandler
         }
 
         var token = account.GenerateEmailVerificationToken();
-        return await AccountEmailSender.SendVerificationEmailAsync(account, token, request);
+        return await AccountEmailSender.SendVerificationEmailAsync(account, token);
     }
 
     public IResult VerifyEmail(string? uid, string? token)
@@ -54,7 +56,7 @@ public class AccountRecoveryHandler
         return VerificationPage("Email verified", "You can return to the game login screen.");
     }
 
-    public async Task<IResult> ForgotPassword(ForgotPasswordReqJson req, HttpRequest request)
+    public async Task<IResult> ForgotPassword(ForgotPasswordReqJson req)
     {
         var username = (req.username ?? req.account ?? string.Empty).Trim();
         var email = (req.email ?? string.Empty).Trim();
@@ -71,13 +73,13 @@ public class AccountRecoveryHandler
         if (accountEmailMatches && !account!.IsEmailVerified)
         {
             account.ClearPasswordResetToken();
-            return Error(PasswordResetRequiresVerifiedEmailMessage, -202);
+            return Error(PasswordResetRequiresVerifiedEmailMessage, WebConstants.RetcodeInvalidData);
         }
 
         if (accountEmailMatches)
         {
             var token = account!.GeneratePasswordResetToken();
-            await AccountEmailSender.SendPasswordResetEmailAsync(account, token, request);
+            await AccountEmailSender.SendPasswordResetEmailAsync(account, token);
         }
 
         return Ok(ResetSentMessage);
@@ -126,16 +128,6 @@ public class AccountRecoveryHandler
             return AccountData.GetAccountByLoginIdentifier(account);
 
         return null;
-    }
-
-    private static IResult Ok(string message)
-    {
-        return Results.Json(new StatusResult(0, message));
-    }
-
-    private static IResult Error(string message, int retcode = -201)
-    {
-        return Results.Json(new StatusResult(retcode, message), statusCode: StatusCodes.Status400BadRequest);
     }
 
     private static IResult VerificationPage(string title, string message, int statusCode = 200)

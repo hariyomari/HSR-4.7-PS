@@ -43,7 +43,8 @@ public partial class FriendDevelopmentInfoPb
     public long Time { get; set; } = Extensions.GetUnixSec();
     public Dictionary<string, uint> Params { get; set; } = [];
 
-    // TODO 4.3: OHNPAFLKHNA 在 4.3 中已消失或更名，好友发展信息不在登录路径，暂时移除
+    // TODO: the conversion to its protobuf message was removed with the 4.3 protocol, where that message
+    // disappeared or was renamed; its current counterpart has not been identified.
 }
 
 [MemoryPackable]

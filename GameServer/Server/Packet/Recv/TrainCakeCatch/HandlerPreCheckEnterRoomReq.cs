@@ -12,10 +12,18 @@ public class HandlerPreCheckEnterRoomReq : Handler
         var req = SocialPlayPreCheckEnterRoomCsReq.Parser.ParseFrom(data);
         var player = connection.Player!;
         var roomOwnerUid = ResolveRoomOwnerUid(player.Uid, req.TeleportId);
-        player.TrainCakeCatchManager!.PrepareSocialPlayRoom(roomOwnerUid);
+        if (!player.TrainCakeCatchManager!.IsValidRoomOwner(roomOwnerUid))
+        {
+            var rejected = BasePacket.Create(CmdIds.SocialPlayPreCheckEnterRoomScRsp, new SocialPlayPreCheckEnterRoomScRsp
+            {
+                Retcode = (uint)Retcode.RetFriendPlayerNotFound
+            });
+            await connection.SendPacket(rejected);
+            return;
+        }
 
-        var preCheckPacket = new BasePacket(CmdIds.SocialPlayPreCheckEnterRoomScRsp);
-        preCheckPacket.SetData(new SocialPlayPreCheckEnterRoomScRsp
+        player.TrainCakeCatchManager.PrepareSocialPlayRoom(roomOwnerUid);
+        var preCheckPacket = BasePacket.Create(CmdIds.SocialPlayPreCheckEnterRoomScRsp, new SocialPlayPreCheckEnterRoomScRsp
         {
             CMHKFNFKGOI = player.TrainCakeCatchManager.GetRoomRefreshTime(roomOwnerUid)
         });

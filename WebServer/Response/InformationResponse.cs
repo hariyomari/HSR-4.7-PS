@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 using March7thHoney.Enums;
-using March7thHoney.WebServer.Server;
+using March7thHoney.WebServer.Services;
 
 namespace March7thHoney.WebServer.Response;
 
@@ -16,11 +16,11 @@ public class ServerInformationData
     public float MaxMemory { get; set; } = 0;
     public float UsedMemory { get; set; } = 0;
     public float ProgramUsedMemory { get; set; } = 0;
-    public float CpuUsage { get; set; } = MuipManager.GetCpuUsage();
-    public string CpuModel { get; set; } = MuipManager.GetCpuDetails().ModelName;
-    public int CpuCores { get; set; } = MuipManager.GetCpuDetails().Cores;
-    public float CpuFrequency { get; set; } = MuipManager.GetCpuDetails().Frequency;
-    public string SystemVersion { get; set; } = MuipManager.GetSystemVersion();
+    public float CpuUsage { get; set; } = HostMetrics.GetCpuUsage();
+    public string CpuModel { get; set; } = HostMetrics.GetCpuDetails().ModelName;
+    public int CpuCores { get; set; } = HostMetrics.GetCpuDetails().Cores;
+    public float CpuFrequency { get; set; } = HostMetrics.GetCpuDetails().Frequency;
+    public string SystemVersion { get; set; } = HostMetrics.GetSystemVersion();
 }
 
 public class SimplePlayerInformationData

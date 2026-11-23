@@ -4,16 +4,15 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     遭遇 (EliteBranch) rewards. The official reward tables are server-side and unpublished; the wiki only says that
-///     low tiers give a token amount of gold, exp or free refreshes, higher tiers give more of them plus basic
-///     equipment or 4/5-cost characters, and tier 4 gives the best items (财富宝钻, advanced equipment selectors).
-///     The pools below follow that description; amounts are our own estimates. One reward is rolled per option when
-///     the options are generated, so the card shows exactly what clearing it pays. 免费升舱 (103901) raises the tier by
-///     one, and tier 4 gets one extra tier-4 reward instead.
+///     Encounter (遭遇, EliteBranch) rewards. The official reward tables are server-side and unpublished; the wiki only
+///     says that low tiers give a token amount of gold, exp or free refreshes, higher tiers give more of them plus
+///     basic equipment or 4/5-cost characters, and tier 4 gives the best items (Wealth Diamond, advanced equipment
+///     selectors). The pools below follow that description; amounts are our own estimates. One reward is rolled per
+///     option when the options are generated, so the card shows exactly what clearing it pays. Free Upgrade
+///     (免费升舱, 103901) raises the tier by one, and tier 4 gets one extra tier-4 reward instead.
 /// </summary>
 public sealed partial class GridFightSession
 {
-    public const uint EncounterDiamondEquipmentId = 350701;   // 财富宝钻
     public const uint AdvancedArmamentBoxForgeId = 99998;     // 进阶武装箱
     public const uint FreeUpgradeAugmentId = 103901;          // 免费升舱
     private const uint MaxEncounterRewardTier = 4;
@@ -65,7 +64,7 @@ public sealed partial class GridFightSession
                 Equipment(GridFightEquipCategoryEnum.Craftable, 1);
                 break;
             default:
-                Item(EncounterDiamondEquipmentId); Item(AdvancedArmamentBoxForgeId); Item(PrivilegeArmamentBoxForgeId);
+                Item(WealthDiamondEquipmentId); Item(AdvancedArmamentBoxForgeId); Item(PrivilegeArmamentBoxForgeId);
                 break;
         }
 

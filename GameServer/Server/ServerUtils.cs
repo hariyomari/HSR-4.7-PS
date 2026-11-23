@@ -1,14 +1,12 @@
 using March7thHoney.GameServer.Game.Lobby;
 using March7thHoney.GameServer.Game.Mission;
-using March7thHoney.GameServer.Game.MultiPlayer;
 
 namespace March7thHoney.GameServer.Server;
 
 public static class ServerUtils
 {
-    // Server-wide singletons for the multiplayer lobby/fight framework (no reflection — NativeAOT safe).
+    // Server-wide singleton for the multiplayer lobby (no reflection — NativeAOT safe).
     public static LobbyServerManager LobbyServerManager { get; } = new();
-    public static MultiPlayerGameServerManager MultiPlayerGameServerManager { get; } = new();
 
     public static void InitializeHandlers()
     {

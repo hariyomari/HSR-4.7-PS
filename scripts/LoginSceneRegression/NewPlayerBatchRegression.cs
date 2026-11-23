@@ -15,7 +15,8 @@ internal static class NewPlayerBatchRegression
         const int uid = 60071;
         var connectionString = $"Data Source={databaseFile}";
         var avatarTable = EntityStores.Map[typeof(AvatarData)].Table;
-        // The last row the wiring creates, so every other new row is written before the insert fails.
+        // The last row the wiring creates: PetManager is the last component PlayerInstance.WireManagers adds while the
+        // 4.8-only activities are excluded. Every other new row is written before the insert fails.
         var failingTable = EntityStores.Map[typeof(PlayerPetData)].Table;
 
         Execute(connectionString,

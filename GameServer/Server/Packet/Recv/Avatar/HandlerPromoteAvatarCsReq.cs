@@ -8,7 +8,7 @@ public class HandlerPromoteAvatarCsReq : Handler<PromoteAvatarCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, PromoteAvatarCsReq req)
     {
-        await player.InventoryManager!.PromoteAvatar((int)req.BaseAvatarId);
+        await player.AvatarManager!.PromoteAvatar((int)req.BaseAvatarId);
 
         await connection.SendPacket(CmdIds.PromoteAvatarScRsp);
     }

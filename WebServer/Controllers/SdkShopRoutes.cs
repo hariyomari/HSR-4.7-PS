@@ -1,15 +1,12 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using March7thHoney.Configuration;
 using March7thHoney.Data;
 using March7thHoney.Data.Custom;
 using March7thHoney.Data.Excel;
-using March7thHoney.Database.Inventory;
+using March7thHoney.Database.Account;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
-using March7thHoney.GameServer.Server.Packet.Send.Player;
-using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 using March7thHoney.Util;
@@ -22,7 +19,6 @@ namespace March7thHoney.WebServer.Controllers;
 // Emulates the SDK shop endpoints so a recharge click grants the tier instead of opening a payment page.
 public static class SdkShopRoutes
 {
-    private const int OneiricShardItemId = 3; // Mcoin
     private const int PayAbortedRetcode = -1;
 
     private static readonly Logger Logger = new("SdkShop");
@@ -38,8 +34,6 @@ public static class SdkShopRoutes
         "if(document.body){c();}else{document.addEventListener('DOMContentLoaded',c);}" +
         "setTimeout(c,50);setTimeout(c,250);setTimeout(c,1000);})();</script>" +
         "</head><body></body></html>";
-
-    private static ConfigContainer Config => ConfigManager.Config;
 
     private static Task Json(HttpContext ctx, string content)
     {
@@ -136,9 +130,10 @@ public static class SdkShopRoutes
     {
         var request = await SdkRequest.Read(ctx);
 
-        if (!Config.ServerOption.EnableFakeRecharge)
+        var player = await ResolvePlayer(ctx, request);
+        if (player?.InventoryManager == null)
         {
-            Logger.Info("createOrder ignored, fake recharge is disabled");
+            Logger.Debug($"createOrder has no authenticated online player. {request.Describe()}");
             await Json(ctx, PayAborted());
             return;
         }
@@ -146,43 +141,20 @@ public static class SdkShopRoutes
         var product = ResolveProduct(request);
         if (product == null)
         {
-            Logger.Warn($"createOrder did not match any recharge tier. {request.Describe()}");
+            Logger.Debug($"createOrder did not match any recharge tier. {request.Describe()}");
             await Json(ctx, PayAborted());
             return;
         }
 
-        if (product.GiftType != (int)ProductGiftType.ProductGiftCoin)
+        var result = await RechargeService.Purchase(player, product);
+        if (result != RechargeResult.Granted)
         {
-            Logger.Warn($"createOrder for unsupported gift type {product.GiftType}, product={product.ProductID}");
+            Logger.Debug($"createOrder refused ({result}), gift type {product.GiftType}, product={product.ProductID}");
             await Json(ctx, PayAborted());
             return;
         }
 
-        var player = ResolvePlayer(request);
-        if (player?.InventoryManager == null)
-        {
-            Logger.Warn($"createOrder has no online player. {request.Describe()}");
-            await Json(ctx, PayAborted());
-            return;
-        }
-
-        await GrantRecharge(player, product);
         await Json(ctx, CreatedOrder(NextOrderNumber()));
-    }
-
-    private static async Task GrantRecharge(PlayerInstance player, RechargeConfigExcel product)
-    {
-        List<ItemData> rewards = [new() { ItemId = OneiricShardItemId, Count = product.FirstCharge }];
-        if (product.NormalCharge > 0)
-            rewards.Add(new ItemData { ItemId = OneiricShardItemId, Count = product.NormalCharge });
-
-        var total = rewards.Sum(x => x.Count);
-        await player.InventoryManager!.AddItem(OneiricShardItemId, total, notify: false, sync: false);
-        await player.SendPacket(new PacketPlayerSyncScNotify(player.ToProto()));
-        await player.SendPacket(new PacketRechargeSuccNotify(product.ProductID, rewards,
-            MonthCardService.GetMonthCardOutDateTime(player.Data)));
-
-        Logger.Info($"Fake recharge granted. uid={player.Uid} product={product.ProductID} amount={total}");
     }
 
     private static RechargeConfigExcel? ResolveProduct(SdkRequest request)
@@ -201,26 +173,42 @@ public static class SdkShopRoutes
             .FirstOrDefault(x => x != null && x.GiftType == (int)ProductGiftType.ProductGiftCoin);
     }
 
-    private static PlayerInstance? ResolvePlayer(SdkRequest request)
+    // The credited uid must come with a combo or dispatch token this server issued to that same account.
+    private static async ValueTask<PlayerInstance?> ResolvePlayer(HttpContext ctx, SdkRequest request)
     {
-        var rawUid = request.Find("open_id", "openId", "account_id", "accountId", "uid", "account_uid", "role_id");
-        if (int.TryParse(rawUid, out var uid))
+        var rawUid = request.ComboTokenHeader.GetValueOrDefault("oi") ??
+                     request.Find("open_id", "openId", "account_id", "accountId", "uid", "account_uid", "role_id");
+        var token = request.ComboTokenHeader.GetValueOrDefault("ct") ?? request.Find("combo_token", "token");
+        if (!int.TryParse(rawUid, out var uid) || string.IsNullOrEmpty(token)) return null;
+
+        if (!await IsAccountToken(ctx, uid, token))
         {
-            var connection = Listener.GetActiveConnection(uid);
-            if (connection?.Player != null) return connection.Player;
+            Logger.Debug($"createOrder rejected an invalid token. uid={uid} token_len={token.Length}");
+            return null;
         }
 
-        var online = March7thHoneyListener.GetSnapshot()
-            .OfType<Connection>()
-            .Where(x => x.Player != null && x.State == SessionStateEnum.ACTIVE)
-            .ToList();
-
-        if (online.Count != 1) return null;
-
-        Logger.Warn($"Pay request carried no usable uid, falling back to the only online player {online[0].Player!.Uid}");
-        return online[0].Player;
+        return Listener.GetActiveConnection(uid)?.Player;
     }
 
+    // Same split as PlayerGetToken: a game server without local accounts asks its dispatch server.
+    private static async ValueTask<bool> IsAccountToken(HttpContext ctx, int uid, string token)
+    {
+        var serverConfig = ConfigManager.Config.ServerOption.ServerConfig;
+        if (serverConfig.RunDispatch || string.IsNullOrEmpty(serverConfig.FromDispatchBaseUrl))
+            return AccountData.GetAccountByUid(uid)?.ValidateGameToken(token) == true;
+
+        var headers = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(serverConfig.ServerExchangeSecret))
+            headers["X-March7thHoney-Server-Secret"] = serverConfig.ServerExchangeSecret;
+
+        var form = new Dictionary<string, string> { ["accountUid"] = uid.ToString(), ["token"] = token };
+        var clientIp = ctx.Connection.RemoteIpAddress?.ToString();
+        if (clientIp != null) form["clientIp"] = clientIp;
+
+        var (status, body) = await HttpNetwork.SendPostFormRequest(
+            $"{serverConfig.FromDispatchBaseUrl}/validate_account_token", form, headers);
+        return status == 200 && int.TryParse(body, out var validatedUid) && validatedUid == uid;
+    }
 
     // Shape recovered from the SDK's own cached price-tier payload; price is in minor units.
     private static string BuildTierJson(QueryProductInfoConfig config, QueryProductTierPrice tier)
@@ -281,15 +269,41 @@ public static class SdkShopRoutes
 // Reads SDK request parameters regardless of whether they arrive as query, form or JSON body.
 internal sealed class SdkRequest
 {
-    private static readonly string[] SecretKeys = ["combo_token", "token", "auth_key", "sign", "combo_id"];
+    // Credential fields are matched by name fragment; "ct" (the combo token's short name) only as the whole name,
+    // because it is part of ordinary names such as product_id.
+    private static readonly string[] SecretKeyParts =
+        ["token", "ticket", "password", "auth_key", "sign", "combo_id"];
+
+    private static readonly string[] SecretKeyNames = ["ct"];
 
     private readonly Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
 
     public string Path { get; private set; } = "";
 
+    // The SDK sends its login state as "ai=..;ci=..;oi=<open id>;ct=<combo token>;si=..;bi=..".
+    public IReadOnlyDictionary<string, string> ComboTokenHeader { get; private set; } =
+        new Dictionary<string, string>();
+
+    public static Dictionary<string, string> ParseComboTokenHeader(string? header)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(header)) return values;
+
+        foreach (var part in header.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = part.IndexOf('=');
+            if (separator <= 0) continue;
+            var value = part[(separator + 1)..].Trim();
+            if (value.Length > 0) values.TryAdd(part[..separator].Trim(), value);
+        }
+
+        return values;
+    }
+
     public static async Task<SdkRequest> Read(HttpContext ctx)
     {
         var request = new SdkRequest { Path = ctx.Request.Path.Value ?? "" };
+        request.ComboTokenHeader = ParseComboTokenHeader(ctx.Request.Headers["x-rpc-combo_token"].ToString());
 
         foreach (var pair in ctx.Request.Query)
             request._values[pair.Key] = pair.Value.ToString();
@@ -324,7 +338,8 @@ internal sealed class SdkRequest
 
     private static bool IsSecret(string key)
     {
-        return SecretKeys.Any(x => key.Contains(x, StringComparison.OrdinalIgnoreCase));
+        return SecretKeyNames.Any(x => key.Equals(x, StringComparison.OrdinalIgnoreCase)) ||
+               SecretKeyParts.Any(x => key.Contains(x, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ReadJsonBody(string body)
@@ -338,7 +353,8 @@ internal sealed class SdkRequest
         }
         catch (JsonException)
         {
-            _values["_raw_body"] = body.Length > 512 ? body[..512] : body;
+            // Never log an unparsed body: it may carry a token. Only its size goes into the log.
+            _values["_raw_body"] = $"{Encoding.UTF8.GetByteCount(body)} bytes, not JSON";
         }
     }
 

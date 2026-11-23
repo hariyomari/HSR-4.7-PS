@@ -9,8 +9,10 @@ public class HandlerBuyGoodsCsReq : Handler<BuyGoodsCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, BuyGoodsCsReq req)
     {
-        var items = await player.ShopService!.BuyItem((int)req.ShopId, (int)req.GoodsId, (int)req.GoodsNum);
+        var (retcode, items) = req.ShopId > int.MaxValue || req.GoodsId > int.MaxValue
+            ? (Retcode.RetFail, [])
+            : await player.ShopManager!.BuyItem((int)req.ShopId, (int)req.GoodsId, req.GoodsNum);
 
-        await connection.SendPacket(new PacketBuyGoodsScRsp(req, items));
+        await connection.SendPacket(new PacketBuyGoodsScRsp(req, items, retcode));
     }
 }

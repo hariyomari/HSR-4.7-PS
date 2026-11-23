@@ -1,5 +1,5 @@
 using March7thHoney.Database;
-using March7thHoney.GameServer.Game.Calyx;
+using March7thHoney.GameServer.Game.Freesr;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Internationalization;
 using March7thHoney.Util;
@@ -10,25 +10,6 @@ namespace March7thHoney.Command.Command.Cmd;
 [CommandInfo("json", "Game.Command.Json.Desc", "Game.Command.Json.Usage", permission: CommandPermissions.Json)]
 public class CommandJson : ICommand
 {
-    private static readonly string[] JsonDirectoryRelativePaths =
-    [
-        "Config/Json"
-    ];
-
-    private static List<DirectoryInfo> GetJsonDirectories(bool createIfMissing = false)
-    {
-        var dirs = new List<DirectoryInfo>(JsonDirectoryRelativePaths.Length);
-        foreach (var relativePath in JsonDirectoryRelativePaths)
-        {
-            var dir = new DirectoryInfo(Path.GetFullPath(relativePath));
-            if (createIfMissing && !dir.Exists && relativePath.Equals("Config/Json", StringComparison.OrdinalIgnoreCase))
-                dir.Create();
-            dirs.Add(dir);
-        }
-
-        return dirs;
-    }
-
     [CommandDefault]
     public async ValueTask Import(CommandArg arg)
     {
@@ -62,19 +43,19 @@ public class CommandJson : ICommand
         if (input.Equals("export", StringComparison.OrdinalIgnoreCase))
         {
             bool geshihua = false;
-            string outputFileName = $"freesr-data_{player.Data.Name}_{player.Data.Uid}_{DateTime.Now:yyMMddHHmmss}.json";
+            string? customName = null;
             if (arg.Args.Count == 2)
             {
                 bool bushigeshihua = bool.TryParse(arg.Args[1], out geshihua);
                 if (!bushigeshihua)
                 {
-                    outputFileName = arg.Args[1] + ".json";
+                    customName = arg.Args[1];
                     geshihua = true;
                 }
             }
             else if (arg.Args.Count == 3)
             {
-                outputFileName = arg.Args[1] + ".json";
+                customName = arg.Args[1];
                 bool bushigeshihua = bool.TryParse(arg.Args[2], out geshihua);
                 if (!bushigeshihua)
                 {
@@ -82,16 +63,32 @@ public class CommandJson : ICommand
                 }
             }
 
+            if (customName != null && !IsPlainFileName(customName))
+            {
+                await arg.SendMsg(I18NManager.Translate("Game.Command.Json.InvalidFileName", customName));
+                return;
+            }
+
+            string outputFileName = customName != null
+                ? customName + ".json"
+                : $"freesr-data_{SanitizeFileName(player.Data.Name ?? "")}_{player.Data.Uid}_{DateTime.Now:yyMMddHHmmss}.json";
+            var dir = FreesrShared.GetJsonDirectories(createIfMissing: true)[0];
+            string combinedPath = Path.GetFullPath(Path.Combine(dir.FullName, outputFileName));
+            if (!IsUnderDirectory(dir, combinedPath))
+            {
+                await arg.SendMsg(I18NManager.Translate("Game.Command.Json.InvalidFileName", outputFileName));
+                return;
+            }
+
             string outputjson = await FreesrShared.ExportPlayerDataAsync(player.Uid, geshihua);
-            var dir = GetJsonDirectories(createIfMissing: true)[0];
-            string combinedPath = Path.Combine(dir.FullName, outputFileName);
             await File.WriteAllTextAsync(combinedPath, outputjson, Encoding.UTF8);
 
             await arg.SendMsg(I18NManager.Translate("Game.Command.Json.ExportSuccess", outputFileName));
             return;
         }
 
-        var selectedPath = ResolveInputPath(input, out var pathError);
+        // Only the server terminal and the admin console may import from outside Config/Json.
+        var selectedPath = ResolveInputPath(input, arg.Sender.IsConsole, out var pathError);
         if (selectedPath == null)
         {
             if (!string.IsNullOrWhiteSpace(pathError))
@@ -129,7 +126,7 @@ public class CommandJson : ICommand
         });
     }
 
-    private static string? ResolveInputPath(string input, out string? error)
+    private static string? ResolveInputPath(string input, bool allowOutsideJsonDirectory, out string? error)
     {
         error = null;
         input = input.Trim();
@@ -138,7 +135,7 @@ public class CommandJson : ICommand
 
         if (int.TryParse(input, out var choice))
         {
-            var files = GetJsonFiles().OrderBy(f => f.LastWriteTimeUtc).ToList();
+            var files = FreesrShared.GetJsonFiles().OrderBy(f => f.LastWriteTimeUtc).ToList();
             if (files.Count == 0)
             {
                 error = I18NManager.Translate("Game.Command.Json.NoFileFoundWithHint");
@@ -154,12 +151,25 @@ public class CommandJson : ICommand
             return files[choice - 1].FullName;
         }
 
+        var jsonDirs = FreesrShared.GetJsonDirectories(createIfMissing: true);
         var looksLikePath = input.Contains('/') || input.Contains('\\') || Path.IsPathRooted(input);
         if (looksLikePath)
-            return Path.GetFullPath(input);
+        {
+            var fullPath = Path.GetFullPath(input);
+            if (allowOutsideJsonDirectory || jsonDirs.Any(dir => IsUnderDirectory(dir, fullPath)))
+                return fullPath;
+
+            error = I18NManager.Translate("Game.Command.Json.PathOutsideJsonDirectory", input);
+            return null;
+        }
+
+        if (!IsPlainFileName(input))
+        {
+            error = I18NManager.Translate("Game.Command.Json.InvalidFileName", input);
+            return null;
+        }
 
         // Treat as filename under configured json directories.
-        var jsonDirs = GetJsonDirectories(createIfMissing: true);
         var fileName = input.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? input : input + ".json";
         foreach (var jsonDir in jsonDirs)
         {
@@ -173,29 +183,39 @@ public class CommandJson : ICommand
         return Path.Combine(jsonDirs[0].FullName, fileName);
     }
 
-    private static List<FileInfo> GetJsonFiles()
+    /// <summary>
+    ///     A single path segment: no directory separators, drive or volume prefix, "." / ".." or invalid characters,
+    ///     so joining it to a directory can never leave that directory.
+    /// </summary>
+    private static bool IsPlainFileName(string name)
     {
-        var dirs = GetJsonDirectories(createIfMissing: true);
-        try
-        {
-            return dirs
-                .Where(x => x.Exists)
-                .SelectMany(x => x.GetFiles("*.json", SearchOption.TopDirectoryOnly))
-                .DistinctBy(x => x.FullName)
-                .ToList();
-        }
-        catch
-        {
-            return [];
-        }
+        if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..") return false;
+        if (name.IndexOfAny(['/', '\\', ':']) >= 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+        return !Path.IsPathRooted(name) && Path.GetFileName(name) == name;
     }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => c is '/' or '\\' or ':' || invalid.Contains(c) ? '_' : c).ToArray();
+        var sanitized = new string(chars).Replace("..", "_");
+        return string.IsNullOrWhiteSpace(sanitized) ? "player" : sanitized;
+    }
+
+    private static bool IsUnderDirectory(DirectoryInfo directory, string fullPath)
+    {
+        var root = Path.TrimEndingDirectorySeparator(directory.FullName) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return Path.GetFullPath(fullPath).StartsWith(root, comparison);
+    }
+
 
     private static async ValueTask ShowFileList(CommandArg arg)
     {
-        var files = GetJsonFiles().OrderBy(f => f.LastWriteTimeUtc).ToList();
+        var files = FreesrShared.GetJsonFiles().OrderBy(f => f.LastWriteTimeUtc).ToList();
         if (files.Count == 0)
         {
-            var searched = GetJsonDirectories(createIfMissing: true).Select(x => x.FullName).ToList();
+            var searched = FreesrShared.GetJsonDirectories(createIfMissing: true).Select(x => x.FullName).ToList();
             await arg.SendMsg(I18NManager.Translate("Game.Command.Json.NoFileFound"));
             if (searched.Count > 0)
             {

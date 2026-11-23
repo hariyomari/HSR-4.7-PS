@@ -4,9 +4,11 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Server.Packet.Send.Pet;
 
 /// <summary>
-///     背包“盲盒回收”页查询的盲盒池。BlindBoxPool 表不在缓存里，按 4.6.0 资源里唯一的池 1001 写死；
-///     开始时间取官服 4.6 首期活动（1790499600），结束时间推到 2100-01-01，私服不过期（yuukisr_go c4f5979）。
-///     开过盒子后才出现的计数字段 CANDEKPIMCC 新号抓包里没有，这里也不带。
+///     The blind box pools queried by the inventory's blind box recycling page ("盲盒回收"). The BlindBoxPool table is
+///     not in the cache, so the only pool in the 4.6.0 resources, 1001, is hardcoded. The begin time is that of the
+///     official first 4.6 event phase (1790499600) and the end time is pushed out to 2100-01-01, so the pool never
+///     expires on a private server (yuukisr_go c4f5979). The counter field CANDEKPIMCC appears only once a box has
+///     been opened and is absent from captures of a new account, so it is not sent here either.
 /// </summary>
 public class PacketBlindBoxGetDataScRsp : BasePacket
 {

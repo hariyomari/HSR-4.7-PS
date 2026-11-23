@@ -10,7 +10,7 @@ public class PacketPlayerLoginScRsp : BasePacket
     {
         var rsp = new PlayerLoginScRsp
         {
-            CurTimezone = (int)TimeZoneInfo.Local.BaseUtcOffset.TotalHours,
+            CurTimezone = ServerTimeProvider.UtcOffsetHours,
             ServerTimestampMs = (ulong)ServerTimeProvider.GetServerUnixMs(connection.Player?.Data),
             BasicInfo = connection.Player?.ToProto(), // should not be null
             Stamina = (uint)(connection.Player?.Data.Stamina ?? 0)

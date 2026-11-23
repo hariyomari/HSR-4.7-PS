@@ -15,50 +15,35 @@ public partial class RogueDialogueBaseConfigInfo
     [JsonIgnore] public LevelGraphConfigInfo? DialogueInfo { get; set; }
     [JsonIgnore] public RogueDialogueEventConfigInfo? OptionInfo { get; set; }
 
+    /// <summary>
+    ///     Loads the option and dialogue graphs. A missing file leaves its graph unset; a file that fails to parse is
+    ///     logged and marks the resource cache incomplete, so a partial load is not saved as a complete cache.
+    /// </summary>
     public void Loaded()
     {
-        var logger = Logger.GetByClassName();
         if (!string.IsNullOrEmpty(OptionPath))
-        {
-            var path = ConfigManager.Config.Path.ResourcePath + "/" + OptionPath;
-            var file = new FileInfo(path);
-            if (!file.Exists) return;
-            try
-            {
-                using var reader = file.OpenRead();
-                using StreamReader reader2 = new(reader);
-                var text = reader2.ReadToEnd();
-                var info = JsonConvert.DeserializeObject<RogueDialogueEventConfigInfo>(text);
-                OptionInfo = info;
-            }
-            catch (Exception ex)
-            {
-                logger.Error(
-                    I18NManager.Translate("Server.ServerInfo.FailedToReadItem", file.Name,
-                        I18NManager.Translate("Word.Error")), ex);
-            }
-        }
+            LoadFile(OptionPath, text => OptionInfo = JsonConvert.DeserializeObject<RogueDialogueEventConfigInfo>(text));
 
         if (!string.IsNullOrEmpty(DialoguePath))
+            LoadFile(DialoguePath,
+                text => DialogueInfo =
+                    LevelGraphConfigInfo.LoadFromJsonObject(JObject.Parse(text.Replace("$type", "Type"))));
+    }
+
+    private static void LoadFile(string relativePath, Action<string> load)
+    {
+        var file = new FileInfo(Path.Combine(ConfigManager.Config.Path.ResourcePath, relativePath));
+        if (!file.Exists) return;
+        try
         {
-            var path = ConfigManager.Config.Path.ResourcePath + "/" + DialoguePath;
-            var file = new FileInfo(path);
-            if (!file.Exists) return;
-            try
-            {
-                using var reader = file.OpenRead();
-                using StreamReader reader2 = new(reader);
-                var text = reader2.ReadToEnd().Replace("$type", "Type");
-                var obj = JObject.Parse(text);
-                var info = LevelGraphConfigInfo.LoadFromJsonObject(obj);
-                DialogueInfo = info;
-            }
-            catch (Exception ex)
-            {
-                logger.Error(
-                    I18NManager.Translate("Server.ServerInfo.FailedToReadItem", file.Name,
-                        I18NManager.Translate("Word.Error")), ex);
-            }
+            load(File.ReadAllText(file.FullName));
+        }
+        catch (Exception ex)
+        {
+            ResourceCache.IsComplete = false;
+            new Logger(nameof(RogueDialogueBaseConfigInfo)).Error(
+                I18NManager.Translate("Server.ServerInfo.FailedToReadItem", file.Name,
+                    I18NManager.Translate("Word.Error")), ex);
         }
     }
 }

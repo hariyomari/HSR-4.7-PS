@@ -33,7 +33,7 @@ public sealed class HandlerGetRogueInfoCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueInfoScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueInfoScRsp,
             new GetRogueInfoScRsp { RogueGameInfo = player.RogueManager!.BuildRogueGameInfo() }));
         await player.RogueManager!.ResumeTutorialVictoryNotification();
     }
@@ -56,7 +56,7 @@ public sealed class HandlerStartRogueCsReq : Handler<StartRogueCsReq>
         var inst = manager.RogueInstance;
         if (ret != Retcode.RetSucc || inst == null)
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.StartRogueScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.StartRogueScRsp,
                 new StartRogueScRsp { Retcode = (uint)(ret == Retcode.RetSucc ? Retcode.RetFail : ret) }));
             return;
         }
@@ -70,7 +70,7 @@ public sealed class HandlerStartRogueCsReq : Handler<StartRogueCsReq>
         await connection.SendPacket(new PacketSyncServerSceneChangeNotify());
         await connection.SendPacket(new PacketSyncRogueMapRoomScNotify(inst));
         await connection.SendPacket(new PacketSyncLineupNotify(player.LineupManager!.GetCurLineup()!));
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.StartRogueScRsp, new StartRogueScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.StartRogueScRsp, new StartRogueScRsp
         {
             RogueGameInfo = manager.BuildRogueGameInfo(),
             Lineup = RogueResponseParts.BuildLineup(player),
@@ -90,14 +90,14 @@ public sealed class HandlerEnterRogueMapRoomCsReq : Handler<EnterRogueMapRoomCsR
         var (ret, room) = await manager.EnterRoom((int)siteId);
         if (ret != Retcode.RetSucc || room == null || manager.RogueInstance == null)
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.EnterRogueMapRoomScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.EnterRogueMapRoomScRsp,
                 new EnterRogueMapRoomScRsp { Retcode = (uint)ret }));
             return;
         }
 
         await connection.SendPacket(new PacketSyncRogueMapRoomScNotify(manager.RogueInstance));
         await connection.SendPacket(new PacketSyncLineupNotify(player.LineupManager!.GetCurLineup()!));
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.EnterRogueMapRoomScRsp, new EnterRogueMapRoomScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.EnterRogueMapRoomScRsp, new EnterRogueMapRoomScRsp
         {
             ANHDBMOPGDC = (uint)room.SiteId,
             Lineup = RogueResponseParts.BuildLineup(player),
@@ -114,13 +114,13 @@ public sealed class HandlerQuitRogueCsReq : PlayerHandler
         var manager = player.RogueManager!;
         if (manager.RogueInstance == null)
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.QuitRogueScRsp, new QuitRogueScRsp()));
+            await connection.SendPacket(BasePacket.Create(CmdIds.QuitRogueScRsp, new QuitRogueScRsp()));
             return;
         }
 
         manager.QuitRogue();
         await connection.SendPacket(new PacketSyncRogueStatusScNotify(manager.RogueInstance.Status));
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.QuitRogueScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.QuitRogueScRsp,
             new QuitRogueScRsp { RogueGameInfo = manager.BuildRogueGameInfo() }));
     }
 }
@@ -141,7 +141,7 @@ public sealed class HandlerLeaveRogueCsReq : PlayerHandler
                 return;
             }
 
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.LeaveRogueScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.LeaveRogueScRsp,
                 new LeaveRogueScRsp { Retcode = (uint)Retcode.RetRogueStatusNotMatch }));
             return;
         }
@@ -150,7 +150,7 @@ public sealed class HandlerLeaveRogueCsReq : PlayerHandler
 
         if (!await manager.LeaveRun())
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.LeaveRogueScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.LeaveRogueScRsp,
                 new LeaveRogueScRsp { Retcode = (uint)Retcode.RetFail }));
             return;
         }
@@ -162,7 +162,7 @@ public sealed class HandlerLeaveRogueCsReq : PlayerHandler
     {
         // Without the scene-change signal the client can stay in the rogue-scene state after leaving.
         await connection.SendPacket(new PacketSyncServerSceneChangeNotify());
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.LeaveRogueScRsp, new LeaveRogueScRsp
+        await connection.SendPacket(BasePacket.Create(CmdIds.LeaveRogueScRsp, new LeaveRogueScRsp
         {
             Lineup = RogueResponseParts.BuildLineup(player),
             Scene = RogueResponseParts.BuildScene(player)
@@ -175,7 +175,7 @@ public sealed class HandlerGetRogueTalentInfoCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueTalentInfoScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueTalentInfoScRsp,
             new GetRogueTalentInfoScRsp { JCOBJAMPOAL = player.RogueManager!.BuildTalentInfo() }));
     }
 }
@@ -189,7 +189,7 @@ public sealed class HandlerEnableRogueTalentCsReq : Handler<EnableRogueTalentCsR
         var rsp = await manager.EnableTalent((int)req.CKHCLKOALKE)
             ? new EnableRogueTalentScRsp { JCOBJAMPOAL = manager.BuildTalentInfo() }
             : new EnableRogueTalentScRsp { Retcode = (uint)Retcode.RetItemNotEnough };
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.EnableRogueTalentScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.EnableRogueTalentScRsp, rsp));
     }
 }
 
@@ -198,7 +198,7 @@ public sealed class HandlerGetRogueHandbookDataCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueHandbookDataScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueHandbookDataScRsp,
             new GetRogueHandbookDataScRsp { HAMKPLCBEBG = RogueManager.BuildHandbookData() }));
     }
 }
@@ -210,7 +210,7 @@ public sealed class HandlerCommonRogueQueryCsReq : Handler<CommonRogueQueryCsReq
     {
         var rsp = new CommonRogueQueryScRsp();
         rsp.LFLCDNGALME.AddRange(RogueManager.BuildCommonQueryEntries(req.AGFFNBFBHDL));
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.CommonRogueQueryScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.CommonRogueQueryScRsp, rsp));
     }
 }
 
@@ -220,7 +220,7 @@ public sealed class HandlerCycleScoreRewardGetDataCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.CycleScoreRewardGetDataScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.CycleScoreRewardGetDataScRsp,
             new CycleScoreRewardGetDataScRsp { NFEDANFBIBE = RogueManager.BuildCycleScoreData() }));
     }
 }
@@ -238,7 +238,7 @@ public sealed class HandlerHandleRogueCommonPendingActionCsReq : Handler<OFEDNNJ
             modeRsp = await player.RogueTournManager.HandlePendingAction(req);
         if (modeRsp != null)
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.HandleRogueCommonPendingActionScRsp, modeRsp));
+            await connection.SendPacket(BasePacket.Create(CmdIds.HandleRogueCommonPendingActionScRsp, modeRsp));
             return;
         }
 
@@ -262,7 +262,7 @@ public sealed class HandlerHandleRogueCommonPendingActionCsReq : Handler<OFEDNNJ
                 rsp.BFNEPPCNOOI = req.MPLGEEGOAMC;
             }
 
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.HandleRogueCommonPendingActionScRsp, rsp));
+            await connection.SendPacket(BasePacket.Create(CmdIds.HandleRogueCommonPendingActionScRsp, rsp));
             return;
         }
 
@@ -285,15 +285,11 @@ public sealed class HandlerHandleRogueCommonPendingActionCsReq : Handler<OFEDNNJ
             await manager.OpenRoomExit();
         }
 
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.HandleRogueCommonPendingActionScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.HandleRogueCommonPendingActionScRsp, rsp));
 
-        // A pick that completes a path-resonance threshold opens the aeon draft; the client needs it twice.
+        // A pick that completes a path-resonance threshold opens the aeon draft.
         if (ret == Retcode.RetSucc && manager.RogueInstance is { BuffSelect.HasSelection: true } inst)
-        {
             await connection.SendPacket(new PacketSyncRogueCommonPendingActionScNotify(RogueManager.BuildPendingAction(inst)));
-            if (GameConstants.IsVersion("4.5.0"))
-                await connection.SendPacket(new PacketSyncRogueCommonPendingActionScNotify(RogueManager.BuildPendingAction(inst)));
-        }
     }
 
     // Parameterless arms are reroll answers; a Simulated Universe run only holds a blessing draft to reroll.
@@ -311,7 +307,7 @@ public sealed class HandlerGetRogueAeonInfoCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueAeonInfoScRsp, new GetRogueAeonInfoScRsp()));
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueAeonInfoScRsp, new GetRogueAeonInfoScRsp()));
     }
 }
 
@@ -320,7 +316,7 @@ public sealed class HandlerGetRogueBuffEnhanceInfoCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueBuffEnhanceInfoScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueBuffEnhanceInfoScRsp,
             new GetRogueBuffEnhanceInfoScRsp()));
     }
 }
@@ -332,7 +328,7 @@ public sealed class HandlerEnhanceRogueBuffCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.RogueEnhanceRogueBuffScRsp, new RogueEnhanceRogueBuffScRsp()));
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueEnhanceRogueBuffScRsp, new RogueEnhanceRogueBuffScRsp()));
     }
 }
 
@@ -348,14 +344,14 @@ public sealed class HandlerPickRogueAvatarCsReq : Handler<PickRogueAvatarCsReq>
         var ret = await player.RogueManager!.PickTutorialAvatar(req);
         if (ret is { } code && code != Retcode.RetSucc)
         {
-            await connection.SendPacket(new PacketRogueScRsp(CmdIds.PickRogueAvatarScRsp,
+            await connection.SendPacket(BasePacket.Create(CmdIds.PickRogueAvatarScRsp,
                 new PickRogueAvatarScRsp { Retcode = (uint)code }));
             return;
         }
         var rsp = new PickRogueAvatarScRsp();
         rsp.BFEDFBEKOBI.AddRange(req.DFPPCAJDBFK);
         rsp.NOEPBNMJFGL.AddRange(req.NOEPBNMJFGL);
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.PickRogueAvatarScRsp, rsp));
+        await connection.SendPacket(BasePacket.Create(CmdIds.PickRogueAvatarScRsp, rsp));
     }
 }
 
@@ -365,7 +361,7 @@ public sealed class HandlerGetRogueCommonDialogueDataCsReq : PlayerHandler
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
         // A live Divergent Universe run answers with its Event-room talks (also the reconnect path).
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueCommonDialogueDataScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueCommonDialogueDataScRsp,
             player.RogueTournManager?.GetDialogueData() ?? new GetRogueCommonDialogueDataScRsp()));
     }
 }
@@ -378,7 +374,7 @@ public sealed class HandlerSelectRogueCommonDialogueOptionCsReq : Handler<Select
     {
         var tourn = player.RogueTournManager;
         var rsp = tourn == null ? null : await tourn.SelectDialogueOption((int)req.AIAFEKGBFIF, (int)req.HAFOKMHCGFM);
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.SelectRogueCommonDialogueOptionScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.SelectRogueCommonDialogueOptionScRsp,
             rsp ?? new SelectRogueCommonDialogueOptionScRsp()));
         // A pick that ended the talk clears it from the client's set and releases the room after the response.
         if (rsp != null) await tourn!.FlushDialogueClose();
@@ -390,7 +386,7 @@ public sealed class HandlerGetRogueEndlessActivityDataCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.GetRogueEndlessActivityDataScRsp,
+        await connection.SendPacket(BasePacket.Create(CmdIds.GetRogueEndlessActivityDataScRsp,
             new GetRogueEndlessActivityDataScRsp()));
     }
 }
@@ -400,6 +396,6 @@ public sealed class HandlerRogueArcadeGetInfoCsReq : PlayerHandler
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player)
     {
-        await connection.SendPacket(new PacketRogueScRsp(CmdIds.RogueArcadeGetInfoScRsp, new RogueArcadeGetInfoScRsp()));
+        await connection.SendPacket(BasePacket.Create(CmdIds.RogueArcadeGetInfoScRsp, new RogueArcadeGetInfoScRsp()));
     }
 }

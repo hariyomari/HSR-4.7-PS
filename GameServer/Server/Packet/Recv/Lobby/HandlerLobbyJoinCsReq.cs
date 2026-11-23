@@ -12,7 +12,7 @@ public class HandlerLobbyJoinCsReq : Handler
     {
         var req = LobbyJoinCsReq.Parser.ParseFrom(data);
 
-        var room = ServerUtils.LobbyServerManager.LobbyRoomInstances.GetValueOrDefault((long)req.RoomId);
+        var room = ServerUtils.LobbyServerManager.GetLobbyRoom((long)req.RoomId);
 
         if (room == null)
         {

@@ -285,10 +285,65 @@ public partial class LoadCondition
 
         return Operation switch
         {
-            OperationEnum.And => UtilTools.CheckAnd(conditionChecks, defaultResult),
-            OperationEnum.Or => UtilTools.CheckOr(conditionChecks, defaultResult),
-            OperationEnum.Not => !UtilTools.CheckOr(conditionChecks, defaultResult),
+            OperationEnum.And => GroupConditionLogic.CheckAnd(conditionChecks, defaultResult),
+            OperationEnum.Or => GroupConditionLogic.CheckOr(conditionChecks, defaultResult),
+            OperationEnum.Not => !GroupConditionLogic.CheckOr(conditionChecks, defaultResult),
             _ => defaultResult
+        };
+    }
+}
+
+/// <summary>Boolean combinators and comparisons shared by the group load and saved-value conditions.</summary>
+file static class GroupConditionLogic
+{
+    /// <summary>True when every check passes; a check that throws is skipped.</summary>
+    public static bool CheckAnd(List<Func<bool>> actions, bool defaultValue = true)
+    {
+        if (actions.Count == 0) return defaultValue;
+
+        foreach (var action in actions)
+            try
+            {
+                var returnValue = action.Invoke();
+                if (!returnValue) return false;
+            }
+            catch
+            {
+                // A check that throws counts as neither passing nor failing.
+            }
+
+        return true;
+    }
+
+    /// <summary>True when any check passes; a check that throws is skipped.</summary>
+    public static bool CheckOr(List<Func<bool>> actions, bool defaultValue = false)
+    {
+        if (actions.Count == 0) return defaultValue;
+        foreach (var action in actions)
+            try
+            {
+                var returnValue = action.Invoke();
+                if (returnValue) return true;
+            }
+            catch
+            {
+                // A check that throws counts as neither passing nor failing.
+            }
+
+        return false;
+    }
+
+    public static bool CompareNumberByOperationEnum(int left, int right, CompareTypeEnum operation)
+    {
+        return operation switch
+        {
+            CompareTypeEnum.Greater => left > right,
+            CompareTypeEnum.GreaterEqual => left >= right,
+            CompareTypeEnum.NotEqual => left != right,
+            CompareTypeEnum.Equal => left == right,
+            CompareTypeEnum.LessEqual => left <= right,
+            CompareTypeEnum.Less => left < right,
+            _ => false
         };
     }
 }
@@ -313,7 +368,7 @@ public partial class SavedValueLoadCondition
             var comparison = condition.Operation == CompareTypeEnum.Unknow
                 ? CompareTypeEnum.Equal
                 : condition.Operation;
-            return UtilTools.CompareNumberByOperationEnum(status, condition.Value, comparison);
+            return GroupConditionLogic.CompareNumberByOperationEnum(status, condition.Value, comparison);
         }
 
         // defaultResult only applies to an empty condition list, not to a failed comparison.

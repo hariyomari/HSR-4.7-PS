@@ -49,13 +49,15 @@ static class SyncOrderRegression
         check("sync order: a multi-role grant reaches the client in the order it was applied",
             errors.Count == 0 && matches || Report(errors, mismatch));
 
-        if (catalog.CurrentSeason == 2) RunAha(newRun, check);
+        if (catalog.CurrentSeason == 2) RunAha(catalog, newRun, check);
     }
 
     /// <summary>Once an Aha is 7-cost, more copies are 1★ 7-cost copies and merge (the follow-up sync carries it).</summary>
-    private static void RunAha(Func<uint?, GridFightManager> newRun, Action<string, bool> check)
+    private static void RunAha(GridFightResourceCatalog catalog, Func<uint?, GridFightManager> newRun, Action<string, bool> check)
     {
-        const uint ahaThree = 151102, ahaSeven = 151132;
+        // Tier ids follow the tables: the cheapest star-less tier is the one a player buys.
+        var ahaBase = catalog.AhaGrowthRoleIds[0];
+        var ahaSeven = catalog.AhaSevenCostRoleId;
         var manager = newRun(101);
         var run = manager.Session!;
         run.Roles.Clear();
@@ -64,12 +66,12 @@ static class SyncOrderRegression
         run.Roles.Single().Position = 1;
         manager.BuildSeasonTwoFollowUpSync();
         var client = new ClientBoard(run.Roles);
-        run.TryAddRole(ahaThree, 1, out var first);
-        run.TryAddRole(ahaThree, 1, out var second);
+        run.TryAddRole(ahaBase, 1, out var first);
+        run.TryAddRole(ahaBase, 1, out var second);
         foreach (var role in first.AcquiredRoles.Concat(second.AcquiredRoles)) client.Add(role);
         var growth = run.AhaGrowth;
         var errors = client.Apply(manager.BuildSeasonTwoFollowUpSync() ?? new GridFightSyncUpdateResultScNotify());
-        var ahas = run.Roles.Where(role => role.RoleId is ahaThree or 151112 or 151122 or ahaSeven).ToList();
+        var ahas = run.Roles.Where(role => role.RoleId == ahaSeven || catalog.AhaGrowthRoleIds.Contains(role.RoleId)).ToList();
         check("Aha: copies bought after the 7-cost apotheosis merge into a 2★ 7-cost Aha",
             ahas.Count == 1 && ahas[0].RoleId == ahaSeven && ahas[0].Star == 2 && run.AhaGrowth == growth);
         var matches = client.Matches(run.Roles, out var mismatch);

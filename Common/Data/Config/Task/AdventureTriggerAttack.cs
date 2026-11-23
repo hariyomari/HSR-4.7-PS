@@ -13,8 +13,6 @@ public partial class AdventureTriggerAttack : TaskConfigInfo
     public float TriggerBattleDelay { get; set; }
 
     public AdventureAttackDetectSummonUnitTriggerConfig? SummonUnitTriggerAttackDetectConfig { get; set; }
-    // public AdventureAttackDetectShapeConfig AttackDetectConfig { get; set; }
-    // public AdventureHitConfig HitConfig { get; set; }
     public List<TaskConfigInfo> OnAttack { get; set; } = [];
     public List<TaskConfigInfo> OnBattle { get; set; } = [];
     public List<TaskConfigInfo> OnHit { get; set; } = [];

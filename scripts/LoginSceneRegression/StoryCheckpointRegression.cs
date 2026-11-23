@@ -38,7 +38,8 @@ internal static class StoryCheckpointRegression
         Console.WriteLine($"  provisioned {request.TargetMainMissionId}/{request.TargetSubMissionId} " +
                           $"({request.StopMode}): {report.MissionsFinished} mains, {report.SubMissionsFinished} subs, " +
                           $"{report.TeleportsUnlocked} teleports, {report.TutorialsMarkedFinished} tutorials, " +
-                          $"floor {report.SpawnFloorId}, stalled [{string.Join(", ", report.StalledMissions)}], " +
+                          $"floor {report.SpawnFloorId}, lineup [{string.Join(", ", report.Lineup)}], " +
+                          $"stalled [{string.Join(", ", report.StalledMissions)}], " +
                           $"{report.BypassedGates.Count} bypassed, {report.ElapsedMs} ms");
         foreach (var warning in report.Warnings.Take(8)) Console.WriteLine($"    warning: {warning}");
         foreach (var gate in report.BypassedGates.Take(8)) Console.WriteLine($"    bypassed: {gate}");
@@ -149,6 +150,42 @@ internal static class StoryCheckpointRegression
                 report.TeleportsUnlocked > 0 && player.RaidManager.Data.CurRaidId == 0 && player.Data.IsGenderSet);
             check($"chapter {name} ({main}): no mission closed by force and no story hook threw",
                 report.StalledMissions.Count == 0 && !report.Warnings.Any(warning => warning.Contains(" threw ")));
+            // 1000204 (Dan Heng joins) branches off the chain; left running, tutorial 3003 (opens on GetAvatar 1002,
+            // closes on FinishMainMission 1000204) popped at login and held input for good.
+            var leftovers = missions.Data.RunningMainMissionIds.Where(id => id != main &&
+                GameData.MainMissionData.GetValueOrDefault(id)?.Type == MainMissionTypeEnum.Main &&
+                MissionManager.StoryDepth(id) < MissionManager.StoryDepth(main)).ToList();
+            // General form of the lock: a free-play tutorial the server could not close once open must not be able
+            // to open at login. Each one still open has to wait on something not yet reached (a mission not done, a
+            // level not hit) or on a client task unlock; ids are not special-cased.
+            bool Pending(March7thHoney.Data.Excel.TutorialTriggerParam trigger)
+            {
+                if (trigger.TriggerType == "TaskUnlock") return true;
+                if (!int.TryParse(trigger.TriggerParam, out var value)) return false;
+                return trigger.TriggerType switch
+                {
+                    "FinishMainMission" => missions.GetMainMissionStatus(value) != MissionPhaseEnum.Finish,
+                    "TakeMainMission" => missions.GetMainMissionStatus(value) == MissionPhaseEnum.None,
+                    "FinishSubMission" => missions.GetSubMissionStatus(value) != MissionPhaseEnum.Finish,
+                    "TakeSubMission" => missions.GetSubMissionStatus(value) == MissionPhaseEnum.None,
+                    "PlayerLevel" => player.Data.Level < value,
+                    "AnyAvatarToLevel" => player.AvatarManager!.Data.FormalAvatars.All(avatar => avatar.Level < value),
+                    _ => false
+                };
+            }
+
+            var trapping = GameData.TutorialDataData.Values
+                .Where(tutorial => tutorial.TriggerParams.Any(trigger => trigger.TriggerType == "OnMazeMainPage") &&
+                                   player.TutorialData?.Tutorials.GetValueOrDefault(tutorial.TutorialID) !=
+                                   TutorialStatus.TutorialFinish &&
+                                   !March7thHoney.GameServer.Game.Tutorial.TutorialHelper.CanClose(player,
+                                       tutorial.TutorialID) &&
+                                   !tutorial.TriggerParams.Any(Pending))
+                .Select(tutorial => tutorial.TutorialID).ToList();
+            check($"chapter {name} ({main}): no free-play tutorial that cannot close is ready to open at login " +
+                  $"[{string.Join(", ", trapping)}]", trapping.Count == 0);
+            check($"chapter {name} ({main}): no Main row behind the target left running (1000204 finished)",
+                leftovers.Count == 0 && missions.GetMainMissionStatus(1000204) == MissionPhaseEnum.Finish);
             if (main == 1020101)
             {
                 check("test_ready raises every level gate on the way to Luofu instead of bypassing it",

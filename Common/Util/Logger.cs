@@ -18,29 +18,18 @@ public class Logger(string moduleName)
 
     public void Log(string message, LoggerLevel level)
     {
+        // Debug lines are diagnostics for developers; the console shows them only when the owner asks for it.
+        Log(message, level, level != LoggerLevel.DEBUG || ShowDebugInConsole());
+    }
+
+    private void Log(string message, LoggerLevel level, bool toConsole)
+    {
         lock (Lock)
         {
             var time = DateTime.Now.ToString("HH:mm:ss");
-            // Resource loader warnings stay out of the console and the main log; they are kept in the debug log only.
-            if (level == LoggerLevel.WARN && moduleName is "ResMgr" or "ResCache")
-            {
-                WriteToDebugFile($"[{time}][{moduleName}][{level}] {message}");
-                return;
-            }
-
-            var entry = new ConsoleLogEntry(time, moduleName, level, message);
-            if (_consoleDirect)
-            {
-                WriteConsole(entry);
-            }
-            else
-            {
-                Interlocked.Increment(ref _consolePending);
-                if (!ConsoleLog.Writer.TryWrite(entry)) Interlocked.Decrement(ref _consolePending);
-            }
+            if (toConsole) QueueConsole(new ConsoleLogEntry(time, moduleName, level, message));
 
             var logMessage = $"[{time}][{moduleName}][{level}] {message}";
-            PluginEventCommon.InvokeOnConsoleLog(logMessage);
             try
             {
                 PluginEventCommon.InvokeOnLogEntry(moduleName, level, message);
@@ -58,6 +47,31 @@ public class Logger(string moduleName)
 
             WriteToFile(logMessage);
         }
+    }
+
+    private static bool ShowDebugInConsole()
+    {
+        try
+        {
+            return ConfigManager.Config.ServerOption.LogOption.ShowDebugInConsole;
+        }
+        catch
+        {
+            // Lines logged while the configuration is still being initialised fall back to the default.
+            return false;
+        }
+    }
+
+    private static void QueueConsole(ConsoleLogEntry entry)
+    {
+        if (_consoleDirect)
+        {
+            WriteConsole(entry);
+            return;
+        }
+
+        Interlocked.Increment(ref _consolePending);
+        if (!ConsoleLog.Writer.TryWrite(entry)) Interlocked.Decrement(ref _consolePending);
     }
 
     private static Channel<ConsoleLogEntry> CreateConsoleLog()
@@ -112,7 +126,7 @@ public class Logger(string moduleName)
             var colored = $"[grey70][[{entry.Time}]][/] [#60BAEE][[{Markup.Escape(entry.Module)}]][/] " +
                           $"[{levelColor}]{entry.Level}[/] {Markup.Escape(entry.Message)}";
             var plain = $"[{entry.Time}] [{entry.Module}] {entry.Level} {entry.Message}";
-            IConsole.WriteExternalLine(() => AnsiConsole.MarkupLine(colored), plain);
+            ServerConsole.WriteExternalLine(() => AnsiConsole.MarkupLine(colored), plain);
         }
         catch
         {
@@ -192,36 +206,82 @@ public class Logger(string moduleName)
         }
     }
 
-    public static void SetLogFile(FileInfo file) => _logFile = file;
-    public static void SetDebugLogFile(FileInfo file) => _debugLogFile = file;
+    /// <summary>
+    ///     Writes a game packet line (<c>LogOption.LogPacketToConsole</c>). It is recorded at debug level in the debug
+    ///     log, but always reaches the console because the owner turned the packet log on to watch it there.
+    /// </summary>
+    public void Packet(string message)
+    {
+        Log(message, LoggerLevel.DEBUG, true);
+    }
+
+    public static void SetLogFile(FileInfo file)
+    {
+        lock (Lock)
+        {
+            _logFile = file;
+            Flush(file, PendingFileLines);
+        }
+    }
+
+    public static void SetDebugLogFile(FileInfo file)
+    {
+        lock (Lock)
+        {
+            _debugLogFile = file;
+            Flush(file, PendingDebugFileLines);
+        }
+    }
+
     public static FileInfo? CurrentLogFile => _logFile;
     public static FileInfo? CurrentDebugLogFile => _debugLogFile;
 
+    // The log directory is configured in Config.json, which is read after the first lines are logged. Those lines are
+    // held here (a bounded number, for tools that never open a log file) and written once the file is set.
+    private const int MaxPendingFileLines = 1000;
+    private static readonly List<string> PendingFileLines = [];
+    private static readonly List<string> PendingDebugFileLines = [];
+
     public static void WriteToFile(string message)
     {
-        try
+        lock (Lock)
         {
-            if (_logFile == null) throw new Exception("LogFile is not set");
-            _logFile.Directory?.Create();
-            using var sw = _logFile.AppendText();
-            sw.WriteLine(message);
-        }
-        catch
-        {
+            if (_logFile == null) Hold(PendingFileLines, message);
+            else Append(_logFile, message);
         }
     }
 
     public static void WriteToDebugFile(string message)
     {
+        lock (Lock)
+        {
+            if (_debugLogFile == null) Hold(PendingDebugFileLines, message);
+            else Append(_debugLogFile, message);
+        }
+    }
+
+    private static void Hold(List<string> pending, string message)
+    {
+        if (pending.Count < MaxPendingFileLines) pending.Add(message);
+    }
+
+    private static void Flush(FileInfo file, List<string> pending)
+    {
+        foreach (var message in pending) Append(file, message);
+        pending.Clear();
+    }
+
+    private static void Append(FileInfo file, string message)
+    {
         try
         {
-            if (_debugLogFile == null) throw new Exception("DebugLogFile is not set");
-            _debugLogFile.Directory?.Create();
-            using var sw = _debugLogFile.AppendText();
+            file.Directory?.Create();
+            using var sw = file.AppendText();
             sw.WriteLine(message);
         }
         catch
         {
+            // An unwritable log file must not break the caller; the console and the log subscribers still get the line.
         }
     }
 

@@ -2,6 +2,7 @@ using March7thHoney.Database.Account;
 using March7thHoney.Util;
 using System.Net.Mail;
 using System.Text.RegularExpressions;
+using March7thHoney.WebServer.Http;
 
 namespace March7thHoney.WebServer.Handler;
 
@@ -38,7 +39,7 @@ internal static class LoginSessionFactory
             }
             catch (Exception ex)
             {
-                failure = new LoginFailure(-201, ex.Message);
+                failure = new LoginFailure(WebConstants.RetcodeFailed, ex.Message);
                 return false;
             }
         }
@@ -107,17 +108,17 @@ internal static class LoginSessionFactory
     {
         public static LoginFailure InvalidCredentials()
         {
-            return new LoginFailure(-201, InvalidCredentialsMessage);
+            return new LoginFailure(WebConstants.RetcodeFailed, InvalidCredentialsMessage);
         }
 
         public static LoginFailure EmailVerificationRequired()
         {
-            return new LoginFailure(-202, EmailVerificationRequiredMessage);
+            return new LoginFailure(WebConstants.RetcodeInvalidData, EmailVerificationRequiredMessage);
         }
 
         public static LoginFailure Banned(AccountBanStatus banStatus)
         {
-            return new LoginFailure(-203, banStatus.FormatLoginMessage());
+            return new LoginFailure(WebConstants.RetcodeBlocked, banStatus.FormatLoginMessage());
         }
     }
 

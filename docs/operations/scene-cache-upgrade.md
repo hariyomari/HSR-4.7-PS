@@ -1,29 +1,89 @@
-# 场景缓存元数据升级
+# Scene Cache Metadata Upgrade
 
-升级工具：[`scripts/SceneCacheUpgrade/`](../../scripts/SceneCacheUpgrade/)
+English | [简体中文](scene-cache-upgrade.zh-CN.md)
 
-`IsHoyoGroup` 以追加的可空字段保存：旧缓存为 `null`，原始资源省略该字段时为 `false`。运行时拒绝服务端氛围组缺少该元数据的缓存，避免只更新程序后仍然加载错误的氛围组。发布时必须携带配套的 `Config/Resource.bin`。
+This guide is for operators who need to bring an existing `Config/Resource.bin` up to date for a new server build without rebuilding the whole cache from raw resources. It covers three targeted upgrade tools: scene group metadata, Divergent Universe data and Train Party data.
 
-如需保留已有缓存中的其他修改，可在有同版本原始资源的开发机执行：
+## Scene group metadata
+
+Upgrade tool: [`scripts/SceneCacheUpgrade/`](../../scripts/SceneCacheUpgrade/)
+
+### Background
+
+`IsHoyoGroup` is stored as an appended nullable field: it is `null` in an old cache, and `false` when the raw resources omit the field. The 4.5 production build rejected a cache in which server-side atmosphere groups lacked this metadata; the current version no longer checks it at load time, so keep the metadata in place with this tool. A release must ship with its matching `Config/Resource.bin`.
+
+### Prerequisites
+
+Use this tool when you want to keep other modifications in the existing cache. Run it on a development machine that has raw resources of the same version.
+
+### Upgrade
 
 ```powershell
 dotnet run --project scripts/SceneCacheUpgrade/SceneCacheUpgrade.csproj -c Release -- Config/Resource.bin Resources artifacts/Resource.scene-upgraded.bin
 ```
 
-工具仅补入组的 `IsHoyoGroup`，不重建全部游戏资源，不读取运营配置或数据库。它先验证新快照还原该字段后与原快照完全一致，再写入新的输出文件；遇到服务端氛围组缺资源、异常数据或已存在输出文件会停止，绝不覆盖输入。旧缓存保留但当前资源已移除的客户端组或非氛围组会原样保留并报告数量，该标记不参与这些组的服务端加载筛选。
+The tool only fills in each group's `IsHoyoGroup`. It does not rebuild all game resources and does not read operational configuration or the database. It first verifies that the new snapshot, with this field reverted, is identical to the original snapshot, and only then writes the new output file. It stops when a server-side atmosphere group is missing its resources, when it meets abnormal data, or when the output file already exists; it never overwrites the input. Client groups or non-atmosphere groups that the old cache keeps but the current resources have removed are kept as they are, and their number is reported; the flag plays no part in the server-side load filtering of these groups.
 
-验证回归后，备份现有缓存，再将新文件复制为 `Config/Resource.bin`。回滚时程序和缓存需要一起恢复；旧程序不能读取新增字段的缓存。
+### Verification, replacement and rollback
 
-## 差分宇宙数据升级
+After the regressions pass, back up the existing cache, then copy the new file to `Config/Resource.bin`. To roll back, restore the program and the cache together; an old program cannot read a cache with the added field.
 
-升级工具：[`scripts/RogueTournCacheUpgrade/`](../../scripts/RogueTournCacheUpgrade/)
+## Divergent Universe data
 
-差分宇宙 4.6 流程读取的 `RoguePersonaLayerRoom`、`RoguePersonaRoomPreset`、`RoguePersonaRoomCompType`、`RoguePersonaStyleGift`、`RogueTournExpReward`、事件 Act 图（`RogueDialogue/RogueEventTourn*/Event*/Act*.json`），以及 `RogueTournBuffGroup.TournMode` 列，都以追加成员保存在缓存中；旧缓存读取时这些成员为空。用同版本原始资源完整重建缓存时会自动包含它们；只需补这几项时可执行：
+Upgrade tool: [`scripts/RogueTournCacheUpgrade/`](../../scripts/RogueTournCacheUpgrade/)
+
+### Background
+
+The data read by the Divergent Universe 4.6 flow is stored in the cache as appended members: `RoguePersonaLayerRoom`, `RoguePersonaRoomPreset`, `RoguePersonaRoomCompType`, `RoguePersonaStyleGift`, `RogueTournExpReward`, the event Act graphs (`RogueDialogue/RogueEventTourn*/Event*/Act*.json`), and the `RogueTournBuffGroup.TournMode` column. When an old cache is read, these members are empty. A full rebuild of the cache from raw resources of the same version includes them automatically; to add only these items, use this tool.
+
+At runtime the server rejects the cache when the raw `RoguePersonaLayerRoom.json` exists but the cache lacks these tables.
+
+### Prerequisites
+
+The resource directory only needs the `ExcelOutput/*.json` files listed above, `Config/Level/Rogue/RogueNPC/` and `Config/Level/Rogue/RogueDialogue/RogueEventTourn*/` (for example, these files from the `OSPRODWin4.6.0` commit of TurnBasedGameData).
+
+### Upgrade
 
 ```powershell
-dotnet run --project scripts/RogueTournCacheUpgrade/RogueTournCacheUpgrade.csproj -c Release -- Config/Resource.bin <资源目录> artifacts/Resource.tourn-upgraded.bin
+dotnet run --project scripts/RogueTournCacheUpgrade/RogueTournCacheUpgrade.csproj -c Release -- Config/Resource.bin <resource-dir> artifacts/Resource.tourn-upgraded.bin
 ```
 
-资源目录只需包含上述 `ExcelOutput/*.json`、`Config/Level/Rogue/RogueNPC/` 与 `Config/Level/Rogue/RogueDialogue/RogueEventTourn*/`（例如 TurnBasedGameData 的 `OSPRODWin4.6.0` 提交的这些文件）。工具先确认原缓存尚未包含这些数据，再验证去掉新增内容后快照与原快照逐字节一致，最后写入新文件并重新读取校验；缺任何一个 Act 图会停止，绝不覆盖输入。原始 `RoguePersonaLayerRoom.json` 存在而缓存缺少这些表时，运行时会拒绝缓存。替换前用 `LoginSceneRegression -- --resource-cache <新文件>` 验证并备份原缓存；回滚时程序与缓存一起恢复。
+The tool first confirms that the original cache does not contain this data yet, then verifies that the snapshot with the added content removed is byte-for-byte identical to the original snapshot, and finally writes the new file and reads it back to check it. It stops if any Act graph is missing, and it never overwrites the input.
 
-经典模拟宇宙祝福修复后，`RogueBuffData` / `RogueBuffGroupData` 以 MemoryPack union 保存经典与差分宇宙子类型，缓存格式随之改变：修复前的缓存无法被当前程序或本工具读取（日志报 `MemoryPackUnion` 标签错误，服务端随后尝试从原始资源重建）。此类缓存不能用本工具升级，需用同版本完整原始资源重新生成；仅部署缓存的环境必须同时更新程序与 `Config/Resource.bin`，回滚时同样一起恢复。
+### Verification, replacement and rollback
+
+Before replacing the cache, verify the new file with `LoginSceneRegression -- --resource-cache <new-file>` and back up the original cache. To roll back, restore the program and the cache together.
+
+### Caches from before the classic Simulated Universe blessing fix
+
+Since the classic Simulated Universe blessing fix, `RogueBuffData` / `RogueBuffGroupData` store the classic and Divergent Universe subtypes as a MemoryPack union, and the cache format changed with it. A cache from before the fix cannot be read by the current program or by this tool (the log reports a `MemoryPackUnion` tag error, and the server then tries to rebuild from raw resources). Such a cache cannot be upgraded with this tool; regenerate it from complete raw resources of the same version. An environment that deploys only the cache must update the program and `Config/Resource.bin` together, and must also restore them together when rolling back.
+
+## Train Party data
+
+Upgrade tool: [`scripts/TrainPartyCacheUpgrade/`](../../scripts/TrainPartyCacheUpgrade/)
+
+### Background
+
+Train Party stars, build level, level rewards and the carriage floor save values depend on three pieces of appended data: `ShowBlockList` on each row of `TrainPartyAreaConfig` (room blocks such as `Bar_2F_Bedroom`; the room name maps to the floor save values `Progress_<room>` and `Build_<room>_Finished`), `ProgressBonusList` (stars added at progress thresholds), and the `TrainPartyRewardConfig` build level table. A full rebuild of the cache from raw resources of the same version includes them automatically; to add only these items, use this tool.
+
+An old cache can still be read by the current program. Without these items, stars and build level are 0, there are no rewards to claim, and the carriage floor save values are not rewritten; the Train Party data check in `LoginSceneRegression` fails.
+
+### Prerequisites
+
+The resource directory only needs `ExcelOutput/TrainPartyAreaConfig.json` and `ExcelOutput/TrainPartyRewardConfig.json` (a client export is enough).
+
+### Upgrade
+
+```powershell
+dotnet run --project scripts/TrainPartyCacheUpgrade/TrainPartyCacheUpgrade.csproj -c Release -- Config/Resource.bin <resource-dir> artifacts/Resource.trainparty.bin
+```
+
+The tool first confirms that the original cache does not contain this data yet and that every `RewardID` referenced by the reward table is in the cache. It then verifies that the snapshot with the added content removed is byte-for-byte identical to the original snapshot, and finally writes the new file and reads it back to check it. It never overwrites the input.
+
+### Verification, replacement and rollback
+
+Before replacing the cache, verify the new file with `LoginSceneRegression -- --resource-cache <new-file>` and back up the original cache. An old program cannot read a cache with the added fields; to roll back, restore the program and the cache together.
+
+### Record: OSBETAWin4.7.51 (2026-11-14)
+
+On the export in `artifacts/resources-4.7.51/Resources`, the tool added the room blocks and star thresholds of 6 areas and the 30-level reward table (30 stars in total). On the new cache: LoginSceneRegression 886/0, DailyActiveRegression 76/0, GridFightRegression 557/557. The backup of the cache before replacement is `artifacts/resources-4.7.51/Resource.bin.backup-20261114-before-trainparty.bin`; it is not distributed with the repository. Not verified on a real client.

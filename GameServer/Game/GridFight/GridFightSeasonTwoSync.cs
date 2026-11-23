@@ -126,7 +126,7 @@ public sealed partial class GridFightManager
     /// <summary>
     ///     Lock sent together with a pending action. The client refuses every board drag while the gameplay lock is
     ///     set (GridFightPlayer.Blocked, PlayerBlockConstrait and the Lua drag handlers), which includes dragging a
-    ///     role onto the 主角光环 stage, so that selection is sent unlocked.
+    ///     role onto the Spotlight (主角光环) stage, so that selection is sent unlocked.
     /// </summary>
     private GridFightLockInfo BuildPendingLockInfo() =>
         Session?.IsSpotLightSelecting == true
@@ -476,8 +476,8 @@ public sealed partial class GridFightManager
 
     /// <summary>
     ///     GridFightContextValueInfo: field 6 (named context_value_version) is the Elation template id, field 8 maps
-    ///     template-equipment traits to their run template, field 11 is the 幻月游戏 sub-trait and the value map carries
-    ///     the Aha growth key. Season-1 runs keep the captured template 97.
+    ///     template-equipment traits to their run template, field 11 is the Moon Game (幻月游戏) sub-trait and the value
+    ///     map carries the Aha growth key. Season-1 runs keep the captured template 97.
     /// </summary>
     private static GridFightContextValueInfo BuildContextValueInfo(GridFightSession session)
     {

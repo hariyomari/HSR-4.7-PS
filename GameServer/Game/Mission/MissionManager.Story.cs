@@ -223,6 +223,9 @@ public partial class MissionManager
         return ordered;
     }
 
+    /// <summary>Longest story-graph path to <paramref name="mainId" /> (0 for a root or an unchained row).</summary>
+    public static int StoryDepth(int mainId) => StoryIndex.Current().ChainDepth(mainId);
+
     /// <summary>
     ///     The earliest story mission of <paramref name="mains" />: the Main row with the shortest chain. Manual-take
     ///     rows (opened by an event, not by the story) have no chain and are skipped while another row qualifies.

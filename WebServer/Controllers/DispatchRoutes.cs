@@ -5,8 +5,10 @@ using March7thHoney.Configuration;
 using March7thHoney.Proto;
 using March7thHoney.Util;
 using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Http;
 using March7thHoney.WebServer.Objects;
 using March7thHoney.WebServer.Pages;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -16,7 +18,7 @@ namespace March7thHoney.WebServer.Controllers;
 public static class DispatchRoutes
 {
     private static ConfigContainer Config => ConfigManager.Config;
-    public static Logger Logger = new("DispatchServer");
+    private static readonly Logger Logger = new("DispatchServer");
     private static bool DispatchDebugEnabled => Config.ServerOption.LogOption.EnableGamePacketLog;
 
     private static void Debug(string message)
@@ -188,7 +190,7 @@ public static class DispatchRoutes
             });
         }
 
-        Logger.Info("Client request: query_dispatch");
+        Logger.Debug("Client request: query_dispatch");
 
         var bytes = data.ToByteArray();
         var b64 = Convert.ToBase64String(bytes);
@@ -352,7 +354,7 @@ public static class DispatchRoutes
                 FirstNonEmpty(req.account, req.username, req.email), out var limited))
             return limited;
 
-        return await new AccountRecoveryHandler().SendVerificationEmail(req, ctx.Request);
+        return await new AccountRecoveryHandler().SendVerificationEmail(req);
     }
 
     private static IResult VerifyEmail(string? uid, string? token)
@@ -368,7 +370,7 @@ public static class DispatchRoutes
                 FirstNonEmpty(req.account, req.username, req.email), out var limited))
             return limited;
 
-        return await new AccountRecoveryHandler().ForgotPassword(req, ctx.Request);
+        return await new AccountRecoveryHandler().ForgotPassword(req);
     }
 
     private static IResult ResetPassword(HttpContext ctx, ResetPasswordReqJson? req)
@@ -395,7 +397,7 @@ public static class DispatchRoutes
         var (account, password, decryptFailed) = LoginCryptoHelper.TryDecryptCredentialsStrict(
             req.account, req.password, useRsa, requireEncryptedPassword: req.is_crypto);
         if (decryptFailed)
-            return Results.Json(LoginResJson.Error(-202, "Invalid login data"));
+            return Results.Json(LoginResJson.Error(WebConstants.RetcodeInvalidData, "Invalid login data"));
         var identityKeys = LoginIdentityContextFactory.Build(ctx.Request, req.device, req.device_id, req.device_fp);
         if (TryRejectLogin(ctx, identityKeys, account, out var limited))
             return limited;
@@ -409,7 +411,7 @@ public static class DispatchRoutes
         var (account, password, decryptFailed) = LoginCryptoHelper.TryDecryptCredentialsStrict(
             req.account, req.password, Config.WebSecurity.EnableRsaLoginDecrypt);
         if (decryptFailed)
-            return Results.Json(new StatusResult(-202, "Invalid login data"));
+            return WebResults.SdkError("Invalid login data", WebConstants.RetcodeInvalidData);
         var identityKeys = LoginIdentityContextFactory.Build(ctx.Request, req.device, req.device_id, req.device_fp);
         if (TryRejectLogin(ctx, identityKeys, account, out var limited))
             return limited;
@@ -442,7 +444,7 @@ public static class DispatchRoutes
         var (account, password, decryptFailed) = LoginCryptoHelper.TryDecryptCredentialsStrict(
             req.account, req.password, Config.WebSecurity.EnableRsaLoginDecrypt);
         if (decryptFailed)
-            return Results.Text(JsonSerializer.Serialize(PassportLoginResJson.Error(-202, "Invalid login data"),
+            return Results.Text(JsonSerializer.Serialize(PassportLoginResJson.Error(WebConstants.RetcodeInvalidData, "Invalid login data"),
                 WebJsonContext.Default.PassportLoginResJson), "application/json");
         var identityKeys = LoginIdentityContextFactory.Build(ctx.Request, req.device, req.device_id, req.device_fp);
         if (TryRejectLogin(ctx, identityKeys, account, out var limited))
@@ -481,7 +483,7 @@ public static class DispatchRoutes
     private static IResult GetConfig()
     {
         return Json(
-            "{\"retcode\":0,\"message\":\"OK\",\"data\":{\"protocol\":true,\"qr_enabled\":false,\"log_level\":\"INFO\",\"announce_url\":\"\",\"push_alias_type\":0,\"disable_ysdk_guard\":true,\"enable_announce_pic_popup\":false,\"app_name\":\"崩�??RPG\",\"qr_enabled_apps\":{\"bbs\":false,\"cloud\":false},\"qr_app_icons\":{\"app\":\"\",\"bbs\":\"\",\"cloud\":\"\"},\"qr_cloud_display_name\":\"\",\"enable_user_center\":true,\"functional_switch_configs\":{}}}");
+            "{\"retcode\":0,\"message\":\"OK\",\"data\":{\"protocol\":true,\"qr_enabled\":false,\"log_level\":\"INFO\",\"announce_url\":\"\",\"push_alias_type\":0,\"disable_ysdk_guard\":true,\"enable_announce_pic_popup\":false,\"app_name\":\"崩坏RPG\",\"qr_enabled_apps\":{\"bbs\":false,\"cloud\":false},\"qr_app_icons\":{\"app\":\"\",\"bbs\":\"\",\"cloud\":\"\"},\"qr_cloud_display_name\":\"\",\"enable_user_center\":true,\"functional_switch_configs\":{}}}");
     }
 
     private static IResult RedDot()
@@ -507,7 +509,7 @@ public static class DispatchRoutes
         var tp = new ThirdpartyLoginConfig("TK_GAME_TOKEN", gameTokenExpiresIn);
         var data = new LoadConfigData(
             24, "hkrpg_global", "PC", "I_IDENTITY", false, "",
-            "S_NORMAL", "崩�??RPG", !Config.ServerOption.Auth.EnableRegistration, false,
+            "S_NORMAL", "崩坏RPG", !Config.ServerOption.Auth.EnableRegistration, false,
             ["fb", "tw", "gl", "ap"], false, false, [], false,
             new ThirdpartyLoginConfigs(tp, tp, tp, tp), false, false,
             [], false, false);

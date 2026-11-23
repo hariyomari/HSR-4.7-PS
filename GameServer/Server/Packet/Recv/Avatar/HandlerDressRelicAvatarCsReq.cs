@@ -9,7 +9,7 @@ public class HandlerDressRelicAvatarCsReq : Handler<DressRelicAvatarCsReq>
     protected override async Task OnHandle(Connection connection, PlayerInstance player, DressRelicAvatarCsReq req)
     {
         foreach (var param in req.SwitchList)
-            await player.InventoryManager!.EquipRelic((int)req.AvatarId, (int)param.RelicUniqueId,
+            await player.AvatarManager!.EquipRelic((int)req.AvatarId, (int)param.RelicUniqueId,
                 (int)param.RelicType);
 
         await connection.SendPacket(CmdIds.DressRelicAvatarScRsp);

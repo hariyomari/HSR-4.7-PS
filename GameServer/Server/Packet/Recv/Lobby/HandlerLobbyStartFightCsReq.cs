@@ -18,7 +18,5 @@ public class HandlerLobbyStartFightCsReq : Handler
 
         var code = await room.LobbyStartFight();
         await connection.SendPacket(new PacketLobbyStartFightScRsp(code));
-
-        await room.StartFight();
     }
 }

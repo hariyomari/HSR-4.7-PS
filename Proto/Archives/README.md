@@ -1,12 +1,14 @@
-# 旧版协议归档
+# Archived protocol versions
 
-4.4、4.5、4.5v3 和 4.6 的非活动参考文件以无损 ZIP 保存。正常 4.7 构建不需要解压；活动 `Proto/4.7` 保持原样。`Proto/4.5v3/translations.txt` 被登录回归直接读取，仍以原文件保留，不在 ZIP 中。
+English | [简体中文](README.zh-CN.md)
 
-## 需要旧版定义时
+The inactive reference files of 4.4, 4.5, 4.5v3 and 4.6 are kept here as lossless ZIP archives. A normal 4.7 build does not need them extracted, and the active `Proto/4.7` stays as it is. `Proto/4.5v3/translations.txt` is read directly by the login regression (`LoginSceneRegression`, its same-seed check), so it stays a plain tracked file and is not in the ZIP.
 
-迁移工具的历史默认值指向 4.4，旧示例可能同时需要 4.4、4.5 或 4.6。执行前解压所需版本到 **Proto/**，不要覆盖已有编辑。
+## When you need an old version's definitions
 
-Linux/macOS（仓库根目录）：
+The migration tool's historical defaults point to 4.4, and old examples may need 4.4, 4.5 or 4.6 at the same time. Before running one, extract the versions it needs into **Proto/** without overwriting existing edits.
+
+Linux/macOS (from the repository root):
 
 ```sh
 unzip -n Proto/Archives/4.4.zip -d Proto
@@ -15,26 +17,26 @@ unzip -n Proto/Archives/4.5v3.zip -d Proto
 unzip -n Proto/Archives/4.6.zip -d Proto
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 Expand-Archive -LiteralPath Proto/Archives/4.6.zip -DestinationPath Proto
 ```
 
-按需替换 ZIP 文件名；不要加 `-Force` 覆盖本地修改。解压目录被 Git 忽略，`4.5v3/translations.txt` 仍由 Git 跟踪。编辑历史参考资料时，显式更新对应归档并核对差异；不要误以为被忽略的编辑已经提交。回退此瘦身提交也可以恢复原跟踪文件。
+Replace the ZIP file name as needed, and do not add `-Force`, which would overwrite local changes. The extracted directories are ignored by Git, while `4.5v3/translations.txt` stays tracked. When you edit historical reference material, update the matching archive explicitly and check the differences; do not assume that an ignored edit has been committed. Reverting the slimming commit that created these archives also restores the originally tracked files.
 
-## 完整性
+## Integrity
 
-每个 ZIP 保留原始版本目录和文件字节，全部文件已逐项与原 Git blob 核对。条目按路径排序、固定时间戳为 1980-01-01，保留 Unix 权限元数据，使用 Deflate level 9。
+Each ZIP keeps the original version directory and the original file bytes, and every file was checked one by one against its original Git blob. Entries are sorted by path, their timestamps are fixed at 1980-01-01, Unix permission metadata is kept, and Deflate level 9 is used.
 
-| 归档 | 文件数 | 原字节 | ZIP 字节 |
+| Archive | Files | Original bytes | ZIP bytes |
 |---|---:|---:|---:|
 | `4.4.zip` | 176 | 3260769 | 944490 |
 | `4.5.zip` | 158 | 2211561 | 591808 |
 | `4.5v3.zip` | 10 | 2227157 | 609624 |
 | `4.6.zip` | 161 | 5051550 | 1353489 |
 
-SHA-256：
+SHA-256:
 
 ```text
 85948b7b5a11c6faa56af3d4f1a937d62a36937436986d9d545aecd858b26284  4.4.zip
@@ -43,4 +45,4 @@ f1e0808624798f13f48d000cd12abc396e51fe6e7843201f8eb722ae5fe15799  4.5.zip
 da80e364b7dbdbf1c83b9f040e8e2b83b314f45f69c71505406899f2da3f1f0a  4.6.zip
 ```
 
-归档只减少默认工作区体积，不清除 Git 历史中的原始文件。
+The archives only reduce the size of the default working tree; they do not remove the original files from Git history.

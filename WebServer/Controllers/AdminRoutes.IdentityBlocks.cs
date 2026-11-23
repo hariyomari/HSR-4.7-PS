@@ -3,20 +3,19 @@ using March7thHoney.Database.Account;
 using March7thHoney.GameServer.Server;
 using March7thHoney.Kcp;
 using Microsoft.AspNetCore.Http;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
-    private static IResult GetIdentityBlocks(HttpContext ctx)
+    private static IResult GetIdentityBlocks()
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         return Success(new IdentityBlocksData(IdentityBlockHelper.GetSnapshot().Select(ToIdentityBlock).ToList()));
     }
 
-    private static async Task<IResult> BlockIdentity(HttpContext ctx, AdminIdentityBlockRequest? request)
+    private static async Task<IResult> BlockIdentity(AdminIdentityBlockRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (request == null || request.kind is not ("ip" or "device")) return Error("Kind must be ip or device");
         if (string.IsNullOrWhiteSpace(request.value) == string.IsNullOrWhiteSpace(request.identity_key))
             return Error("Supply either a value or an identity key");
@@ -26,7 +25,7 @@ public static partial class AdminRoutes
             var isKey = !string.IsNullOrWhiteSpace(request.identity_key);
             var block = IdentityBlockHelper.Block(request.kind, isKey ? request.identity_key! : request.value!, request.reason,
                 expireAt, isKey);
-            var connections = March7thHoneyListener.GetSnapshot().OfType<Connection>().ToList();
+            var connections = Listener.GetConnections().ToList();
             var affected = GetAllAccounts().Where(a => AccountBanHelper.ParseIdentityKeys(a.KnownIdentityKeys)
                 .Contains(block.IdentityKey)).Select(a => a.Uid).ToHashSet();
             foreach (var connection in connections)
@@ -41,9 +40,8 @@ public static partial class AdminRoutes
         catch (ArgumentException ex) { return Error(ex.Message); }
     }
 
-    private static IResult UnblockIdentity(HttpContext ctx, int id)
+    private static IResult UnblockIdentity(int id)
     {
-        if (!IsAuthorized(ctx, out var unauthorized)) return unauthorized;
         if (!IdentityBlockHelper.Remove(id)) return Error("Block not found", statusCode: 404);
         return Success(new EmptyData());
     }

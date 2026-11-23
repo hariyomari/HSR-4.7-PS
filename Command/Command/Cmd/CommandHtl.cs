@@ -1,8 +1,7 @@
 using System.Globalization;
 using System.Text;
+using March7thHoney.GameServer.Server.ClientLua;
 using March7thHoney.Internationalization;
-using March7thHoney.Kcp;
-using March7thHoney.Util;
 
 namespace March7thHoney.Command.Command.Cmd;
 
@@ -24,7 +23,7 @@ public class CommandHtl : ICommand
             return;
         }
 
-        var luaRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "Lua"));
+        var luaRoot = ClientLuaDirectory.Root;
         var subCommand = arg.Args[0].ToLowerInvariant();
 
         if (subCommand is "help" or "?")
@@ -187,8 +186,8 @@ public class CommandHtl : ICommand
                 prefix.Append("_G.HoyoToonLua_TOGGLE_KEY = ").Append(ToLuaString(toggleKey)).AppendLine();
 
             var suffix = "\n_G.HoyoToonLua_ACTION = nil\n_G.HoyoToonLua_TOGGLE_KEY = nil\n_G.HoyoToonLua_FORCE_REFRESH = nil\n_G.HoyoToonLua_SCRIPT_ID = nil\n_G.HoyoToonLua_SCRIPT_TOKEN = nil\n_G.HoyoToonLua_QUIET_BOOT = nil\n";
-            await arg.Target!.SendPacket(new HandshakePacket(Encoding.UTF8.GetBytes(prefix + bundledText + suffix)));
-            arg.Target.RecordSentLuaScript(relativePath);
+            await arg.Target!.ClientLua.SendScriptAsync(relativePath,
+                Encoding.UTF8.GetBytes(prefix + bundledText + suffix));
             await arg.SendMsg(I18NManager.Translate("Game.Command.Htl.Sent", filePath.Replace("\\", "/")));
         }
         catch (IOException)
@@ -202,7 +201,7 @@ public class CommandHtl : ICommand
     {
         var fileBytes = await HoyoToonLuaPayloadBuilder.BuildInlineAsync(luaRoot, "Auto/Htl/inline.lua",
             "--#hoyotoonlua\n" + lua, minimalBoot);
-        await arg.Target!.SendPacket(new HandshakePacket(fileBytes));
+        await arg.Target!.ClientLua.SendAsync(fileBytes);
         await arg.SendMsg(I18NManager.Translate("Game.Command.Htl.Sent", label));
     }
 

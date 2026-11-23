@@ -1,5 +1,4 @@
 using MemoryPack;
-using March7thHoney.Data.Custom;
 using March7thHoney.Enums.Rogue;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;

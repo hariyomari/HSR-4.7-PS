@@ -366,59 +366,35 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/GameServer/OriginalProto
+
+# Local runtime configuration, data and logs
+Config.json
+/Config*.json
+Config/Database/
+Config/Logs
+Config/Plugins
+Config/Handbook
+Config/Hotfix.json
+GM Handbook/
+*.db
+
+# Game resources and the cache generated from them
 Resources/
 TurnBasedGameData/
 CyreneRes/
-Config/Handbook
-Config/Logs
-Config/Plugins
-Config.json
-
-# macOS AppleDouble metadata
-._*
-.DS_Store
-
-# Local IDE / editor settings
-.vscode/
-*.lscache
-
-# Local AI assistant config
-CLAUDE.md
-.claude/
-
-# Local SQLite databases
-Config/Database/
-
-# Local environment files
-.env
-.env.*
-
-# Local GM handbook output
-GM Handbook/
-*.db
-Config/Hotfix.json
-Research/AccountPlatNative_CN.dll
-Research/AccountPlatNative_OS.dll
-Research/AccountPlatNative_OS.dll.i64
-
-## test dir
-tmp/
-
-## lua
-Lua/
-
-## Development
-dev/
-
-## Generated resource cache 
 Config/Resource.cache
 Resource.bin
 
-Config/Json/Meli.json
-Config Live.json
+# /json exports and personal imports; only the default sample is tracked
+Config/Json/*
+!Config/Json/freesr-data.json
 
-## Proto: huge regenerable il2cpp dump (≈119MB) — keep out of git, available locally per version
+# Client Lua scripts loaded by /windy and /htl
+Lua/
+
+# Local reverse-engineering workspace and dumper output
+/Research/
+/GameServer/OriginalProto
 Proto/**/dump.cs
 
 # Protocol C# is generated during builds; legacy schemas are optional archive extracts.
@@ -428,3 +404,19 @@ Proto/**/dump.cs
 /Proto/4.5v3/*
 !/Proto/4.5v3/translations.txt
 /Proto/4.6/
+
+# Scratch directories
+tmp/
+dev/
+
+# Local editor and assistant settings
+.vscode/
+*.lscache
+CLAUDE.md
+.claude/
+.env
+.env.*
+
+# macOS metadata
+._*
+.DS_Store

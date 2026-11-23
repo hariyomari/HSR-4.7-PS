@@ -2,6 +2,7 @@ using MemoryPack;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using March7thHoney.Internationalization;
 using March7thHoney.Proto;
 using March7thHoney.Util;
 
@@ -147,10 +148,10 @@ public static class AccountBanHelper
             status.IdentityKey?.StartsWith("ip:", StringComparison.Ordinal) == true ? "ip_block" : "device_block";
         var match = !status.IdentityMatched ? "uid" : status.KnownDeviceMatched ? "known_device" : "current";
         var remote = (identityKeys as LoginIdentityContext)?.IpAddress ?? "unknown";
-        Logger.Warn($"Authentication rejected. stage={stage.Replace('\r', ' ').Replace('\n', ' ')} " +
-                    $"uid={uid?.ToString() ?? "unknown"} remote={remote} source={source} match={match} " +
-                    $"rule_id={status.RuleId?.ToString() ?? "none"} identity_key={status.IdentityKey ?? "none"} " +
-                    $"expire_at={status.ExpireAt}");
+        Logger.Warn(I18NManager.Translate("Server.Log.LoginBlocked",
+            $"stage={stage.Replace('\r', ' ').Replace('\n', ' ')} uid={uid?.ToString() ?? "unknown"} remote={remote} " +
+            $"source={source} match={match} rule_id={status.RuleId?.ToString() ?? "none"} " +
+            $"identity_key={status.IdentityKey ?? "none"} expire_at={status.ExpireAt}"));
     }
 
     public static bool TryFindAccountByIdentityKeys(IEnumerable<string>? identityKeys, string? mode,

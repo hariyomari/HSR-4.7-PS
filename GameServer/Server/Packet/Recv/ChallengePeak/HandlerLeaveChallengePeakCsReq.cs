@@ -16,7 +16,7 @@ public class HandlerLeaveChallengePeakCsReq : PlayerHandler
         // scene — otherwise a client could spam this for a free full heal + teleport.
         if (player.SceneInstance is not null && player.SceneInstance.Excel.PlaneType == PlaneTypeEnum.Challenge)
         {
-            // 记下所在王棋 group, 离开后据此刷新总览编队槽位
+            // Remember the peak group being left, so the overview's lineup slots can be refreshed after leaving.
             if (player.ChallengeManager!.ChallengeInstance?.Data.Peak is { } peak)
                 peakGroupId = (int)peak.CurrentPeakGroupId;
 
@@ -39,7 +39,8 @@ public class HandlerLeaveChallengePeakCsReq : PlayerHandler
 
         await connection.SendPacket(CmdIds.LeaveChallengePeakScRsp);
 
-        // 离开后回到总览, 补发一次 group 数据让客户端把上次队伍+特性回填进编队槽位; 难度走 group 记忆的默认值
+        // Leaving returns to the overview. Send the group data once more so the client refills the lineup slots with
+        // the last team and buff; the difficulty is the one remembered for the group.
         if (peakGroupId is { } gid)
             await player.SendPacket(new PacketChallengePeakGroupDataUpdateScNotify(
                 player.ChallengePeakManager!.GetChallengePeakInfo(gid)));

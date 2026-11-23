@@ -66,7 +66,7 @@ public sealed partial class GridFightSession
     private static GridFightAugmentGrant G => new();
 
     public static readonly IReadOnlyDictionary<uint, GridFightAugmentGrant> AugmentSelectionGrants = MergeEffects(
-        BuildSeason2SelectionGrants(),
+        BuildSeasonTwoSelectionGrants(),
         new Dictionary<uint, GridFightAugmentGrant>
         {
             // ---- Silver
@@ -168,7 +168,7 @@ public sealed partial class GridFightSession
         });
 
     public static readonly IReadOnlyDictionary<uint, GridFightAugmentRecurring[]> AugmentRecurringEffects = MergeEffects(
-        BuildSeason2RecurringEffects(),
+        BuildSeasonTwoRecurringEffects(),
         new Dictionary<uint, GridFightAugmentRecurring[]>
         {
             [100101] = [new(GridFightAugmentTrigger.BossNode, 0, G with { Gold = 7 })],               // 特战资金
@@ -203,7 +203,7 @@ public sealed partial class GridFightSession
         _augmentEffectNodeCounters.Remove(augmentId);
         if (AugmentSelectionGrants.TryGetValue(augmentId, out var grant))
             _augmentSelectionEffects.Add(ApplyAugmentGrant(augmentId, grant));
-        ApplySeason2SelectionSpecials(augmentId);
+        ApplySeasonTwoSelectionSpecials(augmentId);
         InitializeEconomyAugment(augmentId);
         InitializeOwlbert(augmentId);
     }

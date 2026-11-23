@@ -9,8 +9,7 @@ public class HandlerTrainPartyEnterCsReq : Handler
 {
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
-        var rsp = new BasePacket(CmdIds.TrainPartyEnterScRsp);
-        rsp.SetData(new FDDJJCFNFOJ { Retcode = 0 });
+        var rsp = BasePacket.Create(CmdIds.TrainPartyEnterScRsp, new FDDJJCFNFOJ { Retcode = 0 });
         await connection.SendPacket(rsp);
 
         // Refresh the build room state for the entering client.

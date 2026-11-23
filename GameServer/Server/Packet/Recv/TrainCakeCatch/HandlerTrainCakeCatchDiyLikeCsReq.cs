@@ -8,8 +8,7 @@ public class HandlerTrainCakeCatchDiyLikeCsReq : Handler
 {
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
-        var packet = new BasePacket(CmdIds.TrainCakeCatchDiyLikeScRsp);
-        packet.SetData(connection.Player!.TrainCakeCatchManager!.LikeDiy());
+        var packet = BasePacket.Create(CmdIds.TrainCakeCatchDiyLikeScRsp, connection.Player!.TrainCakeCatchManager!.LikeDiy());
         await connection.SendPacket(packet);
     }
 }

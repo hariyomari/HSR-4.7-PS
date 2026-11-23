@@ -6,19 +6,16 @@ using March7thHoney.Enums.RogueMagic;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Battle;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.GameServer.Game.Scene;
-using March7thHoney.GameServer.Server.Packet.Send.RogueMagic;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 using March7thHoney.Util;
-using MemoryPack;
 
 namespace March7thHoney.GameServer.Game.RogueMagic;
 
 public class RogueMagicManager : BasePlayerManager
 {
-    public const int RogueLobbyEntranceId = 801120102;
-
     private const int StartCoin = 100;
     private const int BasicRoundLimit = 2;
     private const int ExtraRoundLimit = 2;
@@ -39,26 +36,13 @@ public class RogueMagicManager : BasePlayerManager
 
     public void Save()
     {
-        Data.RunInstance = RunInstance == null
-            ? null
-            : Convert.ToBase64String(MemoryPackSerializer.Serialize(RunInstance));
+        Data.RunInstance = RogueRunBlob.Serialize(RunInstance);
         DatabaseHelper.MarkDirty(Player.Uid);
     }
 
     private void ResurrectRun()
     {
-        if (string.IsNullOrEmpty(Data.RunInstance)) return;
-
-        RogueMagicRunData? run;
-        try
-        {
-            run = MemoryPackSerializer.Deserialize<RogueMagicRunData>(Convert.FromBase64String(Data.RunInstance));
-        }
-        catch
-        {
-            // Incompatible/corrupt blob — drop it rather than crash the manager.
-            run = null;
-        }
+        if (!RogueRunBlob.TryLoad<RogueMagicRunData>(Data.RunInstance, out var run)) return;
 
         if (run == null || run.Status != RogueMagicStates.RunDoing)
         {
@@ -234,30 +218,25 @@ public class RogueMagicManager : BasePlayerManager
             await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.RogueFinishCnt);
     }
 
+    /// <summary>Leaves the run (leave or settle) and returns to the rogue lobby; false when the lobby scene fails.</summary>
+    public async ValueTask<bool> LeaveRunToLobby()
+    {
+        await LeaveRun();
+        var (success, _) = await Player.TryEnterScene(RogueLobby.EntranceId, 0, false);
+        return success;
+    }
+
     private async ValueTask ClearRun()
     {
         RunInstance = null;
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, false);
+        await RogueExtraLineup.Release(Player);
         Save();
     }
 
-    private async ValueTask<bool> ActivateLineup(List<int> baseAvatarIds)
+    private ValueTask<bool> ActivateLineup(List<int> baseAvatarIds)
     {
-        var lineupManager = Player.LineupManager!;
-        lineupManager.SetExtraLineup(ExtraLineupType.LineupMagicRogue, baseAvatarIds);
-        var lineup = lineupManager.GetExtraLineup(ExtraLineupType.LineupMagicRogue);
-        if (lineup == null || lineup.BaseAvatars?.Count == 0) return false;
-
-        foreach (var avatarId in baseAvatarIds)
-        {
-            var avatar = Player.AvatarManager!.GetFormalAvatar(avatarId);
-            avatar?.SetCurHp(10000, true);
-            avatar?.SetCurSp(5000, true);
-        }
-
-        await lineupManager.SetExtraLineup(ExtraLineupType.LineupMagicRogue, false);
-        lineup.Mp = lineupManager.GetMaxMp();
-        return true;
+        return RogueExtraLineup.Activate(Player, ExtraLineupType.LineupMagicRogue, baseAvatarIds,
+            new RogueLineupStart(null, RogueExtraLineup.HalfSp, RogueLineupRefill.RequestedFormalAvatars));
     }
 
     #endregion
@@ -500,7 +479,7 @@ public class RogueMagicManager : BasePlayerManager
         var run = RunInstance;
         var layer = run?.CurLayer();
         if (run == null || layer == null) return;
-        await Player.SendPacket(new PacketRogueMagic(CmdIds.RogueMagicLevelInfoUpdateScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.RogueMagicLevelInfoUpdateScNotify,
             RogueMagicProtoBuilder.BuildLevelNotify(run, layer, roomIndexes)));
     }
 
@@ -508,14 +487,14 @@ public class RogueMagicManager : BasePlayerManager
     {
         var run = RunInstance;
         if (run == null || run.PendingActions.Count == 0) return;
-        await Player.SendPacket(new PacketRogueMagic(CmdIds.SyncRogueCommonPendingActionScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.SyncRogueCommonPendingActionScNotify,
             RogueMagicProtoBuilder.BuildPendingNotify(run)));
     }
 
     public async ValueTask SendCoinNotify()
     {
         if (RunInstance == null) return;
-        await Player.SendPacket(new PacketRogueMagic(CmdIds.CommonRogueVirtualItemInfoScNotify,
+        await Player.SendPacket(BasePacket.Create(CmdIds.CommonRogueVirtualItemInfoScNotify,
             RogueMagicProtoBuilder.BuildCoinNotify(RunInstance)));
     }
 

@@ -1,10 +1,11 @@
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     Per-avatar battle growth such as 飞霄's 军衔 experience (GP_Avatar_S2_Feixiao_00) is counted by the battle client
-///     and reported back in GridFightBattleResultStatistics.POCKGKDFLKK. The server used to rebuild every role saved
-///     value from the table defaults on each sync, so the growth reset after every battle. The last reported value
-///     now overrides the default; server-owned values (白厄's 薪火) are still applied on top of it afterwards.
+///     Per-avatar battle growth such as Feixiao's rank (军衔) experience (GP_Avatar_S2_Feixiao_00) is counted by the
+///     battle client and reported back in GridFightBattleResultStatistics.POCKGKDFLKK. Role saved values are rebuilt
+///     from the table defaults on each sync, which alone would reset that growth after every battle, so the last
+///     reported value overrides the default; server-owned values (Phainon's Kindling, 薪火) are still applied on top of
+///     it afterwards.
 /// </summary>
 public sealed partial class GridFightSession
 {

@@ -54,7 +54,7 @@ public sealed partial class GridFightManager
                                 ? session.GalaxyScholarDna
                                 : 0,
                         }));
-            // 幻月游戏 sub-trait effects are addressed under trait 100302 by their own effect ids.
+            // Moon Game (幻月游戏) sub-trait effects are addressed under trait 100302 by their own effect ids.
             if (trait.Layer > 0 && traitId == GridFightSession.MoonGameTraitId &&
                 session.MoonGameSubTraitId == GridFightSession.MoonGameWishSubTraitId)
                 trait.TraitEffectList.Add(BuildGameTraitEffectInfo(traitId, GridFightSession.MoonGameWishEffectId));

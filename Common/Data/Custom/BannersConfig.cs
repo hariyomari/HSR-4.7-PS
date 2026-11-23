@@ -131,7 +131,7 @@ public partial class BannerConfig
         {
             info.GachaCeiling = new GachaCeiling
             {
-                IsClaimed = true, // TODO: Implement this
+                IsClaimed = true, // TODO: not tracked; always reported as claimed
                 AvatarList = { goldAvatar.Select(id => new GachaCeilingAvatar { AvatarId = (uint)id }) }
             };
         }

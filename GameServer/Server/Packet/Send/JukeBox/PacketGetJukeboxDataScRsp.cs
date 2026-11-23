@@ -9,7 +9,7 @@ public class PacketGetJukeboxDataScRsp : BasePacket
 {
     public PacketGetJukeboxDataScRsp(PlayerInstance player) : base(CmdIds.GetJukeboxDataScRsp)
     {
-        // 4.4: JukeBox proto 混淆名变更
+        // 4.4: the obfuscated names in the JukeBox proto changed
         //   now-playing wrapper: GFFOBALDBPM (type MNCBEDBDDHL), inner JKNLCEEDAHJ (type KHADHDLCNOI)
         //   UnlockedMusicList -> IOKAJIBHLMP (repeated, element MusicData -> LHHGCDLCJDA, IsPlayed -> BIMDKNLMICG)
         var proto = new GetJukeboxDataScRsp

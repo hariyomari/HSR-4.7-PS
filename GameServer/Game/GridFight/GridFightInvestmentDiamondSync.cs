@@ -78,7 +78,7 @@ public sealed partial class GridFightManager
             var update = new GridFightSavedValueUpdate();
             update.SavedValues[saved.Key] = saved.Value;
             result.UpdateDynamicList.Add(new GridFightSyncData { SavedValueUpdate = update });
-            // 打通上下游·彩 immediately changes every role's front/back strength display.
+            // Prismatic Upstream (打通上下游·彩) immediately changes every role's front/back strength display.
             if (saved.AugmentId == GridFightSession.UpstreamPrismaticAugmentId)
                 foreach (var role in session.Roles)
                     result.UpdateDynamicList.Add(new GridFightSyncData { UpdateRoleInfo = BuildRole(role) });

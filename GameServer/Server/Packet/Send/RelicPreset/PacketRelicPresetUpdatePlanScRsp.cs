@@ -6,7 +6,8 @@ namespace March7thHoney.GameServer.Server.Packet.Send.RelicPreset;
 public class PacketRelicPresetUpdatePlanScRsp : BasePacket
 {
     /// <summary>
-    ///     原样回带请求里改动的那一项（改名或换遗器），客户端靠它更新本地的方案缓存。
+    ///     Echoes back the one item the request changed (the name or the relics); the client updates its local plan
+    ///     cache from it.
     /// </summary>
     public PacketRelicPresetUpdatePlanScRsp(RelicPresetUpdatePlanCsReq req, Retcode retcode = Retcode.RetSucc)
         : base(CmdIds.RelicPresetUpdatePlanScRsp)

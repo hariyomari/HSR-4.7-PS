@@ -323,8 +323,9 @@ static class EconomyEffectsRegression
         {
             var run = newRun(101).Session!;
             run.Roles.Clear();
-            run.TryAddRole(151102, 1, out _);
-            run.TryAddRole(151102, 1, out _);
+            // The Aha the shop sells: 151102 (3-cost) in the 4.6.5x tables, 151112 (4-cost) from OSBETAWin4.7.51.
+            run.TryAddRole(run.AhaBaseRoleId, 1, out _);
+            run.TryAddRole(run.AhaBaseRoleId, 1, out _);
             var absorbed = run.AbsorbAhaCopies();
             var aha = run.Roles.Single();
             var roleInfo = GridFightBattleProtoBuilder.BuildRoleInfo(run, aha, Gender.Man);

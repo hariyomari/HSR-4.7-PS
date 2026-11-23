@@ -8,8 +8,8 @@ public sealed partial class GridFightSession
                                        SeasonTwoPending != null;
 
     /// <summary>
-    ///     主角光环 selection is open. The role is picked by dragging a board role onto the spotlight stage, and the
-    ///     panel can be paused (返回备战界面) to rearrange the team, so it must not lock the board.
+    ///     A Spotlight (主角光环) selection is open. The role is picked by dragging a board role onto the spotlight stage,
+    ///     and the panel can be paused (返回备战界面) to rearrange the team, so it must not lock the board.
     /// </summary>
     public bool IsSpotLightSelecting => SeasonTwoPending?.Kind == GridFightSeasonTwoPendingKind.SpotLightSelect;
 

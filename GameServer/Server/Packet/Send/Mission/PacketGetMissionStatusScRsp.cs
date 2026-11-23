@@ -14,8 +14,10 @@ public class PacketGetMissionStatusScRsp : BasePacket
 
         foreach (var item in req.MainMissionIdList)
         {
+            // The hub mission of an activity's standing entrance stays open for the client even though it
+            // reads as finished here; calling it finished would unload the entrance NPC's group.
             var status = player.MissionManager!.GetMainMissionStatus((int)item);
-            if (status == MissionPhaseEnum.Finish)
+            if (status == MissionPhaseEnum.Finish && !player.MissionManager.IsOpenStandingEntranceMission((int)item))
             {
                 proto.FinishedMainMissionIdList.Add(item);
                 proto.CurversionFinishedMainMissionIdList.Add(item);
@@ -26,13 +28,15 @@ public class PacketGetMissionStatusScRsp : BasePacket
             }
         }
 
+        player.MissionManager!.NoteMainMissionsReportedFinished(proto.FinishedMainMissionIdList);
+
         foreach (var item in req.SubMissionIdList)
         {
             var status = player.MissionManager!.GetSubMissionStatus((int)item);
             proto.SubMissionStatusList.Add(new Proto.Mission
             {
                 Id = item,
-                Status = status.ToProto()
+                Status = player.MissionManager.GetStandingEntranceSubMissionStatus((int)item) ?? status.ToProto()
             });
         }
 

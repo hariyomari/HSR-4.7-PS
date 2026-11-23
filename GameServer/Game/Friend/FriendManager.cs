@@ -17,6 +17,16 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
     public FriendData FriendData { get; set; } =
         DatabaseHelper.Instance!.GetInstanceOrCreateNew<FriendData>(player.Uid);
 
+    /// <summary>Drops the development records (shown on the friend profile) that are a week old or older.</summary>
+    public void PruneExpiredDevelopmentRecords()
+    {
+        if (Player.FriendRecordData is not { } records) return;
+        foreach (var friendDevelopmentInfoPb in records.DevelopmentInfos.ToArray())
+            if (Extensions.GetUnixSec() - friendDevelopmentInfoPb.Time >=
+                TimeSpan.TicksPerDay * 7 / TimeSpan.TicksPerSecond)
+                records.DevelopmentInfos.Remove(friendDevelopmentInfoPb);
+    }
+
     public async ValueTask<Retcode> AddFriend(int targetUid)
     {
         if (targetUid == Player.Uid) return Retcode.RetSucc; // Cannot add self
@@ -54,6 +64,7 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
         if (target == null || targetData == null) return null;
         if (target.FriendDetailList.ContainsKey(Player.Uid)) return null;
         if (target.BlackList.Contains(Player.Uid)) return null;
+        if (!HasPendingApplyFrom(targetUid, target)) return null;
 
         FriendData.ReceiveApplyList.Remove(targetUid);
         FriendData.FriendDetailList.Add(targetUid, new FriendDetailData());
@@ -71,7 +82,7 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
     public async ValueTask RefuseAddFriend(int targetUid)
     {
         var target = DatabaseHelper.Instance!.GetInstance<FriendData>(targetUid);
-        if (target == null) return;
+        if (target == null || !HasPendingApplyFrom(targetUid, target)) return;
 
         FriendData.ReceiveApplyList.Remove(targetUid);
         target.SendApplyList.Remove(Player.Uid);
@@ -81,6 +92,19 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
             await targetPlayer.SendPacket(new PacketSyncHandleFriendScNotify((uint)Player.Uid, false, Player.Data));
 
         DatabaseHelper.MarkDirty(targetUid);
+    }
+
+    /// <summary>
+    ///     The uid in a HandleFriendCsReq comes from the client, so only an apply recorded on both sides may be handled.
+    ///     A one-sided leftover entry in this player's received list is dropped, since it can never be accepted.
+    /// </summary>
+    private bool HasPendingApplyFrom(int targetUid, FriendData target)
+    {
+        if (!FriendData.ReceiveApplyList.Contains(targetUid)) return false;
+        if (target.SendApplyList.Contains(Player.Uid)) return true;
+
+        FriendData.ReceiveApplyList.Remove(targetUid);
+        return false;
     }
 
     public async ValueTask<PlayerData?> AddBlackList(int targetUid)
@@ -126,47 +150,76 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
         return targetUid;
     }
 
-    public async ValueTask SendMessage(int sendUid, int recvUid, string? message = null, int? extraId = null)
+    /// <summary>Upper bound on distinct recipients of one SendMsgCsReq; the client sends one per private chat.</summary>
+    public const int MaxMessageTargets = 10;
+
+    /// <summary>Messages kept per conversation; older ones are dropped so stored history stays bounded.</summary>
+    public const int MaxConversationHistory = 100;
+
+    /// <summary>
+    ///     Sends one message to every target of a request. Returns the first rejection, or
+    ///     <see cref="Retcode.RetFriendTargetNumberLimit" /> without sending anything when there are too many targets.
+    /// </summary>
+    public async ValueTask<Retcode> SendMessage(IEnumerable<uint> targetUids, string? message = null,
+        int? extraId = null)
     {
+        var targets = targetUids.Distinct().ToList();
+        if (targets.Count > MaxMessageTargets) return Retcode.RetFriendTargetNumberLimit;
+
+        var result = Retcode.RetSucc;
+        foreach (var targetUid in targets)
+        {
+            var ret = await SendMessage((int)targetUid, message, extraId);
+            if (result == Retcode.RetSucc) result = ret;
+        }
+
+        return result;
+    }
+
+    public async ValueTask<Retcode> SendMessage(int recvUid, string? message = null, int? extraId = null)
+    {
+        var sendUid = Player.Uid;
         if (GlobalChatManager.IsGlobalChatUid(recvUid))
         {
             // Relayed to every online player instead of being delivered as a private message; text only.
-            if (sendUid == Player.Uid && extraId is null or 0)
+            if (extraId is null or 0)
                 await GlobalChatManager.HandleMessageAsync(Player, message);
-            return;
+            return Retcode.RetSucc;
         }
 
         var data = BuildChatData(sendUid, recvUid, message, extraId);
-        await PushPrivateMessageAsync(recvUid, (uint)sendUid, data);
 
         if (recvUid == ConfigManager.Config.ServerOption.ServerProfile.Uid)
-            if (message?.StartsWith('/') == true)
-            {
-                var cmd = message[1..];
-                CommandExecutor.ExecuteCommand(new PlayerCommandSender(Player), cmd);
-            }
-
-        // receive message
-        var recvPlayer = Listener.GetActiveConnection(recvUid)?.Player;
-        if (recvPlayer != null)
         {
-            await recvPlayer.FriendManager!.ReceiveMessage(sendUid, recvUid, message, extraId);
+            await PushPrivateMessageAsync(recvUid, (uint)sendUid, data);
+            if (message?.StartsWith('/') == true)
+                CommandExecutor.ExecuteCommand(new PlayerCommandSender(Player), message[1..]);
+            return Retcode.RetSucc;
+        }
+
+        // Private messages need a mutual friendship and no block on either side.
+        if (FriendData.BlackList.Contains(recvUid)) return Retcode.RetFriendInBlacklist;
+        if (recvUid == sendUid || !FriendData.FriendDetailList.ContainsKey(recvUid))
+            return Retcode.RetFriendIsNotFriend;
+        var target = DatabaseHelper.Instance!.GetInstance<FriendData>(recvUid);
+        if (target == null) return Retcode.RetFriendPlayerNotFound;
+        if (target.BlackList.Contains(sendUid)) return Retcode.RetFriendInTargetBlacklist;
+        if (!target.FriendDetailList.ContainsKey(sendUid)) return Retcode.RetFriendIsNotFriend;
+
+        await PushPrivateMessageAsync(recvUid, (uint)sendUid, data);
+
+        var recvManager = Listener.GetActiveConnection(recvUid)?.Player?.FriendManager;
+        if (recvManager != null)
+        {
+            await recvManager.ReceiveMessage(sendUid, recvUid, message, extraId);
         }
         else
         {
-            // offline
-            var friendData = DatabaseHelper.Instance!.GetInstance<FriendData>(recvUid);
-            if (friendData == null) return; // not exist maybe server profile
-            if (!friendData.ChatHistory.TryGetValue(sendUid, out var history))
-            {
-                friendData.ChatHistory[sendUid] = new FriendChatHistory();
-                history = friendData.ChatHistory[sendUid];
-            }
-
-            history.MessageList.Add(data);
-
+            AppendHistory(target.ChatHistory, sendUid, data);
             DatabaseHelper.MarkDirty(recvUid);
         }
+
+        return Retcode.RetSucc;
     }
 
     public async ValueTask SendInviteMessage(int sendUid, int recvUid, object info)
@@ -245,15 +298,23 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
         };
     }
 
+    private static void AppendHistory(Dictionary<int, FriendChatHistory> chatHistory, int historyKeyUid,
+        FriendChatData data)
+    {
+        lock (chatHistory)
+        {
+            if (!chatHistory.TryGetValue(historyKeyUid, out var history))
+                chatHistory[historyKeyUid] = history = new FriendChatHistory();
+
+            history.MessageList.Add(data);
+            if (history.MessageList.Count > MaxConversationHistory)
+                history.MessageList.RemoveRange(0, history.MessageList.Count - MaxConversationHistory);
+        }
+    }
+
     private async ValueTask PushPrivateMessageAsync(int historyKeyUid, uint sourceUid, FriendChatData data)
     {
-        if (!FriendData.ChatHistory.TryGetValue(historyKeyUid, out var history))
-        {
-            FriendData.ChatHistory[historyKeyUid] = new FriendChatHistory();
-            history = FriendData.ChatHistory[historyKeyUid];
-        }
-
-        history.MessageList.Add(data);
+        AppendHistory(FriendData.ChatHistory, historyKeyUid, data);
 
         await Player.SendPacket(new PacketRevcMsgScNotify(
             sourceUid,
@@ -354,12 +415,10 @@ public partial class FriendManager(PlayerInstance player) : BasePlayerManager(pl
     {
         var list = new List<PlayerData>();
 
-        foreach (var kcp in March7thHoneyListener.GetSnapshot())
+        foreach (var player in Listener.GetActivePlayers())
         {
-            if (kcp.State != SessionStateEnum.ACTIVE) continue;
-            if (kcp is not Connection connection) continue;
-            if (connection.Player?.Uid == Player.Uid) continue;
-            var data = connection.Player?.Data;
+            if (player.Uid == Player.Uid) continue;
+            var data = player.Data;
             if (data == null) continue;
             list.Add(data);
         }

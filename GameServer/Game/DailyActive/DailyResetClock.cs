@@ -11,7 +11,7 @@ namespace March7thHoney.GameServer.Game.DailyActive;
 public static class DailyResetClock
 {
     /// <summary>Same value PacketPlayerLoginScRsp sends as cur_timezone.</summary>
-    public static int UtcOffsetHours => (int)TimeZoneInfo.Local.BaseUtcOffset.TotalHours;
+    public static int UtcOffsetHours => ServerTimeProvider.UtcOffsetHours;
 
     public static int ResetHour => ConfigManager.Config.ServerOption.ValidDailyResetHour();
 
@@ -21,6 +21,15 @@ public static class DailyResetClock
         var local = DateTimeOffset.FromUnixTimeSeconds(unixSec).ToOffset(TimeSpan.FromHours(utcOffsetHours));
         var date = local.Hour < resetHour ? local.Date.AddDays(-1) : local.Date;
         return date.Year * 10000 + date.Month * 100 + date.Day;
+    }
+
+    /// <summary>Unix time at which the daily window containing <paramref name="unixSec" /> began.</summary>
+    public static long WindowStart(long unixSec, int utcOffsetHours, int resetHour)
+    {
+        const long secondsPerDay = 24 * 60 * 60;
+        var intoWindow = (unixSec + (utcOffsetHours - resetHour) * 3600L) % secondsPerDay;
+        if (intoWindow < 0) intoWindow += secondsPerDay;
+        return unixSec - intoWindow;
     }
 
     /// <summary>The window the player is in now (honours per-account and global fake time).</summary>

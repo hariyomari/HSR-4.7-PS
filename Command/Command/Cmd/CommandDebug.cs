@@ -105,8 +105,7 @@ public class CommandDebug : ICommand
             return;
         }
 
-        conn.CustomPacketQueue.Clear();
-        conn.CustomPacketQueue.AddRange(customPacketQueue.Queue);
+        conn.CustomPacketQueue.Replace(customPacketQueue.Queue);
         await arg.SendMsg(I18NManager.Translate("Game.Command.Debug.CustomPacketFileLoaded"));
     }
 }

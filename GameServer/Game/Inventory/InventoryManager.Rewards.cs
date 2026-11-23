@@ -1,5 +1,6 @@
 using March7thHoney.Data;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Util;
 
@@ -22,7 +23,7 @@ public partial class InventoryManager
         if (sync)
             await Player.SendPacket(new PacketPlayerSyncScNotify(items));
 
-        var hCoin = await AddItem(1, rewardData.Hcoin, notify, sync: false);
+        var hCoin = await AddItem((int)VirtualItemEnum.Hcoin, rewardData.Hcoin, notify, sync: false);
         if (hCoin != null)
             items.Add(hCoin);
 

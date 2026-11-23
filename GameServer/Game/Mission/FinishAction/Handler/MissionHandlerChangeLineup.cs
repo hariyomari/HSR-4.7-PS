@@ -1,6 +1,7 @@
 using March7thHoney.Data;
 using March7thHoney.Enums.Mission;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.Util;
 
 namespace March7thHoney.GameServer.Game.Mission.FinishAction.Handler;
 
@@ -14,7 +15,7 @@ public class MissionHandlerChangeLineup : MissionFinishActionHandler
         var avatarCount = @params.Count(value => value != 0) - 1;
         foreach (var avatarId in @params)
         {
-            if (count++ >= 4) break;
+            if (count++ >= GameConstants.MAX_LINEUP_AVATAR_COUNT) break;
             GameData.SpecialAvatarData.TryGetValue(avatarId * 10 + player.Data.WorldLevel, out var specialAvatar);
             if (specialAvatar == null)
             {

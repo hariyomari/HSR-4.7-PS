@@ -1,5 +1,4 @@
 using March7thHoney.Configuration;
-using March7thHoney.Data;
 using March7thHoney.Database.Account;
 using March7thHoney.Internationalization;
 using March7thHoney.Proto;
@@ -15,7 +14,7 @@ internal class QueryGatewayHandler
     private static readonly string[] VersionBranches =
         ["PREbeta", "BETA", "PROD", "DEV", "PRE", "GM", "CECREATION"];
     private static readonly string[] VersionPlatforms = ["Win", "Android", "iOS"];
-    public static Logger Logger = new("GatewayServer");
+    private static readonly Logger Logger = new("GatewayServer");
     private static bool GatewayDebugEnabled => ConfigManager.Config.ServerOption.LogOption.EnableGamePacketLog;
     private static void Debug(string message)
     {
@@ -45,8 +44,9 @@ internal class QueryGatewayHandler
         if (!string.IsNullOrWhiteSpace(accessVerificationMessage))
             gateServer.LoginWhiteMsg = accessVerificationMessage;
 
-        // 4.4: GateServer 旧的 Unk1/Unk2/MdkResVersion/IfixVersion 字段已移除；msg 改名为 LoginWhiteMsg。
-        // 4.4 客户端需要这些 bool 标志才能正常进门；唯独 UseTcp 必须保持关闭 (星铁私服走 KCP，UseTcp=true 才是 TCP)。
+        // 4.4: the old GateServer fields Unk1/Unk2/MdkResVersion/IfixVersion were removed, and msg was renamed to
+        // LoginWhiteMsg. The 4.4 client needs these bool flags to get past the gateway; only UseTcp must stay off
+        // (private servers speak KCP, and UseTcp=true selects TCP).
         gateServer.EnableDesignDataBundleVersionUpdate = true;
         gateServer.EnableVideoBundleVersionUpdate = true;
         gateServer.WatermarkEnable = true;
@@ -62,7 +62,7 @@ internal class QueryGatewayHandler
         gateServer.NetworkDiagnostic = true;
         gateServer.NNFLHCGDGJM = true;
         gateServer.FMLPNNMJDIC = true;
-        // gateServer.UseTcp 保持默认 false = KCP
+        // gateServer.UseTcp stays at its default: false = KCP
 
         // Divergent Universe awaits this BuildRef fetch before it sends RogueTournStartCsReq.
         // Host the empty community-build catalogue locally so starting a run has no CDN dependency.
@@ -71,7 +71,7 @@ internal class QueryGatewayHandler
         gateServer.RogueTournBuildRefApiReqColorHeaderKey = "x-rpc-rpglineup-tourn";
         gateServer.RogueTournBuildRefApiReqColorHeaderValue = "tourn";
 
-        if (ConfigManager.Config.GameServer.UsePacketEncryption)
+        if (Crypto.PacketEncryptionEnabled)
             gateServer.ClientSecretKey = Convert.ToBase64String(Crypto.ClientSecretKey!.GetBytes());
 
         var baseUrl = req.version.StartsWith("CN", StringComparison.OrdinalIgnoreCase) ? BaseUrl.CN : BaseUrl.OS;
@@ -91,12 +91,7 @@ internal class QueryGatewayHandler
             SetEmptyHotfix(gateServer);
         }
 
-        if (!ResourceManager.IsLoaded)
-        {
-            Logger.Warn("query_gateway requested before ResourceManager finished loading; returning retcode=0 for client compatibility");
-        }
-
-        Logger.Info("Client request: query_gateway");
+        Logger.Debug("Client request: query_gateway");
 
         var bytes = gateServer.ToByteArray();
         Data = Convert.ToBase64String(bytes);
@@ -155,21 +150,21 @@ internal class QueryGatewayHandler
 
                     if (HasHotfixUrl(remoteGateServer)) return remoteGateServer;
 
-                    Logger.Warn($"Remote hotfix returned no URL for {version} (retcode={remoteGateServer.Retcode})");
+                    Logger.Warn(I18NManager.Translate("Server.Log.RemoteHotfixFailed", version, $"retcode {remoteGateServer.Retcode}"));
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warn($"Failed to parse remote hotfix response: {ex.Message}");
+                    Logger.Warn(I18NManager.Translate("Server.Log.RemoteHotfixFailed", version, ex.Message));
                 }
             }
             else
             {
-                Logger.Warn($"Remote hotfix request failed with status: {statusCode}");
+                Logger.Warn(I18NManager.Translate("Server.Log.RemoteHotfixFailed", version, $"HTTP {statusCode}"));
             }
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Remote hotfix fetch failed: {ex.Message}");
+            Logger.Warn(I18NManager.Translate("Server.Log.RemoteHotfixFailed", version, ex.Message));
         }
 
         return null;
@@ -198,11 +193,11 @@ internal class QueryGatewayHandler
                 IfixUrl = remoteGateServer.IfixUrl
             });
             if (changedCount > 0)
-                Logger.Info($"Saved remote hotfix for versions: {string.Join(", ", versions)}");
+                Logger.Info(I18NManager.Translate("Server.Log.RemoteHotfixSaved", string.Join(", ", versions)));
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Failed to persist remote hotfix for {version}: {ex.Message}");
+            Logger.Warn(I18NManager.Translate("Server.Log.RemoteHotfixSaveFailed", version, ex.Message));
         }
     }
 
@@ -220,7 +215,7 @@ internal class QueryGatewayHandler
         }
         else
         {
-            Logger.Warn($"No local hotfix found for version: {req.version}");
+            Logger.Warn(I18NManager.Translate("Server.Log.LocalHotfixMissing", req.version));
         }
     }
 
@@ -283,7 +278,7 @@ internal class QueryGatewayHandler
 
             if (statusCode != 200 || string.IsNullOrWhiteSpace(response))
             {
-                Logger.Warn($"Remote dispatch request failed with status: {statusCode}, use fallback gateway");
+                Logger.Warn(I18NManager.Translate("Server.Log.RemoteDispatchFallback", $"HTTP {statusCode}"));
                 return fallback;
             }
 
@@ -291,7 +286,7 @@ internal class QueryGatewayHandler
             var region = SelectPreferredRegion(dispatch, version);
             if (region == null || string.IsNullOrWhiteSpace(region.DispatchUrl))
             {
-                Logger.Warn("Remote dispatch returned no usable gateway, use fallback gateway");
+                Logger.Warn(I18NManager.Translate("Server.Log.RemoteDispatchFallback", "no usable gateway"));
                 return fallback;
             }
 
@@ -300,7 +295,7 @@ internal class QueryGatewayHandler
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Remote dispatch lookup failed: {ex.Message}; use fallback gateway");
+            Logger.Warn(I18NManager.Translate("Server.Log.RemoteDispatchFallback", ex.Message));
             return fallback;
         }
     }

@@ -10,9 +10,7 @@ public class HandlerTrainPartyBuildDiyCsReq : Handler
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
         var req = TrainPartyBuildDiyCsReq.Parser.ParseFrom(data);
-        var player = connection.Player!;
-
-        var area = player.TrainPartyManager!.SetDynamicId((int)req.AreaId, (int)req.DiceSlotId, (int)req.DiyDynamicId);
-        await player.SendPacket(new PacketTrainPartyBuildDiyScRsp(area));
+        var rsp = connection.Player!.TrainPartyManager!.BuildDiy(req);
+        await connection.SendPacket(new PacketTrainPartyBuildDiyScRsp(rsp));
     }
 }

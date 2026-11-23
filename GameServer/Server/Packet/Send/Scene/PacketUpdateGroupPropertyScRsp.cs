@@ -20,7 +20,8 @@ public class PacketUpdateGroupPropertyScRsp : BasePacket
     {
         var proto = new UpdateGroupPropertyScRsp
         {
-            // TODO 4.3: 字段名变更 (ELKOCIJNABK/FNAODNGJAMM/ELNCJFFJFIH)，需重新确认 NewValue/OldValue 对应
+            // TODO: the old and new value are not sent. Which fields carry them has not been confirmed since
+            // 4.3 renamed them.
             DimensionId = req.DimensionId,
             FloorId = req.FloorId,
             GroupId = (uint)data.GroupId,

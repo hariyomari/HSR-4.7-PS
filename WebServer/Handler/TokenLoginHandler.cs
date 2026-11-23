@@ -1,5 +1,6 @@
 using March7thHoney.Database.Account;
 using System.Text.Json;
+using March7thHoney.WebServer.Http;
 using March7thHoney.WebServer.Objects;
 using Microsoft.AspNetCore.Http;
 
@@ -10,16 +11,16 @@ public class TokenLoginHandler
     public IResult HandleShieldVerify(string uid, string token, IReadOnlyCollection<string> identityKeys)
     {
         if (!int.TryParse(uid, out var parsedUid))
-            return Results.Json(LoginResJson.Error(-201, "Game account cache information error"));
+            return Results.Json(LoginResJson.Error(WebConstants.RetcodeFailed, "Game account cache information error"));
 
         var account = AccountData.GetAccountByUid(parsedUid);
         if (account == null)
-            return Results.Json(LoginResJson.Error(-201, "Game account cache information error"));
+            return Results.Json(LoginResJson.Error(WebConstants.RetcodeFailed, "Game account cache information error"));
 
         var isDispatchToken = account.ValidateDispatchToken(token);
         var isComboToken = account.ValidateComboToken(token);
         if (!isDispatchToken && !isComboToken)
-            return Results.Json(LoginResJson.Error(-201, "Game account cache information error"));
+            return Results.Json(LoginResJson.Error(WebConstants.RetcodeFailed, "Game account cache information error"));
 
         if (!LoginSessionFactory.CanAuthenticate(account, identityKeys, out var failure, "shield_verify"))
             return Results.Json(LoginResJson.Error(failure.Retcode, failure.Message));
@@ -39,16 +40,16 @@ public class TokenLoginHandler
         IReadOnlyCollection<string> identityKeys)
     {
         if (!int.TryParse(mid, out var uid))
-            return BuildJson(PassportLoginResJson.Error(-201, "Account not found"));
+            return BuildJson(PassportLoginResJson.Error(WebConstants.RetcodeFailed, "Account not found"));
 
         var account = AccountData.GetAccountByUid(uid);
         if (account == null)
-            return BuildJson(PassportLoginResJson.Error(-201, "Account not found"));
+            return BuildJson(PassportLoginResJson.Error(WebConstants.RetcodeFailed, "Account not found"));
 
         var isDispatchToken = account.ValidateDispatchToken(token);
         var isComboToken = account.ValidateComboToken(token);
         if (!isDispatchToken && !isComboToken)
-            return BuildJson(PassportLoginResJson.Error(-201, "Game account cache information error"));
+            return BuildJson(PassportLoginResJson.Error(WebConstants.RetcodeFailed, "Game account cache information error"));
 
         if (!LoginSessionFactory.CanAuthenticate(account, identityKeys, out var failure, "passport_verify"))
             return BuildJson(PassportLoginResJson.Error(failure.Retcode, failure.Message));

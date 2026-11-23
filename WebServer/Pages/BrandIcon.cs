@@ -3,10 +3,8 @@ using System.Net;
 namespace March7thHoney.WebServer.Pages;
 
 /// <summary>
-///     One place that turns <c>ServerOption.Auth.RegistrationPageIcon</c> into markup: the badge shown next to
-///     the server name and the browser-tab favicon. Every player-facing page and the admin console go through
-///     here, so a server that configures an icon gets it everywhere, and one that does not gets the same
-///     generated initials badge instead of a missing image.
+///     Shared badge and favicon rendering for player pages and the admin console,
+///     using <c>ServerOption.Auth.RegistrationPageIcon</c> or generated initials.
 /// </summary>
 public static class BrandIcon
 {
@@ -23,8 +21,7 @@ public static class BrandIcon
     }
 
     /// <summary>
-    ///     Favicon href. The configured image wins; otherwise an inline SVG of the same initials badge, so the
-    ///     browser tab never falls back to the "no icon" placeholder.
+    ///     Returns the configured image href or an inline SVG badge.
     /// </summary>
     public static string FaviconHref(string? configuredIcon, string serverName)
     {
@@ -57,8 +54,7 @@ public static class BrandIcon
         if (words.Length >= 2)
             return new string([words[0], words[1]]).ToUpperInvariant();
 
-        // A single word such as "March7thHoney" still deserves two characters: pair the first letter with
-        // the next digit or capital ("M7"), which is what reads as a logo at badge size.
+        // Prefer a digit or capital for single-word initials ("March7thHoney" -> "M7").
         var letters = name.Where(char.IsLetterOrDigit).ToArray();
         if (letters.Length == 0) return "M7";
 

@@ -3,7 +3,6 @@ using System.Text;
 using March7thHoney.Command;
 using March7thHoney.Data;
 using March7thHoney.Internationalization;
-using March7thHoney.Program.Program;
 using March7thHoney.Util;
 using Newtonsoft.Json;
 
@@ -13,32 +12,20 @@ public static partial class HandbookGenerator
 {
     private static string HandbookDir => Path.Combine(ConfigManager.Config.Path.ConfigPath, "Handbook");
 
-    // the client names simplified Chinese "CN"; the server and older res trees name it "CHS"
-    private static readonly Dictionary<string, string[]> LanguageAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["CHS"] = ["CHS", "CN"],
-        ["CN"] = ["CHS", "CN"]
-    };
-
-    private static string[] AliasesOf(string lang)
-    {
-        return LanguageAliases.TryGetValue(lang, out var aliases) ? aliases : [lang];
-    }
-
     // the first alias is the server-side spelling, which i18n and the handbook filename both use
     private static string NormalizeLanguage(string lang)
     {
-        return AliasesOf(lang)[0];
+        return LanguageCodes.AliasesOf(lang)[0];
     }
 
     private static FileInfo? ResolveTextMap(string lang)
     {
-        return AliasesOf(lang)
+        return LanguageCodes.AliasesOf(lang)
             .Select(alias => new FileInfo($"{ConfigManager.Config.Path.ResourcePath}/TextMap/TextMap{alias}.json"))
             .FirstOrDefault(file => file.Exists);
     }
 
-    public static void GenerateAll()
+    public static void GenerateAll(IReadOnlyCollection<CommandInfoAttribute> commands)
     {
         var config = ConfigManager.Config;
         var directory = new DirectoryInfo(config.Path.ResourcePath + "/TextMap");
@@ -69,20 +56,20 @@ public static partial class HandbookGenerator
                     continue; // Skip if handbook is newer than its input sources
             }
 
-            Generate(lang, ref sharedFallback);
+            Generate(lang, commands, ref sharedFallback);
         }
 
         Logger.GetByClassName()
             .Info(I18NManager.Translate("Server.ServerInfo.GeneratedItem", I18NManager.Translate("Word.Handbook")));
     }
 
-    public static void Generate(string lang)
+    public static void Generate(string lang, IReadOnlyCollection<CommandInfoAttribute> commands)
     {
         Dictionary<BigInteger, string>? fallback = null;
-        Generate(lang, ref fallback);
+        Generate(lang, commands, ref fallback);
     }
 
-    private static void Generate(string lang, ref Dictionary<BigInteger, string>? sharedFallback)
+    private static void Generate(string lang, IReadOnlyCollection<CommandInfoAttribute> commands, ref Dictionary<BigInteger, string>? sharedFallback)
     {
         var config = ConfigManager.Config;
         var handbookLang = NormalizeLanguage(lang);
@@ -123,7 +110,7 @@ public static partial class HandbookGenerator
         builder.AppendLine();
         builder.AppendLine("#" + I18NManager.TranslateAsCertainLang(handbookLang, "Server.ServerInfo.HandbookSectionCommand"));
         builder.AppendLine();
-        GenerateCmd(builder, handbookLang);
+        GenerateCmd(builder, handbookLang, commands);
 
         builder.AppendLine();
         builder.AppendLine("#" + I18NManager.TranslateAsCertainLang(handbookLang, "Server.ServerInfo.HandbookSectionAvatar"));
@@ -178,11 +165,11 @@ public static partial class HandbookGenerator
         WriteToFile(lang, builder.ToString());
     }
 
-    public static void GenerateCmd(StringBuilder builder, string lang)
+    public static void GenerateCmd(StringBuilder builder, string lang, IEnumerable<CommandInfoAttribute> commands)
     {
         AppendCommandNotes(builder, lang);
 
-        foreach (var cmd in EntryPoint.CommandManager.CommandInfo.Values
+        foreach (var cmd in commands
                      .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
         {
             builder.AppendLine("/" + cmd.Name);
@@ -264,9 +251,7 @@ public static partial class HandbookGenerator
         {
             var resolved = TryGetNameFromTextMap(avatar.AvatarName.Hash, map, fallback, out var name);
 
-            // Legacy AvatarConfig dumps carry old 32-bit name hashes that no longer resolve against the
-            // current 64-bit TextMap (e.g. 1001 March 7th -> [-531793651]). The character's inventory item
-            // shares the avatar id and keeps a valid name hash, so fall back to it.
+            // Legacy 32-bit name hashes may not resolve in the current TextMap; the item with the same ID has a newer hash.
             if (!resolved && GameData.ItemConfigData.TryGetValue(avatar.AvatarID, out var item))
                 resolved = TryGetNameFromTextMap(item.ItemName.Hash, map, fallback, out name);
 

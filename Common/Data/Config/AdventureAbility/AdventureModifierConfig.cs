@@ -40,11 +40,9 @@ public partial class AdventureModifierConfig
 
     public List<TaskConfigInfo> OnCounterAttack { get; set; } = [];
 
-    //public MazeBuffType MazeBuffType { get; set; }     
     public int Priority { get; set; }
 
     public int Count { get; set; }
-    //public ModifierStacking Stacking { get; set; }
 
 
     public static AdventureModifierConfig LoadFromJObject(JObject obj)

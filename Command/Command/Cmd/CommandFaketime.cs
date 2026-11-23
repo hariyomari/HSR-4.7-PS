@@ -58,6 +58,8 @@ public class CommandFaketime : ICommand
         }
 
         player.Data.FakeTimeDate = dateStamp;
+        // Setting a date (even the current one) starts its day over at the daily reset.
+        ServerTimeProvider.RestartAccountClock(player.Uid);
         DatabaseHelper.MarkDirty(player.Uid);
 
         await arg.SendMsg(I18NManager.Translate("Game.Command.Faketime.Set", FormatDate(date)));

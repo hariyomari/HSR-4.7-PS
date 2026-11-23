@@ -104,7 +104,10 @@ public sealed partial class GridFightSession
                 G with { Gold = 2u * (uint)ActiveInvestmentIds.Count }, isPortal: true));
     }
 
-    /// <summary>Quality forced by 彩虹/黄金/白银时代 and 头彩/尾彩; null keeps the normal random roll.</summary>
+    /// <summary>
+    /// Quality forced by the Prismatic/Golden/Silver Era portals (彩虹/黄金/白银时代) and the First/Last Prize portals
+    /// (头彩/尾彩); null keeps the normal random roll.
+    /// </summary>
     private GridFightAugmentQualityEnum? ResolvePortalInvestmentQuality(uint offerIndex)
     {
         if (HasPortal(PrismaticEraPortalId)) return GridFightAugmentQualityEnum.Prismatic;

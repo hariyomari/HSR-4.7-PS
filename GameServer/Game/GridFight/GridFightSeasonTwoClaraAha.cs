@@ -10,8 +10,8 @@ public sealed class GridFightElationSlotState
 }
 
 /// <summary>
-///     Season-2 机心巧匠 (Clara, 3005021), 幻乐之主 (Aha, 300602) and 欢愉 (Elation laugh points, 2007021).
-///     Layouts: artifacts/gf-season2/re-g3-clara-aha.md. Upgrade cadence, option pools and Aha growth thresholds are
+///     Season-2 Clara (机心巧匠, 3005021), Aha (幻乐之主, 300602) and Elation laugh points (欢愉, 2007021).
+///     Upgrade cadence, option pools and Aha growth thresholds are
 ///     server-side JSON the client never sees; they follow the trait descriptions and are marked as guesses.
 /// </summary>
 public sealed partial class GridFightSession
@@ -30,15 +30,17 @@ public sealed partial class GridFightSession
 
     public const uint AhaTraitId = 300602;
     public const string AhaGrowthSavedValueKey = "GP_Avatar_S2_Aha_00";
-    private const uint AhaThreeCostRoleId = 151102;
-    private const uint AhaFourCostRoleId = 151112;
-    private const uint AhaFiveCostRoleId = 151122;
-    private const uint AhaSevenCostRoleId = 151132;
-    // GridFightAhaRarity.GetUnlockConditions hard-codes growth 9 for the 7-cost tier; the 4/5-cost steps live in
-    // server JSON that is not shipped, so they are spread evenly below it (guess).
-    private const uint AhaFourCostGrowth = 3;
-    private const uint AhaFiveCostGrowth = 6;
-    private const uint AhaSevenCostGrowth = 9;
+    // Role IDs come from GridFightResourceCatalog; growth per absorbed copy is server-side.
+    // OSBETAWin4.7.51 client GridFightAhaRarity confirms two star-less tiers (4/5 cost, no 151102):
+    // the 5-cost form, 7-cost threshold and growth-bar cap all use growth 5.
+    // 4.6.5x had three tiers (3/4/5 cost) and a confirmed 7-cost threshold of 9. The intermediate
+    // thresholds are estimates because that version's server JSON is unavailable.
+    private static readonly uint[] AhaLegacyTierGrowth = [0, 3, 6];
+    private const uint AhaLegacySevenCostGrowth = 9;
+    private static readonly uint[] AhaTierGrowth = [0, 5];
+    private const uint AhaSevenCostGrowth = 5;
+    private const uint AhaMaxGrowth = 5;
+    private const int AhaLegacyTierCount = 3;
 
     public const uint ElationTraitId = 200702;
     public const uint ElationEffectId = 2007021;
@@ -68,21 +70,23 @@ public sealed partial class GridFightSession
         _elationSlots.AddRange(template.PreEquipList.Select(id => new GridFightElationSlotState { PresetEquipmentId = id }));
     }
 
-    // ---------------------------------------------------------------- 机心巧匠
+    // ---------------------------------------------------------------- Clara
 
     private void RefreshClara(GridFightSeasonTwoChanges changes)
     {
         var fielded = ResolveTraitLayer(ClaraTraitId) > 0;
         if (fielded && !_claraFielded)
         {
-            // 克拉拉上场时立即进行首次强化改装 (only the first time she is fielded).
+            // Trait text: Clara gets her first upgrade as soon as she is fielded ("克拉拉上场时立即进行首次强化改装"); this
+            // happens only the first time she is fielded.
             _claraFielded = true;
             _claraPendingUpgrades++;
             _claraNode = (ChapterId, SectionId);
         }
         if (!fielded || _claraNode == (ChapterId, SectionId)) return;
         _claraNode = (ChapterId, SectionId);
-        // 每进入#2[i]个新节点改装一次，前#3[i]次改装仅需进入1个新节点。
+        // Trait text: one upgrade per #2[i] new nodes entered; the first #3[i] upgrades need only 1 new node each
+        // ("每进入#2[i]个新节点改装一次，前#3[i]次改装仅需进入1个新节点。").
         _claraNodesSinceUpgrade++;
         var interval = _claraUpgradeCount < ClaraEarlyUpgrades ? 1u : 2u;
         if (_claraNodesSinceUpgrade < interval) return;
@@ -148,7 +152,8 @@ public sealed partial class GridFightSession
         if (enhanceId == 0) return 0;
 
         AddClaraEnhance(enhanceId);
-        // Picking a 响指指令 variant (3005/3006/3007) advances the 3001 -> 3004 chain (GridFightClaraLinkRelation).
+        // Picking a snap-command variant (响指指令, 3005/3006/3007) advances the 3001 -> 3004 chain
+        // (GridFightClaraLinkRelation).
         if (ClaraSummonChainTriggers.Contains(enhanceId))
         {
             var next = ClaraSummonChain.FirstOrDefault(id => ClaraOwned(id) == 0);
@@ -168,17 +173,45 @@ public sealed partial class GridFightSession
         else _claraEnhancements[index] = (enhanceId, _claraEnhancements[index].Num + 1);
     }
 
-    // ---------------------------------------------------------------- 幻乐之主
+    // ---------------------------------------------------------------- Aha
 
-    private static bool IsAhaRole(uint roleId) =>
-        roleId is AhaThreeCostRoleId or AhaFourCostRoleId or AhaFiveCostRoleId or AhaSevenCostRoleId;
+    private IReadOnlyList<uint> AhaGrowthRoleIds => _catalog.AhaGrowthRoleIds;
+    private uint AhaSevenCostRoleId => _catalog.AhaSevenCostRoleId;
 
     /// <summary>
-    ///     获取星神★阿哈可积攒【幻月之力】: the 3/4/5-cost Aha tiers have no stars (GridFight_Aha_No_Star_Role_IDList), so
-    ///     every further copy is absorbed into growth instead of being merged, and growth raises the cost tier on the same
-    ///     unique id. The 7-cost tier has stars ("达到3星7费"): once an Aha is 7-cost, every other copy becomes a 1★ 7-cost
-    ///     copy and merges like any role. Returns the roles whose id changed, the unique ids of absorbed copies and the
-    ///     merges of 7-cost copies.
+    ///     The Aha tier the shop sells and the Aha special good 346 (星神降临) hands out: the cheapest star-less tier; 0
+    ///     without an Aha.
+    /// </summary>
+    public uint AhaBaseRoleId => AhaGrowthRoleIds.Count > 0 ? AhaGrowthRoleIds[0] : 0;
+
+    private bool IsAhaRole(uint roleId) =>
+        roleId != 0 && (roleId == AhaSevenCostRoleId || AhaGrowthRoleIds.Contains(roleId));
+
+    private bool UsesLegacyAhaTiers => AhaGrowthRoleIds.Count >= AhaLegacyTierCount;
+
+    /// <summary>Growth at which the star-less tier with this index is reached.</summary>
+    private uint AhaTierGrowthAt(int tier)
+    {
+        var steps = UsesLegacyAhaTiers ? AhaLegacyTierGrowth : AhaTierGrowth;
+        return steps[Math.Min(tier, steps.Length - 1)];
+    }
+
+    /// <summary>(growth the 7-cost tier asks for, where the growth bar ends; 0 = open-ended).</summary>
+    public (uint SevenCostGrowth, uint MaxGrowth) AhaGrowthRule =>
+        UsesLegacyAhaTiers ? (AhaLegacySevenCostGrowth, 0u) : (AhaSevenCostGrowth, AhaMaxGrowth);
+
+    /// <summary>The cost the client shows for an Aha tier: its Rarity, 7 for the seven-price tier.</summary>
+    private uint AhaCost(uint roleId) =>
+        roleId == AhaSevenCostRoleId ? 7 : GameData.GridFightRoleBasicInfoData.GetValueOrDefault(roleId)?.Rarity ?? 0;
+
+    /// <summary>
+    ///     Aha growth (幻月之力; "获取星神★阿哈可积攒【幻月之力】"): the star-less Aha tiers
+    ///     (GridFight_Aha_No_Star_Role_IDList) never merge, so every further copy is absorbed into growth, and growth
+    ///     raises the cost tier on the same unique id. The 7-cost tier has stars ("达到3星7费"): once an Aha is 7-cost,
+    ///     every other copy becomes a 1★ 7-cost copy and merges like any role. A copy of the cheapest tier is worth 1
+    ///     growth and each tier above it one more (server-side value, not in the client tables; with the 4.7.51 tables
+    ///     only the cheapest tier can be bought, so this is 1 per copy). Returns the roles whose id changed, the unique
+    ///     ids of absorbed copies and the merges of 7-cost copies.
     /// </summary>
     public (IReadOnlyList<GridFightRoleState> Changed, IReadOnlyList<uint> Absorbed, IReadOnlyList<GridFightRoleMergeStep> Merges)
         AbsorbAhaCopies()
@@ -187,23 +220,26 @@ public sealed partial class GridFightSession
         var ahas = Roles.Where(role => IsAhaRole(role.RoleId)).ToList();
         if (ahas.Count == 0) return ([], [], []);
         var changed = new List<GridFightRoleState>();
-        if (ahas.Any(role => role.RoleId == AhaSevenCostRoleId))
+        var sevenCostRoleId = AhaSevenCostRoleId;
+        if (ahas.Any(role => role.RoleId == sevenCostRoleId))
         {
-            // Before, a copy stayed 3-cost on the bench and only turned 7-cost on its own once it was fielded as the
+            // Before, a copy stayed at its own cost on the bench and only turned 7-cost once it was fielded as the
             // tier keeper; those copies never merged (a perfect projector later merged them all at once).
-            foreach (var copy in ahas.Where(role => role.RoleId != AhaSevenCostRoleId))
+            foreach (var copy in ahas.Where(role => role.RoleId != sevenCostRoleId))
             {
-                copy.RoleId = AhaSevenCostRoleId;
+                copy.RoleId = sevenCostRoleId;
                 copy.Star = 1;
                 changed.Add(copy);
             }
-            var merges = MergeRoles(AhaSevenCostRoleId);
+            var merges = MergeRoles(sevenCostRoleId);
             if (changed.Count > 0 || merges.Count > 0) RecalculateRoleSwitches();
             return (changed, [], merges);
         }
 
+        var tiers = AhaGrowthRoleIds.ToList();
+        var maxGrowth = AhaGrowthRule.MaxGrowth;
         var keeper = ahas.OrderByDescending(role => IsActivePosition(role.Position))
-            .ThenByDescending(role => role.RoleId)
+            .ThenByDescending(role => tiers.IndexOf(role.RoleId))
             .ThenBy(role => role.UniqueId)
             .First();
         var absorbed = new List<uint>();
@@ -212,12 +248,8 @@ public sealed partial class GridFightSession
             DestroyDiceFilledOnRole(copy);
             Roles.Remove(copy);
             absorbed.Add(copy.UniqueId);
-            _ahaGrowth += copy.RoleId switch
-            {
-                AhaFiveCostRoleId => 3,
-                AhaFourCostRoleId => 2,
-                _ => 1,
-            };
+            _ahaGrowth += (uint)tiers.IndexOf(copy.RoleId) + 1;
+            if (maxGrowth != 0) _ahaGrowth = Math.Min(_ahaGrowth, maxGrowth);
         }
         var target = ResolveAhaTier(keeper.RoleId);
         if (target != keeper.RoleId)
@@ -232,15 +264,25 @@ public sealed partial class GridFightSession
 
     private uint ResolveAhaTier(uint current)
     {
-        if (current == AhaSevenCostRoleId) return current;
-        if (_ahaGrowth >= AhaSevenCostGrowth && current == AhaFiveCostRoleId && HasAhaSevenCostCondition())
-            return AhaSevenCostRoleId;
-        if (_ahaGrowth >= AhaFiveCostGrowth) return AhaFiveCostRoleId;
-        if (_ahaGrowth >= AhaFourCostGrowth) return Math.Max(current, AhaFourCostRoleId);
-        return current;
+        var tiers = AhaGrowthRoleIds;
+        var index = tiers.ToList().IndexOf(current);
+        if (index < 0) return current;
+        // The 7-cost step starts from the last star-less tier, one refresh after that tier is reached.
+        if (index == tiers.Count - 1)
+            return AhaSevenCostRoleId != 0 && _ahaGrowth >= AhaGrowthRule.SevenCostGrowth && HasAhaSevenCostCondition()
+                ? AhaSevenCostRoleId
+                : current;
+        var reached = index;
+        for (var tier = index + 1; tier < tiers.Count; tier++)
+            if (_ahaGrowth >= AhaTierGrowthAt(tier))
+                reached = tier;
+        return tiers[reached];
     }
 
-    /// <summary>达到5费后，提升欢愉或幻月游戏队员的总星级: trait 300602 desc params [10, 12] (assignment is a guess).</summary>
+    /// <summary>
+    ///     7-cost condition "达到5费后，提升欢愉或幻月游戏队员的总星级" (after reaching 5 cost, raise the total stars of Elation
+    ///     or Moon Game members): trait 300602 desc params [10, 12] (assignment is a guess).
+    /// </summary>
     private bool HasAhaSevenCostCondition() =>
         GetTraitTotalStars(ElationTraitId) >= 10 || GetTraitTotalStars(MoonGameTraitId) >= 12;
 
@@ -252,7 +294,7 @@ public sealed partial class GridFightSession
         if (IsSeasonTwoRules && _ahaGrowth > 0) values[AhaGrowthSavedValueKey] = _ahaGrowth;
     }
 
-    // ---------------------------------------------------------------- 欢愉 (阿哈装备栏)
+    // ---------------------------------------------------------------- Elation (Aha's equipment bar, 阿哈装备栏)
 
     public uint ResolveElationUnlockedSlots()
     {

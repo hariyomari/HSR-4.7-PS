@@ -16,14 +16,11 @@ public partial class RogueMagicUnitExcel : ExcelResource
 
     public int UnlockID { get; set; }
 
-    //public FixPoint UnitBasicPower{ get; set; }
     public int MagicUnitMazeBuffID { get; set; }
 
     [JsonConverter(typeof(StringEnumConverter))]
     public RogueMagicStyleTypeEnum StyleType { get; set; }
 
-    //public TextID MagicUnitDesc { get; set; }
-    //public TextID MagicUnitSimpleDesc { get; set; }
     public List<int> ExtraEffectID { get; set; } = [];
 
     [JsonConverter(typeof(StringEnumConverter))]

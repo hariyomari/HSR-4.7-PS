@@ -78,7 +78,8 @@ public class ChallengePeakInstance : BaseChallengeInstance
     {
         base.OnBattleStart(battle);
 
-        // 敌人特性：固定 Tag 词条，客户端不回传，需从配置注入战斗。绝境难度走 HardTagList
+        // Enemy traits (敌人特性) are fixed Tag entries that the client does not send back, so they are injected into
+        // the battle from config. Hard mode (绝境) uses HardTagList.
         var tagList = Peak.IsHard && Config.BossExcel != null
             ? Config.BossExcel.HardTagList
             : Config.TagList;
@@ -197,7 +198,8 @@ public class ChallengePeakInstance : BaseChallengeInstance
 
         if (Peak.IsHard && Config.BossExcel != null)
         {
-            // 绝境目标客户端未必回传进度, 用实际回合数兜底判定, 否则战绩存下来是 0 目标
+            // The client does not always report progress for the hard-mode target; fall back to the actual round
+            // count, otherwise the record is saved with zero targets.
             var hardTargetId = (uint)Config.BossExcel.HardTarget;
             var hardExcel = GameData.BattleTargetConfigData.GetValueOrDefault(Config.BossExcel.HardTarget);
             if (hardExcel != null && !finishedIds.Contains(hardTargetId) && req.Stt.RoundCnt <= hardExcel.TargetParam)

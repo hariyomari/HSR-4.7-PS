@@ -1,5 +1,7 @@
 # Warp schedule
 
+English | [简体中文](warp-schedule.zh-CN.md)
+
 The server can serve limited warp banners from a pool of past banners instead of only the fixed list in `Config/Custom/Banners.json`. The setting lives in `Config.json` under `ServerOption.Warps` and can be changed from the admin console (Warps panel, or the `warps` group in Settings) without a restart.
 
 ## Modes

@@ -1,32 +1,30 @@
 using March7thHoney.GameServer.Server;
-using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.Kcp;
 using March7thHoney.Util;
+using March7thHoney.WebServer.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
 public static partial class AdminRoutes
 {
-    private static void MapAnnounceRoutes(IEndpointRouteBuilder app)
+    private static void MapAnnounceRoutes(IEndpointRouteBuilder api)
     {
-        app.MapPost("/admin/api/announce", SendAnnounce);
-        app.MapGet("/admin/api/announce/config", GetAnnounceConfig);
-        app.MapPut("/admin/api/announce/config", UpdateAnnounceConfig);
+        api.MapPost("/announce", SendAnnounce);
+        api.MapGet("/announce/config", GetAnnounceConfig);
+        api.MapPut("/announce/config", UpdateAnnounceConfig);
     }
 
-    private static async Task<IResult> SendAnnounce(HttpContext ctx, AdminAnnounceRequest? request)
+    private static async Task<IResult> SendAnnounce(AdminAnnounceRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminAnnounceRequest();
         var content = (request.content ?? string.Empty).Replace("\r\n", "\n").Trim();
         if (string.IsNullOrWhiteSpace(content))
             return Error("Announcement content cannot be empty");
-        if (content.Length > 4096)
+        if (content.Length > WebConstants.MaxAnnouncementLength)
             return Error("Announcement content is too long");
 
         var config = ConfigManager.Config.ServerOption.ServerAnnounce;
@@ -56,34 +54,22 @@ public static partial class AdminRoutes
         }
         else
         {
-            recipients = March7thHoneyListener.GetSnapshot().OfType<Connection>();
+            recipients = Listener.GetConnections();
         }
 
-        var sent = 0;
-        foreach (var connection in recipients)
-        {
-            if (!connection.IsOnline || connection.Player == null) continue;
-            await connection.SendPacket(new PacketServerAnnounceNotify(content, durationSeconds,
-                (uint)frequencySeconds));
-            sent++;
-        }
+        var sent = await AnnounceBroadcaster.SendAsync(recipients, content, durationSeconds,
+            (uint)frequencySeconds);
 
         return Success(new AnnounceSendData(sent, durationSeconds, frequencySeconds));
     }
 
-    private static IResult GetAnnounceConfig(HttpContext ctx)
+    private static IResult GetAnnounceConfig()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         return Success(BuildAnnounceConfig());
     }
 
-    private static IResult UpdateAnnounceConfig(HttpContext ctx, AdminAnnounceConfigRequest? request)
+    private static IResult UpdateAnnounceConfig(AdminAnnounceConfigRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminAnnounceConfigRequest();
         var config = ConfigManager.Config.ServerOption.ServerAnnounce;
 
@@ -106,7 +92,7 @@ public static partial class AdminRoutes
         if (request.content != null)
         {
             var content = request.content.Replace("\r\n", "\n").Trim();
-            if (content.Length > 4096)
+            if (content.Length > WebConstants.MaxAnnouncementLength)
                 return Error("Announcement content is too long");
             config.AnnounceContent = content;
         }

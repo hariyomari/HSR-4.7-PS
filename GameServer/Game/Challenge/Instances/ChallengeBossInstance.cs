@@ -189,8 +189,7 @@ public class ChallengeBossInstance(PlayerInstance player, ChallengeStateData dat
             WaveFlag = -1
         });
 
-        battle.AddBattleTarget(1, 90004, 0);
-        battle.AddBattleTarget(1, 90005, 0);
+        ChallengeScoreTargets.AddBossTargets(battle);
 
         if (Boss.Buffs.Count < Boss.CurrentStage) return;
         var buffId = Boss.Buffs[(int)(Boss.CurrentStage - 1)];

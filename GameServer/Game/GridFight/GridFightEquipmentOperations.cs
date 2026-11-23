@@ -80,11 +80,8 @@ public sealed partial class GridFightSession
         var previousWearer = FindEquipmentWearer(equipmentUniqueId);
         if (!CanDress(role, equipment)) return GridFightEquipDressResult.Failed;
 
-        // A role has a single implant slot (client GridFightEquipComponent.HackEquip shows the first Implants item and
-        // no dress constraint limits implants), so a newly dressed implant replaces the worn one. The replaced implant
-        // only leaves the role's list and stays in Equipments, i.e. it goes back to the bag (the client's UpdateEquips
-        // returns an item the role update no longer lists); a second worn implant would be invisible yet still be
-        // applied in battle.
+        // GridFightEquipComponent.HackEquip shows only the first implant, but dress constraints allow more.
+        // Replace it so hidden implants cannot affect battle; UpdateEquips returns it to the bag.
         List<GridFightEquipmentState> replacedImplants = IsImplant(equipment.EquipmentId)
             ? GetEquippedEquipment(role).Where(candidate => IsImplant(candidate.EquipmentId)).ToList()
             : [];
@@ -176,7 +173,7 @@ public sealed partial class GridFightSession
             GridFightConsumeTypeEnum.Remove => RemoveEquipmentFromRole(roleUniqueId, updatedRoles),
             GridFightConsumeTypeEnum.Roll => RollEquipment(roleUniqueId, equipmentUniqueId, removed, added, updatedRoles),
             GridFightConsumeTypeEnum.Upgrade => UpgradeEquipment(equipmentUniqueId, removed, added, updatedRoles),
-            // 奇巧零食 (350119): target oneof 1338 { chimera unique id }.
+            // The chimera star-up consumable (奇巧零食, 350119): target oneof 1338 { chimera unique id }.
             GridFightConsumeTypeEnum.UpgradeChimera => UpgradeChimeraByConsumable(chimeraUniqueId),
             GridFightConsumeTypeEnum.Copy => CopyRole(roleUniqueId, config.ConsumableParamList, out acquisition),
             GridFightConsumeTypeEnum.GainRecommendEquip => StartEquipmentRecommendation(
@@ -471,8 +468,9 @@ public sealed partial class GridFightSession
             !GameData.GridFightRoleBasicInfoData.TryGetValue(sourceRole.RoleId, out var roleConfig) ||
             roleConfig.Rarity > parameters[0] || parameters[1] != 1 || GetFreeBenchPosition() == 0)
             return false;
-        // ConsumableParamList[2] is a required trait: 350113/350114 开拓·员工/完美投影仪 are [3|5, 1, 100502] and only copy
-        // 开拓银轨 members. The client does not check it, so the server must.
+        // ConsumableParamList[2] is a required trait: the Trailblaze Employee/Perfect Projectors
+        // (开拓·员工/完美投影仪, 350113/350114) are [3|5, 1, 100502] and only copy members of the Trailblaze trait
+        // (开拓银轨). The client does not check it, so the server must.
         var requiredTraitId = parameters.Count > 2 ? parameters[2] : 0u;
         if (requiredTraitId != 0 && !ResolveRoleTraitIds(sourceRole).Contains(requiredTraitId))
             return false;

@@ -36,5 +36,7 @@ public enum GridFightTraitEffectTypeEnum
     ChooseTraitByManual = 30,
     DanHengTwoInOne = 31,
     AhaUnique = 32,
-    BandRoleChoose = 33
+    BandRoleChoose = 33,
+    // New in the OSBETAWin4.7.51 tables; 34 is also its value in the client (RPG.GameCore.GridFightTraitEffectType).
+    GainOtherRoleTrait = 34
 }

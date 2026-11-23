@@ -1,35 +1,29 @@
 using March7thHoney.Enums.Mission;
 using March7thHoney.Data;
-using March7thHoney.Data.Custom;
 using March7thHoney.Data.Excel;
 using March7thHoney.Database;
-using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Rogue;
 using March7thHoney.Enums.Rogue;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Battle;
 using March7thHoney.GameServer.Game.Player;
+using March7thHoney.GameServer.Game.RogueCommon;
 using March7thHoney.GameServer.Game.Scene;
 using March7thHoney.GameServer.Game.Scene.Entity;
 using March7thHoney.GameServer.Server.Packet.Send.Rogue;
 using March7thHoney.GameServer.Server.Packet.Send.Scene;
 using March7thHoney.Proto;
-using MemoryPack;
 
 namespace March7thHoney.GameServer.Game.Rogue;
 
 public partial class RogueManager : BasePlayerManager
 {
-    public const int RogueEntranceId = 801120102;
-
     // Official 4.4 capture grants 50 (Java/C# references say 100).
     private const int StartCoinCount = 50;
     private const int TalentCoinItemId = 32;
 
     // The official login capture lists aeons 1..7 although RogueAeon has 9 rows.
     private const int AeonLimit = 7;
-    private const int NormalDraftGroupId = 100005;
-    private const int EliteDraftGroupId = 100003;
     private const int RoomTypeElite = 6;
     private const int RoomTypeBoss = 7;
     // A query type is the field number of its CCKJAEDDDCL oneof arm, and versions renumber the arms (4.5 put the
@@ -49,25 +43,13 @@ public partial class RogueManager : BasePlayerManager
 
     private void SaveRun()
     {
-        RogueData.RunBlob = RogueInstance == null
-            ? null
-            : Convert.ToBase64String(MemoryPackSerializer.Serialize(RogueInstance));
+        RogueData.RunBlob = RogueRunBlob.Serialize(RogueInstance);
         DatabaseHelper.MarkDirty(Player.Uid);
     }
 
     private void ResurrectInstance()
     {
-        if (string.IsNullOrEmpty(RogueData.RunBlob)) return;
-
-        RogueInstance? inst;
-        try
-        {
-            inst = MemoryPackSerializer.Deserialize<RogueInstance>(Convert.FromBase64String(RogueData.RunBlob));
-        }
-        catch
-        {
-            inst = null;
-        }
+        if (!RogueRunBlob.TryLoad<RogueInstance>(RogueData.RunBlob, out var inst)) return;
 
         // Earlier builds marked the single-room tutorial won after its first encounter. Keep its real
         // task progress and selected blessings when recovering that unfinished run.
@@ -224,15 +206,15 @@ public partial class RogueManager : BasePlayerManager
 
     private async ValueTask<bool> ExitToLobby()
     {
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, false);
-        await Player.EnterScene(RogueEntranceId, 0, false);
-        return Player.SceneInstance?.EntryId == RogueEntranceId;
+        await RogueExtraLineup.Release(Player);
+        await Player.EnterScene(RogueLobby.EntranceId, 0, false);
+        return Player.SceneInstance?.EntryId == RogueLobby.EntranceId;
     }
 
     private async ValueTask ClearRun()
     {
         RogueInstance = null;
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, false);
+        await RogueExtraLineup.Release(Player);
         SaveRun();
     }
 
@@ -270,27 +252,12 @@ public partial class RogueManager : BasePlayerManager
         return true;
     }
 
-    private async ValueTask<bool> ActivateRogueLineup(List<int> avatarIds)
+    private ValueTask<bool> ActivateRogueLineup(List<int> avatarIds)
     {
-        var lineupManager = Player.LineupManager!;
-        lineupManager.SetExtraLineup(ExtraLineupType.LineupRogue, avatarIds);
-        var lineup = lineupManager.GetExtraLineup(ExtraLineupType.LineupRogue);
-        if (lineup?.BaseAvatars is not { Count: > 0 }) return false;
-
-        await lineupManager.SetExtraLineup(ExtraLineupType.LineupRogue, false);
-
-        // The official rogue lineup starts at 3 technique points, not the challenge full reset.
-        lineup.Mp = 3;
-        foreach (var slot in lineup.BaseAvatars)
-        {
-            BaseAvatarInfo? avatar = slot.SpecialAvatarId > 0
-                ? Player.AvatarManager!.GetTrialAvatar(slot.SpecialAvatarId)
-                : Player.AvatarManager!.GetFormalAvatar(slot.BaseAvatarId);
-            avatar?.SetCurHp(10000, true);
-            avatar?.SetCurSp(5000, true);
-        }
-
-        return true;
+        // The official rogue lineup starts at 3 technique points, not the challenge full reset, and a trial roster
+        // is refilled like an owned one.
+        return RogueExtraLineup.Activate(Player, ExtraLineupType.LineupRogue, avatarIds,
+            new RogueLineupStart(3, RogueExtraLineup.HalfSp, RogueLineupRefill.LineupSlots));
     }
 
     private async ValueTask<bool> EnterRoomScene(RogueRoomData room)
@@ -511,7 +478,7 @@ public partial class RogueManager : BasePlayerManager
 
     private static List<BaseRogueBuffExcel> ResolveDraftPool(RogueRoomData room, BattleInstance battle)
     {
-        var groupId = room.RoomType == RoomTypeElite ? EliteDraftGroupId : NormalDraftGroupId;
+        var groupId = room.RoomType == RoomTypeElite ? RogueDraftGroups.Elite : RogueDraftGroups.Normal;
 
         // The official draft pool is the killed group's room content + 8000 when that pool exists.
         if (GameData.RogueRoomData.TryGetValue(room.RoomId, out var roomExcel))

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using MemoryPack;
+using March7thHoney.Data.Activity;
 using March7thHoney.Data.Config;
 using March7thHoney.Data.Config.AdventureAbility;
 using March7thHoney.Data.Config.Character;
@@ -15,9 +16,13 @@ using March7thHoney.Enums.Item;
 
 namespace March7thHoney.Data;
 
-// Auto-generated companion to GameData. Aggregates every static resource collection into a single
+// Hand-maintained companion to GameData. Aggregates every static resource collection into a single
 // MemoryPack-serializable object for the binary resource cache (Resource.bin). ConcurrentDictionary
 // fields are stored as plain Dictionary and converted back on apply.
+// The member order below IS the cache format: MemoryPack serializes members in declaration order, so
+// members are append-only. Never reorder, rename into a different position or remove a member, even
+// one nothing reads any more; add new members at the end and give them a null fallback in
+// ApplySnapshot, because an older cache deserializes them as null.
 [MemoryPackable]
 public partial class GameDataSnapshot
 {
@@ -289,6 +294,7 @@ public partial class ActivityRuntimeDataSnapshot
     public Dictionary<string, GridFightDynamicValue> ConstValueClientData { get; set; } = [];
     public MechCraftRuntimeDataSnapshot? MechCraftData { get; set; } = new();
     public B51RacingResourceCatalog? B51RacingData { get; set; } = new();
+    public Dictionary<int, TrainPartyRewardConfigExcel> TrainPartyRewardConfigData { get; set; } = [];
 }
 
 [MemoryPackable]
@@ -681,6 +687,7 @@ public static partial class GameData
                 ExpeditionBattleFunTitleData = GameData.ExpeditionBattleFunTitleData,
                 ConstValueClientData = GameData.ConstValueClientData,
                 B51RacingData = GameData.B51RacingData,
+                TrainPartyRewardConfigData = GameData.TrainPartyRewardConfigData,
                 MechCraftData = new MechCraftRuntimeDataSnapshot
                 {
                     MechCraftOrderData = GameData.MechCraftOrderData,
@@ -995,6 +1002,8 @@ public static partial class GameData
         GameData.ExpeditionBattleFunTitleData = activityRuntimeData.ExpeditionBattleFunTitleData;
         GameData.ConstValueClientData = activityRuntimeData.ConstValueClientData;
         GameData.B51RacingData = activityRuntimeData.B51RacingData ?? new B51RacingResourceCatalog();
+        // Null when read from a cache written before this member existed.
+        GameData.TrainPartyRewardConfigData = activityRuntimeData.TrainPartyRewardConfigData ?? [];
         var mechCraftData = activityRuntimeData.MechCraftData ?? new MechCraftRuntimeDataSnapshot();
         GameData.MechCraftOrderData = mechCraftData.MechCraftOrderData;
         GameData.MechCraftExamData = mechCraftData.MechCraftExamData;

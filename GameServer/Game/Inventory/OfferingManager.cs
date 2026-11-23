@@ -24,7 +24,7 @@ public class OfferingManager(PlayerInstance player) : BasePlayerManager<Offering
             State = OfferingState.Lock
         };
 
-        if (Player.QuestManager!.UnlockHandler.GetUnlockStatus(unlockId)) data.State = OfferingState.Open;
+        if (Player.QuestManager!.FuncUnlockChecker.GetUnlockStatus(unlockId)) data.State = OfferingState.Open;
 
         Data.Offerings[offeringId] = data;
 
@@ -39,7 +39,7 @@ public class OfferingManager(PlayerInstance player) : BasePlayerManager<Offering
             var gameData = GameData.OfferingTypeConfigData.GetValueOrDefault(offering.OfferingId); // create a new one
             if (gameData == null) continue;
 
-            if (Player.QuestManager!.UnlockHandler.GetUnlockStatus(gameData.UnlockID) &&
+            if (Player.QuestManager!.FuncUnlockChecker.GetUnlockStatus(gameData.UnlockID) &&
                 offering.State != OfferingState.Open)
             {
                 offering.State = OfferingState.Open;
@@ -47,7 +47,7 @@ public class OfferingManager(PlayerInstance player) : BasePlayerManager<Offering
                 continue;
             }
 
-            if (Player.QuestManager!.UnlockHandler.GetUnlockStatus(gameData.UnlockID) ||
+            if (Player.QuestManager!.FuncUnlockChecker.GetUnlockStatus(gameData.UnlockID) ||
                 offering.State == OfferingState.Lock) continue;
 
             offering.State = OfferingState.Lock;
@@ -104,15 +104,17 @@ public class OfferingManager(PlayerInstance player) : BasePlayerManager<Offering
         var gameData = GameData.OfferingTypeConfigData.GetValueOrDefault(offeringId);
         if (gameData == null) return (Retcode.RetOfferingNotUnlock, offering, []);
 
+        // A level repeated in one request must not pass the TakenReward check once per copy.
+        var levels = takeList.Distinct().ToList();
         List<int> rewardIdList = [];
-        foreach (var excel in takeList.Select(take =>
+        foreach (var excel in levels.Select(take =>
                      GameData.OfferingLevelConfigData.GetValueOrDefault(offeringId)?.GetValueOrDefault(take)))
             if (excel != null && excel.Level <= offering.Level && !offering.TakenReward.Contains(excel.Level))
                 rewardIdList.Add(excel.RewardID);
             else
                 return (Retcode.RetOfferingLevelNotUnlock, offering, []);
 
-        offering.TakenReward.AddRange(takeList);
+        offering.TakenReward.AddRange(levels);
         List<ItemData> reward = [];
         foreach (var id in rewardIdList) reward.AddRange(await Player.InventoryManager!.HandleReward(id, sync: false));
 

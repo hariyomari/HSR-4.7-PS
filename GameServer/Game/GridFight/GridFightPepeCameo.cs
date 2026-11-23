@@ -4,11 +4,11 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     佩佩客串 (331001): "佩佩闪亮登场！每完美通关一个战斗节点，佩佩就会穿戴一件进阶装备，进入5个节点后，阿兰接走佩佩们并留下所有装备。"
+///     Pepe Cameo (佩佩客串, 331001): "佩佩闪亮登场！每完美通关一个战斗节点，佩佩就会穿戴一件进阶装备，进入5个节点后，阿兰接走佩佩们并留下所有装备。"
 ///     Reuses the season-1 Pepe carrier (NPC 7 at slot 11, see GridFightPepePortal) so team, battle and settlement
 ///     syncs already include it. Pepe holds up to three locked advanced (Craftable) items; further clears hand the
-///     item straight to the player. The add/update/remove packets follow the captured 狸智手续 NPC sequence and are
-///     sent with the next round-begin sync. No official capture of this augment exists.
+///     item straight to the player. The add/update/remove packets follow the captured Lizhi Procedure (狸智手续) NPC
+///     sequence and are sent with the next round-begin sync. No official capture of this augment exists.
 /// </summary>
 public sealed partial class GridFightSession
 {

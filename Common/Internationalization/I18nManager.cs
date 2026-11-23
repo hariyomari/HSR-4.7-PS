@@ -53,23 +53,7 @@ public static class I18NManager
     /// </summary>
     public static string MapLanguageType(LanguageType type)
     {
-        return type switch
-        {
-            LanguageType.LanguageSc => "CHS",
-            LanguageType.LanguageTc => "CHT",
-            LanguageType.LanguageEn => "EN",
-            LanguageType.LanguageKr => "KR",
-            LanguageType.LanguageJp => "JP",
-            LanguageType.LanguageFr => "FR",
-            LanguageType.LanguageDe => "DE",
-            LanguageType.LanguageEs => "ES",
-            LanguageType.LanguagePt => "PT",
-            LanguageType.LanguageRu => "RU",
-            LanguageType.LanguageTh => "TH",
-            LanguageType.LanguageVi => "VI",
-            LanguageType.LanguageId => "ID",
-            _ => ConfigManager.Config.ServerOption.Language
-        };
+        return LanguageCodes.FromClientType(type) ?? ConfigManager.Config.ServerOption.Language;
     }
 
     public static string TranslateAsCertainLang(string langStr, string key, params string[] args)

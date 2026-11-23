@@ -87,7 +87,7 @@ public class DailyActiveManager(PlayerInstance player) : BasePlayerComponent(pla
 
         await RearmDailyMissions(sync);
         await RollQuests(sync);
-        Logger.Info($"uid {Player.Uid}: daily window {previousDay} -> {today} (nonce {Data.Nonce}), " +
+        Logger.Debug($"uid {Player.Uid}: daily window {previousDay} -> {today} (nonce {Data.Nonce}), " +
                     $"quests [{string.Join(",", Data.QuestIds)}]");
         return true;
     }
@@ -343,7 +343,7 @@ public class DailyActiveManager(PlayerInstance player) : BasePlayerComponent(pla
         if (accepted.Count > 0)
         {
             MarkDirty();
-            Logger.Info($"uid {Player.Uid}: offered daily missions [{string.Join(",", accepted)}] " +
+            Logger.Debug($"uid {Player.Uid}: offered daily missions [{string.Join(",", accepted)}] " +
                         $"(gates {(ignoreGates ? "ignored" : "checked")})");
         }
 

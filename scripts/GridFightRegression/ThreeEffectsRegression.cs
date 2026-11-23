@@ -4,6 +4,7 @@ using March7thHoney.Data;
 using March7thHoney.Enums.GridFight;
 using March7thHoney.GameServer.Game.GridFight;
 using March7thHoney.GameServer.Game.GridFight.Battle;
+using March7thHoney.GameServer.Game.GridFight.Persistence;
 using March7thHoney.Proto;
 
 static class ThreeEffectsRegression

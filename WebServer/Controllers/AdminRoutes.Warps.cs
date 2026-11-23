@@ -7,6 +7,7 @@ using March7thHoney.Util;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
@@ -16,28 +17,22 @@ namespace March7thHoney.WebServer.Controllers;
 /// </summary>
 public static partial class AdminRoutes
 {
-    private static void MapWarpRoutes(IEndpointRouteBuilder app)
+    private static void MapWarpRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/warps", GetWarps);
-        app.MapGet("/admin/api/warps/pool", GetWarpPool);
-        app.MapPut("/admin/api/warps/manual", UpdateWarpManual);
-        app.MapPost("/admin/api/warps/mode", SetWarpMode);
-        app.MapPost("/admin/api/warps/rotation", RestartWarpRotation);
+        api.MapGet("/warps", GetWarps);
+        api.MapGet("/warps/pool", GetWarpPool);
+        api.MapPut("/warps/manual", UpdateWarpManual);
+        api.MapPost("/warps/mode", SetWarpMode);
+        api.MapPost("/warps/rotation", RestartWarpRotation);
     }
 
-    private static IResult GetWarps(HttpContext ctx)
+    private static IResult GetWarps()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         return Success(BuildWarpsData());
     }
 
-    private static IResult GetWarpPool(HttpContext ctx)
+    private static IResult GetWarpPool()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var pool = WarpSchedule.Pool;
         var phases = WarpSchedule.RotationPhases(pool.Phases)
             .Select(phase => new WarpPhaseView(phase.Key, phase.Version, phase.Phase, phase.StartTime,
@@ -47,11 +42,8 @@ public static partial class AdminRoutes
         return Success(new WarpPoolData(phases, banners, GameData.WarpItemNamesConfig.Names));
     }
 
-    private static IResult UpdateWarpManual(HttpContext ctx, AdminWarpManualRequest? request)
+    private static IResult UpdateWarpManual(AdminWarpManualRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         if (request?.entries == null)
             return Error("Missing entries");
 
@@ -74,11 +66,8 @@ public static partial class AdminRoutes
         return Success(BuildWarpsData());
     }
 
-    private static IResult SetWarpMode(HttpContext ctx, AdminWarpModeRequest? request)
+    private static IResult SetWarpMode(AdminWarpModeRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         if (!WarpSchedule.TryParseMode(request?.mode, out var mode))
             return Error("Unknown mode (expected Static, Rotation or Manual)");
 
@@ -87,11 +76,8 @@ public static partial class AdminRoutes
         return Success(BuildWarpsData());
     }
 
-    private static IResult RestartWarpRotation(HttpContext ctx, AdminWarpRotationRequest? request)
+    private static IResult RestartWarpRotation(AdminWarpRotationRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         if (WarpSchedule.RestartRotation(request?.phase, WarpSchedule.Now()) is { } error)
             return Error(error);
 

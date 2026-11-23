@@ -1,5 +1,6 @@
 using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.Kcp;
+using March7thHoney.GameServer.Server.ClientLua;
 using March7thHoney.GameServer.Server.Packet.Send.DailyActive;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Mission;
@@ -32,7 +33,7 @@ public class HandlerPlayerLoginFinishCsReq : PlayerHandler
     {
         if (connection.Player == null) return;
 
-        var luaRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "Lua"));
+        var luaRoot = ClientLuaDirectory.Root;
         var candidates = new[]
         {
             "Auto/default.lua",
@@ -54,8 +55,7 @@ public class HandlerPlayerLoginFinishCsReq : PlayerHandler
             if (!File.Exists(filePath)) continue;
 
             var bytes = await HoyoToonLuaPayloadBuilder.BuildAsync(luaRoot, relativePath);
-            await connection.SendPacket(new HandshakePacket(bytes));
-            connection.RecordSentLuaScript(relativePath);
+            await connection.ClientLua.SendScriptAsync(relativePath, bytes);
         }
     }
 }

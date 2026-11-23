@@ -14,9 +14,9 @@ public sealed partial class GridFightSession
     private GridFightSessionPhase _bonusInvestmentReturnPhase;
 
     /// <summary>
-    ///     Refreshes each offered card allows (client MaxRollTimes, per card like RollTimes). 白银投资 (203201) offers
-    ///     "#1 refreshes" on its own pick; they used to be one shared pool sent as every card's allowance, so the client
-    ///     kept offering refreshes the server refused once the pool was spent.
+    ///     Refreshes each offered card allows (client MaxRollTimes, per card like RollTimes). Silver Investment
+    ///     (白银投资, 203201) offers "#1 refreshes" on its own pick; they are per card as well, because the client reads
+    ///     the number as every card's allowance and would keep offering refreshes that a shared pool had already spent.
     /// </summary>
     public uint InvestmentFreeRerollCount => _bonusInvestmentSource != 0
         ? _bonusInvestmentRerolls : IsForesightActive || IsGoldFuturesInvestmentPending ? 0u : 1u;
@@ -43,7 +43,9 @@ public sealed partial class GridFightSession
     private uint CalculateInvestmentInterest(uint balance) =>
         Math.Min(balance / _catalog.DepositPerInterest, CurrentMaxInterestGold);
 
-    /// <summary>晋升名额 (301301): each successful XP purchase promotes one unsold shop role by one cost.</summary>
+    /// <summary>
+    ///     Promotion Quota (晋升名额, 301301): each successful XP purchase promotes one unsold shop role by one cost.
+    /// </summary>
     private void PromoteShopRoleAfterBuyingExp()
     {
         if (!ActiveInvestmentIds.Contains(301301)) return;

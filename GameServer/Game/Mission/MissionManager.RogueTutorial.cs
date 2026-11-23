@@ -48,7 +48,7 @@ public partial class MissionManager
         await AcceptMainMission(4030001, false);
         Data.TrackingMainMissionId = 4030001;
         DatabaseHelper.MarkDirty(Player.Uid);
-        Logger.Info($"uid {Player.Uid}: resumed skipped Rogue tutorial 4030001; previous rewards retained.");
+        Logger.Debug($"uid {Player.Uid}: resumed skipped Rogue tutorial 4030001; previous rewards retained.");
         return true;
     }
 }

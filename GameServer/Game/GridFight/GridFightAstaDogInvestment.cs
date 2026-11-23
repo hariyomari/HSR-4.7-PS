@@ -4,7 +4,7 @@ using March7thHoney.Proto;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-/// 203801 艾丝妲的猛犬！ Capture: NPC 8 at pos 11, locked equipment 352607,
+/// Augment 203801, Asta's dog (艾丝妲的猛犬！). Capture: NPC 8 at pos 11, locked equipment 352607,
 /// and battle buff 35402052. The client battle config owns the 400-speed / 2000%*luck formula.
 /// </summary>
 public sealed partial class GridFightSession

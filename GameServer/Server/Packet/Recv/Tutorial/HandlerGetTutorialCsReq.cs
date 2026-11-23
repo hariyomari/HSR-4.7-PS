@@ -1,4 +1,5 @@
 using March7thHoney.GameServer.Game.Tutorial;
+using March7thHoney.GameServer.Server.ClientLua;
 using March7thHoney.GameServer.Server.Packet.Send.Tutorial;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
@@ -30,12 +31,11 @@ public class HandlerGetTutorialCsReq : PlayerHandler
 
     private async Task SendPlayerData(Connection connection)
     {
-        var filePath = Path.Combine(Environment.CurrentDirectory, "Lua", "welcome.lua");
+        var filePath = Path.Combine(ClientLuaDirectory.Root, "welcome.lua");
         if (File.Exists(filePath))
         {
             var fileBytes = await File.ReadAllBytesAsync(filePath);
-            await connection.SendPacket(new HandshakePacket(fileBytes));
-            connection.RecordSentLuaScript("welcome.lua");
+            await connection.ClientLua.SendScriptAsync("welcome.lua", fileBytes);
         }
     }
 }

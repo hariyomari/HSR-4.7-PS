@@ -2,6 +2,7 @@ using March7thHoney.Database;
 using March7thHoney.Database.Friend;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Database.Player;
+using March7thHoney.Enums.Item;
 using March7thHoney.GameServer.Game.DailyActive;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
@@ -16,7 +17,6 @@ namespace March7thHoney.GameServer.Game.Friend;
 /// </summary>
 public static class AssistRewardService
 {
-    private const int CreditItemId = 2;
     private const uint CreditsPerUnit = 2000;
     private const uint DailyUnitCap = 10;
     private const uint PendingUnitCap = 60;
@@ -95,8 +95,8 @@ public static class AssistRewardService
         if (units > 0)
         {
             var credits = (int)Math.Min(units * CreditsPerUnit, int.MaxValue);
-            await owner.InventoryManager!.AddItem(CreditItemId, credits, false);
-            items.Add(new ItemData { ItemId = CreditItemId, Count = credits });
+            await owner.InventoryManager!.AddItem((int)VirtualItemEnum.Scoin, credits, false);
+            items.Add(new ItemData { ItemId = (int)VirtualItemEnum.Scoin, Count = credits });
         }
 
         var remarks = owner.FriendManager?.FriendData.FriendDetailList;

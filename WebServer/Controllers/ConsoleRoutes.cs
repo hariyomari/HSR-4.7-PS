@@ -6,10 +6,13 @@ using March7thHoney.Database.Account;
 using March7thHoney.Database.Player;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server;
+using March7thHoney.Internationalization;
 using March7thHoney.Util;
 using March7thHoney.WebServer.Handler;
+using March7thHoney.WebServer.Http;
 using March7thHoney.WebServer.Pages;
 using March7thHoney.WebServer.Server;
+using March7thHoney.WebServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -28,7 +31,6 @@ namespace March7thHoney.WebServer.Controllers;
 public static class ConsoleRoutes
 {
     private static readonly Logger Logger = new("PlayerConsole");
-    private const int MaxCommandLength = 4096;
 
     public static void MapConsoleRoutes(this IEndpointRouteBuilder app)
     {
@@ -80,7 +82,7 @@ public static class ConsoleRoutes
         if (AuthRateLimiter.TryReject(ctx, AuthRateLimitAction.Login, identityKeys, uidText, out var limited))
             return limited;
 
-        if (!TryResolveCredentials(ctx, uidText, Text(body, "password"), out var account,
+        if (!TryResolveCredentials(ctx, uidText, Text(body, "password"), true, out var account,
                 out var credentialFingerprint, out var error))
             return error;
         if (!TryRejectBan(account, out var banned))
@@ -145,7 +147,7 @@ public static class ConsoleRoutes
                 return error;
 
             var command = Text(body, "command").Trim();
-            if (command.Length > MaxCommandLength)
+            if (command.Length > WebConstants.MaxCommandLength)
                 return ConsoleJson(1, "Command too long.", null, 400);
 
             // Use the same active-connection lookup the command pipeline uses.
@@ -164,40 +166,18 @@ public static class ConsoleRoutes
             if (!online)
                 return ConsoleJson(1, "player offline", null, 400);
 
-            // Run through the MUIP pipeline with a non-admin session bound to the player's account and
-            // targeting their own uid. MuipCommandSender then resolves permissions via
-            // Account.HasPermission, identical to chat.
-            var sessionId = $"console-{Guid.NewGuid():N}";
-            MuipManager.Sessions[sessionId] = new MuipSession
-            {
-                SessionId = sessionId,
-                ExpireTimeStamp = DateTime.Now.AddMinutes(1).ToUnixSec(),
-                IsAdmin = false,
-                IsAuthorized = true,
-                Account = account
-            };
+            // A non-admin session bound to the player's account and targeting their own uid:
+            // MuipCommandSender then resolves permissions via Account.HasPermission, identical to chat.
+            var result = await MuipManager.RunCommandAsync(
+                MuipManager.CreateLocalSession("console", isAdmin: false, account), command, account.Uid);
+            if (result.Code != 0)
+                return ConsoleJson(1, result.Message, null, 400);
 
-            try
-            {
-                var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(command));
-                var response = await MuipManager.ExecuteCommandAsync(sessionId, encoded, account.Uid);
-                if (response.Code != 0)
-                    return ConsoleJson(1, response.Message, null, 400);
-
-                var output = string.Empty;
-                if (!string.IsNullOrWhiteSpace(response.Data?.Message))
-                    output = Encoding.UTF8.GetString(Convert.FromBase64String(response.Data.Message));
-
-                return ConsoleJson(0, "OK", output.TrimEnd());
-            }
-            finally
-            {
-                MuipManager.Sessions.TryRemove(sessionId, out _);
-            }
+            return ConsoleJson(0, "OK", result.Output.TrimEnd());
         }
         catch (Exception ex)
         {
-            Logger.Error("Console command execution failed", ex);
+            Logger.Error(I18NManager.Translate("Server.Log.ConsoleCommandFailed"), ex);
             return ConsoleJson(1, "Internal server error.", null, 500);
         }
     }
@@ -222,7 +202,7 @@ public static class ConsoleRoutes
         }
         catch (Exception ex)
         {
-            Logger.Error("Console self-reset failed", ex);
+            Logger.Error(I18NManager.Translate("Server.Log.ConsoleSelfResetFailed"), ex);
             return ConsoleJson(1, "Internal server error.", null, 500);
         }
     }
@@ -253,8 +233,8 @@ public static class ConsoleRoutes
             expiresAt = session.ExpiresAt.ToUnixTimeSeconds();
         }
         // A password-authenticated call has no session behind it, so nothing to report an expiry for.
-        else if (!TryResolveCredentials(ctx, Text(body, "username", "uid"), Text(body, "password"), out account,
-                     out error))
+        else if (!TryResolveCredentials(ctx, Text(body, "username", "uid"), Text(body, "password"), false,
+                     out account, out _, out error))
         {
             return false;
         }
@@ -267,11 +247,7 @@ public static class ConsoleRoutes
         return true;
     }
 
-    private static bool TryResolveCredentials(HttpContext ctx, string uidText, string password,
-        out AccountData account, out IResult error) =>
-        TryResolveCredentials(ctx, uidText, password, out account, out _, out error);
-
-    private static bool TryResolveCredentials(HttpContext ctx, string uidText, string password,
+    private static bool TryResolveCredentials(HttpContext ctx, string uidText, string password, bool attemptCounted,
         out AccountData account, out string credentialFingerprint, out IResult error)
     {
         account = null!;
@@ -292,17 +268,10 @@ public static class ConsoleRoutes
         }
 
         credentialFingerprint = PlayerConsoleSessionManager.GetCredentialFingerprint(resolved);
-        // Always verify the password when the account has one set, regardless of the RSA-login flag —
-        // command execution must not be password-bypassable.
-        if (resolved.HasPassword() && (string.IsNullOrEmpty(password) || !resolved.VerifyPassword(password)))
+        if (!WebCredentialVerifier.TryVerify(ctx, resolved, password, "player_console", out var failure,
+                attemptCounted))
         {
-            // Count the miss so the uid+password body cannot be used as an unthrottled password oracle;
-            // a correct password never reaches this branch, so honest callers are never counted.
-            var identityKeys = AccountBanHelper.BuildIdentityKeys([], ctx.Connection.RemoteIpAddress?.ToString());
-            if (AuthRateLimiter.TryReject(ctx, AuthRateLimitAction.Login, identityKeys, uidText, out var limited))
-                error = limited;
-            else
-                error = ConsoleJson(1, "Invalid password for this uid.", null, 401);
+            error = failure.Response ?? ConsoleJson(1, failure.Message, null, failure.StatusCode);
             return false;
         }
 
@@ -360,11 +329,10 @@ public static class ConsoleRoutes
 
     private static string? ResolveToken(HttpContext ctx, JsonNode? body)
     {
-        var header = ctx.Request.Headers.Authorization.ToString();
-        if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return header["Bearer ".Length..].Trim();
+        if (AuthHeaders.TryGetBearerToken(ctx.Request, out var bearer))
+            return bearer;
 
-        if (ctx.Request.Headers.TryGetValue("X-Console-Session", out var sessionHeader))
+        if (ctx.Request.Headers.TryGetValue(WebConstants.ConsoleSessionHeader, out var sessionHeader))
         {
             var value = sessionHeader.ToString().Trim();
             if (value.Length > 0) return value;

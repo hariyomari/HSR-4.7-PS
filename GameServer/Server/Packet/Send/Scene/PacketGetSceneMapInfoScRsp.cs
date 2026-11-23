@@ -66,10 +66,8 @@ public class PacketGetSceneMapInfoScRsp : BasePacket
             var currentScene = player.SceneInstance?.FloorId == floorId ? player.SceneInstance : null;
             mazeMap.ClientGroupMissionInfo = player.MissionManager!.BuildSceneMissionInfo(floorInfo, (int)floorId);
 
-            // Real "opened/total" chest counters: the map screen renders these per bucket. Total = the floor's
-            // chest props classified through their MazeChest ChestType tags; opened = those whose live or
-            // persisted state is an opened state. Official floor 20111001 mid-run ships NORMAL 4/7 ·
-            // CHALLENGE 1/2 · PUZZLE 1/5 where the config classifies 7 normal / 2 challenge / 4 puzzle + 1 hidden.
+            // The map shows opened/total per MazeChest ChestType bucket, using live or saved prop states.
+            // Official floor 20111001 mid-run: NORMAL 4/7, CHALLENGE 1/2, PUZZLE 1/5 (4 puzzle + 1 hidden).
             AppendFloorChestCounts(mazeMap, floorInfo, player, (int)floorId);
 
             var floorSavedData = currentScene?.BuildClientFloorSavedData()
@@ -100,7 +98,7 @@ public class PacketGetSceneMapInfoScRsp : BasePacket
                     foreach (var conditionId in unlock.Conditions)
                     {
                         if (!GameData.GroupSystemUnlockDataData.TryGetValue(conditionId, out var config)) continue;
-                        var matched = player.QuestManager?.UnlockHandler.GetUnlockStatus(config.UnlockID) == true;
+                        var matched = player.QuestManager?.FuncUnlockChecker.GetUnlockStatus(config.UnlockID) == true;
                         if (unlock.Operation == OperationEnum.Or && matched)
                         {
                             unlocked = true;
@@ -118,9 +116,7 @@ public class PacketGetSceneMapInfoScRsp : BasePacket
                     if (!unlocked) continue;
                 }
 
-                if (group.OwnerMainMissionID != 0 &&
-                    player.MissionManager.GetMainMissionStatus(group.OwnerMainMissionID) != MissionPhaseEnum.Accept)
-                    continue;
+                if (!player.MissionManager.IsGroupOwnerMissionActive((int)floorId, group)) continue;
                 if (!group.LoadCondition.IsTrue(missionData) ||
                     group.UnloadCondition.IsTrue(missionData, false) ||
                     group.ForceUnloadCondition.IsTrue(missionData, false) ||

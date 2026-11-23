@@ -13,9 +13,6 @@ public class HandlerMusicRhythmDataCsReq : Handler
         // Unlock max difficulty level
         await connection.SendPacket(CmdIds.MusicRhythmMaxDifficultyLevelsUnlockNotify);
 
-        // Unknwon fields
-        //await connection.SendPacket(new PacketMusicRhythmUnlockSongNotify());
-        //await connection.SendPacket(new PacketMusicRhythmUnlockSongSfxScNotify());
-        //await connection.SendPacket(new PacketMusicRhythmUnlockTrackScNotify());
+        // TODO: the unlock notifies for songs, song effects and tracks are not sent; their fields are unknown.
     }
 }

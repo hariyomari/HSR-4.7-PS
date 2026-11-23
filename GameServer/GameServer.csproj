@@ -3,8 +3,6 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>March7thHoney.GameServer</RootNamespace>
     <StartupObject></StartupObject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -22,8 +20,26 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 4.6 只剩两个同型 uint32 候选，旧映射本就是未验证猜测，不再续猜 -->
+    <!-- 4.6 leaves only two same-typed uint32 candidates; the old mapping was an unverified guess, so it is not guessed again. -->
     <Compile Remove="Server/Packet/Recv/DiceCombat/HandlerDiceCombatFinishPveStageCsReq.cs" />
+    <!--
+      4.8-only activities from upstream (ActivityBangboo, DiceyDungeon, RealityShow). Their commands and messages
+      are missing from the active 4.7 protocol (Proto/4.7, KcpSharp/CmdIds.cs), or the same-named 4.7 messages carry
+      different fields (RealityShow), and the mapping is not guessed. Their player components are not wired in
+      PlayerInstance.WireManagers and battles carry no RealityShow context while these are excluded.
+    -->
+    <Compile Remove="Game/Activity/ActivityBangboo/**" />
+    <Compile Remove="Game/Activity/DiceyDungeon/**" />
+    <Compile Remove="Game/Activity/RealityShow/**" />
+    <Compile Remove="Game/Mission/FinishType/Handler/MissionHandlerActivityBangboo.cs" />
+    <Compile Remove="Game/Mission/FinishType/Handler/MissionHandlerDiceyDungeonFinish.cs" />
+    <Compile Remove="Game/Mission/FinishType/Handler/MissionHandlerRealityShow.cs" />
+    <Compile Remove="Server/Packet/Recv/ActivityBangboo/**" />
+    <Compile Remove="Server/Packet/Send/ActivityBangboo/**" />
+    <Compile Remove="Server/Packet/Recv/DiceyDungeon/**" />
+    <Compile Remove="Server/Packet/Send/DiceyDungeon/**" />
+    <Compile Remove="Server/Packet/Recv/RealityShow/**" />
+    <Compile Remove="Server/Packet/Send/RealityShow/**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,8 +47,7 @@
     <ProjectReference Include="..\KcpSharp\KcpSharp.csproj" />
     <ProjectReference Include="..\Proto\Proto.csproj" />
     <ProjectReference Include="..\SourceGen\SourceGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <PackageReference Include="Google.Protobuf" Version="3.33.1" />
-    <PackageReference Include="Google.Protobuf.Tools" Version="3.33.1" />
+    <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
 </Project>

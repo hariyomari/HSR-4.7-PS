@@ -18,6 +18,12 @@ public partial class RogueDialogueEventConfig
     
     public List<RogueDialogueEventActionData> EnterActions { get; set; } = [];
     public List<RogueDialogueEventOptionData> Options { get; set; } = [];
+
+    /// <summary>
+    ///     Key of the per-mode event tables (<c>GameData.*RogueDialogueEventConfig</c>): the NPC in the high bits and
+    ///     the dialogue progress in the low two, so a progress above 3 would collide with the next NPC.
+    /// </summary>
+    public static uint TableKey(uint npcId, uint progress) => npcId << 2 | progress;
 }
 
 [MemoryPackable]

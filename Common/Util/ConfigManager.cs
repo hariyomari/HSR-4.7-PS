@@ -1,8 +1,8 @@
 using System.Text.Json;
+using March7thHoney.Command;
 using March7thHoney.Configuration;
 using March7thHoney.Enums;
 using March7thHoney.Internationalization;
-using March7thHoney.Util.License;
 
 namespace March7thHoney.Util;
 
@@ -12,25 +12,83 @@ public static class ConfigManager
     private static readonly object HotfixDataLock = new();
     private static readonly string ConfigFilePath = "Config.json";
     private static string HotfixFilePath => Config.Path.ConfigPath + "/Hotfix.json";
-    public static bool IsPublicMode { get; private set; }
     public static ConfigContainer Config { get; private set; } = new();
     public static HotfixContainer Hotfix { get; private set; } = new();
 
-    public static void LoadConfig(bool publicMode = false)
+    // Set when LoadConfig created Config.json; its admin key is printed by LogStartupNotices.
+    private static bool _configGenerated;
+
+    public static void LoadConfig()
     {
-        IsPublicMode = publicMode;
-        if (IsPublicMode)
-            LoadPublicConfigData();
-        else
-            LoadConfigData();
-        if (Config.ServerOption.NetStatus is { Enabled: true } netStatus && !netStatus.TryGetColor(out _))
-            Logger.Warn("ServerOption.NetStatus requires a non-negative LatencyMs and a #RRGGBB Color; signal override is disabled.");
+        LoadConfigData();
         LoadHotfixData();
+    }
+
+    /// <summary>
+    ///     Prints what the owner has to know about the loaded configuration. Called once the language pack is loaded,
+    ///     since <see cref="LoadConfig" /> runs before it; also called when loading the language fails, so a freshly
+    ///     generated admin key is never lost.
+    /// </summary>
+    public static void LogStartupNotices()
+    {
+        if (_configGenerated)
+        {
+            _configGenerated = false;
+            Logger.Info(TranslateOr("Server.Log.ConfigGenerated", $"Generated {ConfigFilePath}.", ConfigFilePath));
+            Logger.Info(TranslateOr("Server.Log.ConfigLanguage", $"Current language: {Config.ServerOption.Language}",
+                Config.ServerOption.Language));
+            Logger.Info(TranslateOr("Server.Log.MuipAdminKey", $"Muipserver Admin key: {Config.MuipServer.AdminKey}",
+                Config.MuipServer.AdminKey));
+        }
+
+        if (Config.ServerOption.NetStatus is { Enabled: true } netStatus && !netStatus.TryGetColor(out _))
+            Logger.Warn(TranslateOr("Server.Log.NetStatusInvalid",
+                "ServerOption.NetStatus requires a non-negative LatencyMs and a #RRGGBB Color; signal override is disabled."));
+        WarnIfDefaultPermissionsTooBroad();
+    }
+
+    // Falls back to English when the language pack is unavailable, so the line keeps its information.
+    private static string TranslateOr(string key, string english, params string[] args)
+    {
+        var text = I18NManager.Translate(key, args);
+        return text == key ? english : text;
+    }
+
+    /// <summary>
+    ///     Entries of <c>ServerOption.DefaultPermissions</c> that grant a permission the built-in User role does not
+    ///     have (for example <c>*</c>, <c>command.*</c>, <c>command.account</c> or <c>command.others</c>).
+    /// </summary>
+    public static List<string> GetPrivilegedDefaultPermissions()
+    {
+        var roles = CommandRoles.DefaultRoles();
+        var userPermissions = CommandRoles.GetPermissions(CommandRoles.User, CommandRoles.User, roles);
+        var privileged = CommandPermissions.KnownPermissions()
+            .Concat(CommandRoles.GetPermissions(CommandRoles.Developer, CommandRoles.User, roles))
+            .Where(permission => permission is not (CommandPermissions.All or CommandPermissions.AllCommands) &&
+                                 !userPermissions.Contains(permission))
+            .ToList();
+
+        return Config.ServerOption.DefaultPermissions
+            .Where(granted => granted == CommandPermissions.All ||
+                              privileged.Any(permission => CommandPermissions.Allows(granted, permission)))
+            .OrderBy(granted => granted, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public static void WarnIfDefaultPermissionsTooBroad()
+    {
+        var privileged = GetPrivilegedDefaultPermissions();
+        if (privileged.Count == 0) return;
+
+        var list = string.Join(", ", privileged);
+        Logger.Warn(TranslateOr("Server.Log.DefaultPermissionsTooBroad",
+            $"ServerOption.DefaultPermissions grants every account [{list}]. Any registered player can use these, " +
+            "including taking over or deleting other accounts. Remove them and grant them through PermissionRoles instead.",
+            list));
     }
 
     public static void SaveConfig()
     {
-        if (IsPublicMode) return;
         SaveData(Config, ConfigFilePath);
     }
 
@@ -130,8 +188,7 @@ public static class ConfigManager
                 }
             };
 
-            Logger.Info("Current Language is " + Config.ServerOption.Language);
-            Logger.Info("Muipserver Admin key: " + Config.MuipServer.AdminKey);
+            _configGenerated = true;
             SaveData(Config, ConfigFilePath);
         }
 
@@ -145,19 +202,13 @@ public static class ConfigManager
         SaveData(Config, ConfigFilePath);
     }
 
-    private static void LoadPublicConfigData()
-    {
-        Config = PublicConfigProvider.Create();
-    }
-
     private static void LoadHotfixData()
     {
         var file = new FileInfo(HotfixFilePath);
 
-        // 生成客户端真实格式的版本 key：{CN|OS}{BETA|PROD}{Win|Android|iOS}{版本号}
-        // 只取 GAME_VERSION 的大版本号（x.y）作为版本序列，正式服是 x.y.0，测试服是 x.y.51~x.y.55。
-        // 旧写法把 GAME_VERSION 的末位当成"是不是测试版"的开关，写 4.4.5 时生成的是 4.4 这一列的 key，
-        // 和注释声称的"4.4.5 = 客户端 4.5.0"对不上，真正的 4.5.0 客户端反而查不到自己的 hotfix。
+        // Client keys use {CN|OS}{BETA|PROD}{Win|Android|iOS}{version}.
+        // GAME_VERSION's major.minor selects the client's line: production x.y.0, beta x.y.51–55.
+        // Its last component is not a beta switch.
         var verList = new List<string>();
         string[] regions = ["CN", "OS"];
         string[] platforms = ["Win", "Android", "iOS"];
@@ -254,18 +305,6 @@ public static class ConfigManager
         finally
         {
             if (File.Exists(tempPath)) File.Delete(tempPath);
-        }
-    }
-
-    public static void InitDirectories()
-    {
-        foreach (var property in Config.Path.GetType().GetProperties())
-        {
-            var dir = property.GetValue(Config.Path)?.ToString();
-
-            if (!string.IsNullOrEmpty(dir))
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
         }
     }
 }

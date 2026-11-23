@@ -109,12 +109,33 @@ Check("pick never repeats and caps at the pool size",
 var player = await NewPlayer(70001);
 var daily = player.GetComponent<DailyActiveManager>();
 var quests = player.QuestManager!;
-player.Data.FakeTimeDate = 20260910; // midnight local -> before the reset hour -> window 20260909
+player.Data.FakeTimeDate = 20260910; // fake time starts at that date's daily reset -> window 20260910
 Check("QuestType 5 dailies are not auto-accepted by condition",
     quests.Data.Quests.Values.All(q => GameData.QuestDataData[q.QuestId].QuestType != 5));
 Check("first EnsureToday rolls", await daily.EnsureToday(false));
 var firstSet = daily.QuestIds.ToList();
-Check("window key follows the reset hour", daily.Data.DayKey == 20260909);
+Check("fake time starts the fake date's own window", daily.Data.DayKey == 20260910);
+// A constant fake instant, resent in every heartbeat, pulled the client's clock back and left reward popups
+// ("items obtained") impossible to close; the fake clock has to run.
+var fakeStart = ServerTimeProvider.GetServerUnixMs(player.Data);
+await Task.Delay(50);
+var fakeLater = ServerTimeProvider.GetServerUnixMs(player.Data);
+Check("fake time runs inside the fake date's own window instead of repeating one instant",
+    fakeLater > fakeStart && DailyResetClock.DayKey(fakeLater / 1000, DailyResetClock.UtcOffsetHours,
+        DailyResetClock.ResetHour) == 20260910);
+var serverTime = ConfigManager.Config.ServerOption.ServerTime;
+var (savedFake, savedDate) = (serverTime.EnableFakeServerTime, serverTime.FixedDate);
+serverTime.EnableFakeServerTime = true;
+int GlobalWindow() => DailyResetClock.DayKey(ServerTimeProvider.GetServerUnixSec(), DailyResetClock.UtcOffsetHours,
+    DailyResetClock.ResetHour);
+serverTime.FixedDate = "2026-09-15";
+var fixedWindow = GlobalWindow();
+// "today" is a Local-kind date; it must not throw where the zone's offset differs from its standard offset.
+serverTime.FixedDate = "today";
+var todayWindow = GlobalWindow();
+(serverTime.EnableFakeServerTime, serverTime.FixedDate) = (savedFake, savedDate);
+Check("global fake time keys the fixed date's own window, and \"today\" resolves to today",
+    fixedWindow == 20260915 && todayWindow == DateTime.Today.Year * 10000 + DateTime.Today.Month * 100 + DateTime.Today.Day);
 Check("8 distinct eligible dailies are rolled",
     firstSet.Count == 8 && firstSet.Distinct().Count() == 8 && firstSet.All(daily.EligibleQuests().Contains));
 Check("rolled dailies are accepted as Doing",
@@ -123,7 +144,7 @@ Check("second EnsureToday on the same day is a no-op", !await daily.EnsureToday(
                                                          daily.QuestIds.SequenceEqual(firstSet));
 Check("the roll matches the documented seed",
     firstSet.SequenceEqual(DailySeededShuffle.Pick(daily.EligibleQuests(), 8,
-        DailySeededShuffle.Seed(player.Uid, 20260909, 0))));
+        DailySeededShuffle.Seed(player.Uid, 20260910, 0))));
 Check("deleted DailyQuest rows are never eligible",
     !daily.EligibleQuests().Intersect([2100134, 2100135, 2100136]).Any());
 
@@ -165,16 +186,36 @@ Check("tier rewards paid Trailblaze EXP", expAfter != exp || levelAfter != level
 Check("level list reports every tier as taken", daily.BuildLevelList().All(l => l.IsHasTaken) &&
                                                daily.BuildLevelList().All(l => l.WorldLevel == 0));
 
+// --- Optional quest reward ------------------------------------------------------------------------------------------
+var optionalQuest = firstSet[2];
+await quests.FinishQuest(optionalQuest);
+var optionalQuestRewardId = GameData.QuestDataData[optionalQuest].RewardID;
+var foreignRewardId = GameData.RewardDataData.Keys.First(id => id != optionalQuestRewardId);
+var hcoinBeforeOptional = player.Data.Hcoin;
+var pointBeforeOptional = daily.Point;
+var (foreignRet, foreignItems) = await quests.TakeQuestOptionalReward(optionalQuest, foreignRewardId);
+Check("optional reward rejects a reward id the quest does not define",
+    foreignRet == Retcode.RetReqParaInvalid && foreignItems.Count == 0 &&
+    quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestFinish);
+var (itemRet, itemItems) = await quests.TakeQuestOptionalReward(optionalQuest, 1);
+Check("optional reward rejects a raw item id and grants nothing",
+    itemRet == Retcode.RetReqParaInvalid && itemItems.Count == 0 && player.Data.Hcoin == hcoinBeforeOptional &&
+    daily.Point == pointBeforeOptional && quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestFinish);
+var (plainRet, plainItems) = await quests.TakeQuestOptionalReward(optionalQuest, 0);
+Check("optional reward without a choice pays only the quest RewardID once",
+    plainRet == Retcode.RetSucc && plainItems.Count > 0 && quests.GetQuestStatus(optionalQuest) == QuestStatus.QuestClose &&
+    (await quests.TakeQuestOptionalReward(optionalQuest, 0)).Item1 == Retcode.RetQuestRewardAlreadyTaken);
+
 // --- Rollover ---------------------------------------------------------------------------------------------------------
 var finishedToday = firstSet[1];
 await quests.FinishQuest(finishedToday);
-player.Data.FakeTimeDate = 20260911; // window 20260910
+player.Data.FakeTimeDate = 20260911; // window 20260911
 Check("day change rolls a new window", await daily.EnsureToday(false));
 var secondSet = daily.QuestIds.ToList();
 Check("rollover clears points and claimed tiers", daily.Point == 0 && daily.Data.TakenLevels.Count == 0);
 Check("rollover rolls a set for the new day",
     secondSet.SequenceEqual(DailySeededShuffle.Pick(daily.EligibleQuests(), 8,
-        DailySeededShuffle.Seed(player.Uid, 20260910, 0))));
+        DailySeededShuffle.Seed(player.Uid, 20260911, 0))));
 Check("yesterday's dailies not rolled today expire (Close)",
     firstSet.Except(secondSet).All(id => quests.GetQuestStatus(id) == QuestStatus.QuestClose));
 Check("today's dailies are re-armed from zero, including ones claimed before",
@@ -188,7 +229,7 @@ Check("no stray daily stays claimable outside today's set",
 var nonceBefore = daily.Data.Nonce;
 var resetSet = await daily.ResetNow(false);
 Check("GM reset bumps the nonce and rolls a different set for the same day",
-    daily.Data.Nonce == nonceBefore + 1 && daily.Data.DayKey == 20260910 && !resetSet.SequenceEqual(secondSet));
+    daily.Data.Nonce == nonceBefore + 1 && daily.Data.DayKey == 20260911 && !resetSet.SequenceEqual(secondSet));
 
 // FinishQuest dailies (2100156 / 2100159) re-arm the child quests they count.
 var childDaily = 0;

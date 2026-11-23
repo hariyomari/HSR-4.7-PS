@@ -3,17 +3,12 @@ using March7thHoney.GameServer.Server;
 using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
 using March7thHoney.Util;
-using Spectre.Console;
 
 namespace March7thHoney.Command.Command;
 
 public class CommandManager
 {
-    private const int MaxCommandHistory = 100;
-
-    private readonly List<string> _commandHistory = [];
     private readonly Dictionary<string, GeneratedCommand> _generated = new(StringComparer.OrdinalIgnoreCase);
-    private int _historyIndex = -1;
     public static CommandManager? Instance { get; private set; }
     public Dictionary<string, ICommand> Commands { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, CommandInfoAttribute> CommandInfo { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -69,104 +64,6 @@ public class CommandManager
         return entries;
     }
 
-    public void Start()
-    {
-        while (true)
-            try
-            {
-                var input = ReadCommand();
-
-                if (string.IsNullOrEmpty(input)) continue;
-
-                if (input.StartsWith("/")) input = input[1..];
-
-                if (_commandHistory.Count >= MaxCommandHistory) _commandHistory.RemoveAt(0);
-
-                if (_commandHistory.Count == 0 || _commandHistory.Last() != input) _commandHistory.Add(input);
-                _historyIndex = _commandHistory.Count;
-                HandleCommand(input, new ConsoleCommandSender(Logger));
-            }
-            catch
-            {
-                Logger.Error(I18NManager.Translate("Game.Command.Notice.InternalError"));
-            }
-        // ReSharper disable once FunctionNeverReturns
-    }
-
-    private string ReadCommand()
-    {
-        var input = new List<char>();
-
-        AnsiConsole.Markup("[yellow]> [/]");
-        while (true)
-        {
-            var keyInfo = Console.ReadKey(true);
-
-            if (keyInfo.Key == ConsoleKey.Enter)
-            {
-                Console.WriteLine();
-                break;
-            }
-
-            switch (keyInfo.Key)
-            {
-                case ConsoleKey.Backspace:
-                {
-                    if (input.Count > 0)
-                    {
-                        input.RemoveAt(input.Count - 1);
-                        Console.Write("\b \b");
-                    }
-
-                    break;
-                }
-                case ConsoleKey.UpArrow:
-                {
-                    if (_historyIndex > 0)
-                    {
-                        _historyIndex--;
-                        ReplaceInput(input, _commandHistory[_historyIndex]);
-                    }
-
-                    break;
-                }
-                case ConsoleKey.DownArrow when _historyIndex < _commandHistory.Count - 1:
-                    _historyIndex++;
-                    ReplaceInput(input, _commandHistory[_historyIndex]);
-                    break;
-                case ConsoleKey.DownArrow:
-                {
-                    if (_historyIndex == _commandHistory.Count - 1)
-                    {
-                        _historyIndex++;
-                        ReplaceInput(input, string.Empty);
-                    }
-
-                    break;
-                }
-                // known issue: Ctrl + (Any Key but C) or other control key will cause display error
-                default:
-                    input.Add(keyInfo.KeyChar);
-                    Console.Write(keyInfo.KeyChar);
-                    break;
-            }
-        }
-
-        return new string(input.ToArray());
-    }
-
-    private static void ReplaceInput(List<char> input, string newText)
-    {
-        while (input.Count > 0)
-        {
-            input.RemoveAt(input.Count - 1);
-            Console.Write("\b \b");
-        }
-
-        input.AddRange(newText.ToCharArray());
-        Console.Write(newText);
-    }
-
     public void HandleCommand(string input, ICommandSender sender)
     {
         _ = ObserveCommandTask(HandleCommandAsync(input, sender), sender, input, nameof(HandleCommandAsync));
@@ -205,9 +102,9 @@ public class CommandManager
             {
                 if (IsTargetToken(cmd))
                 {
+                    // IsTargetToken already established the suffix parses as an int uid.
                     var target = cmd[1..];
-                    if (March7thHoneyListener.GetSnapshot()
-                            .Find(item => (item as Connection)?.Player?.Uid.ToString() == target) is Connection con)
+                    if (Listener.GetPlayerConnection(int.Parse(target)) is { } con)
                     {
                         if (split.Count == 1)
                         {
@@ -255,8 +152,7 @@ public class CommandManager
                 {
                     if (!IsTargetToken(split[i])) continue;
                     var target = split[i][1..];
-                    if (March7thHoneyListener.GetSnapshot()
-                            .Find(item => (item as Connection)?.Player?.Uid.ToString() == target) is Connection con)
+                    if (Listener.GetPlayerConnection(int.Parse(target)) is { } con)
                     {
                         tempTarget = con;
                         isTargetExplicit = true;
@@ -363,14 +259,14 @@ public class CommandManager
         }
         catch (Exception e)
         {
-            Logger.Error($"Command {commandName}.{methodName} failed", e);
+            Logger.Error(I18NManager.Translate("Server.Log.CommandFailed", $"{commandName}.{methodName}"), e);
             try
             {
                 await sender.SendMsg(I18NManager.Translate("Game.Command.Notice.InternalError"));
             }
             catch (Exception sendException)
             {
-                Logger.Warn($"Failed to send command error message for {commandName}.{methodName}", sendException);
+                Logger.Debug($"Failed to send command error message for {commandName}.{methodName}", sendException);
             }
         }
     }

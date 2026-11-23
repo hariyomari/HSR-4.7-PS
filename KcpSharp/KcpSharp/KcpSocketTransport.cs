@@ -88,6 +88,24 @@ public static class KcpSocketTransport
     }
 
     /// <summary>
+    ///     Create a socket transport for multiplex connection that hands every datagram of exactly
+    ///     <paramref name="handshakeSize" /> bytes to <paramref name="handshakeHandler" /> instead of KCP.
+    /// </summary>
+    /// <param name="listener">The udp listener instance.</param>
+    /// <param name="mtu">The maximum packet size that can be transmitted over the socket.</param>
+    /// <param name="handshakeSize">Size of the connection handshake datagrams.</param>
+    /// <param name="handshakeHandler">Receives the handshake datagrams.</param>
+    /// <returns></returns>
+    public static IKcpTransport<IKcpMultiplexConnection> CreateMultiplexConnection(UdpClient listener, int mtu,
+        int handshakeSize, Func<UdpReceiveResult, Task> handshakeHandler)
+    {
+        if (listener is null) throw new ArgumentNullException(nameof(listener));
+        if (handshakeHandler is null) throw new ArgumentNullException(nameof(handshakeHandler));
+
+        return new KcpSocketTransportForMultiplexConnection<object>(listener, mtu, handshakeSize, handshakeHandler);
+    }
+
+    /// <summary>
     ///     Create a socket transport for multiplex connection.
     /// </summary>
     /// <typeparam name="T">The type of the user state.</typeparam>

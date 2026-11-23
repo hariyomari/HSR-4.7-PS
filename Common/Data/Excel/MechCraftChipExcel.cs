@@ -24,3 +24,10 @@ public partial class MechCraftChipExcel : ExcelResource
         GameData.MechCraftChipData.TryAdd(ID, this);
     }
 }
+
+[MemoryPackable]
+public partial class MechCraftCell
+{
+    [JsonProperty("GAOAMKBNDPN")] public int X { get; set; }
+    [JsonProperty("EBJKJAGJGPK")] public int Y { get; set; }
+}

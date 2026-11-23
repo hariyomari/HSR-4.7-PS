@@ -1,7 +1,6 @@
 using System.Globalization;
 using March7thHoney.Configuration;
 using March7thHoney.GameServer.Server;
-using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
 using March7thHoney.Util;
@@ -39,15 +38,10 @@ public class CommandAnno : ICommand
 
         var recipients = arg.IsTargetExplicit && arg.Target != null
             ? [arg.Target]
-            : March7thHoneyListener.GetSnapshot().OfType<Connection>();
+            : Listener.GetConnections();
 
-        var sent = 0;
-        foreach (var connection in recipients)
-        {
-            if (!connection.IsOnline || connection.Player == null) continue;
-            await connection.SendPacket(new PacketServerAnnounceNotify(content, durationSeconds, bannerFrequencySeconds));
-            sent++;
-        }
+        var sent = await AnnounceBroadcaster.SendAsync(recipients, content, durationSeconds,
+            bannerFrequencySeconds);
 
         await arg.SendMsg(I18NManager.Translate("Game.Command.Anno.Sent",
             sent.ToString(),

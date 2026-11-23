@@ -73,7 +73,7 @@ internal static class SharedConfigRegression
 
         var areaId = firstAreas.Keys.Min();
         var slotId = areaId * 100000 + 9901;
-        first.TrainPartyManager.SetDynamicId(areaId, slotId, marker);
+        firstAreas[areaId].DynamicInfo[slotId] = marker;
         firstAreas[areaId].StepList.Add(marker);
         check("one player's train DIY slot and build step do not appear in another player's area",
             secondAreas.TryGetValue(areaId, out var other) && !other.DynamicInfo.ContainsKey(slotId) &&

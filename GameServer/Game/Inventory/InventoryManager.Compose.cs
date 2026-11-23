@@ -1,4 +1,5 @@
 using March7thHoney.Data;
+using March7thHoney.Data.Excel;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
@@ -8,24 +9,70 @@ namespace March7thHoney.GameServer.Game.Inventory;
 
 public partial class InventoryManager
 {
-    public async ValueTask<ItemData?> ComposeItem(int composeId, int count, List<ItemCost> costData)
+    /// <summary>Upper bound on one compose request when the recipe has no MaxCount (an older resource cache).</summary>
+    private const int DefaultComposeMaxCount = 9999;
+
+    public async ValueTask<(Retcode retcode, ItemData? item)> ComposeItem(int composeId, int count,
+        List<ItemCost> costData)
     {
-        // Cost items in req
-        foreach (var cost in costData)
-            await RemoveItem((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum);
-
-        // Cost items in excel
         GameData.ItemComposeConfigData.TryGetValue(composeId, out var composeConfig);
-        if (composeConfig == null) return null;
-        foreach (var cost in composeConfig.MaterialCost)
-            await RemoveItem(cost.ItemID, cost.ItemNum * count);
+        if (composeConfig == null || composeConfig.IsSelectedRelic ||
+            !GameData.ItemConfigData.ContainsKey(composeConfig.ItemID))
+            return (Retcode.RetItemConfigNotExist, null);
+        if (count < 1 || count > GetComposeMaxCount(composeConfig, DefaultComposeMaxCount))
+            return (Retcode.RetFail, null);
 
-        await RemoveItem(2, composeConfig.CoinCost * count);
+        var costs = GetComposeCosts(composeConfig, count, costData);
+        if (costs == null) return (Retcode.RetItemNotInCostList, null);
+        if (!await TryRemoveItems(costs)) return (Retcode.RetItemNotEnough, null);
 
         var composed = await AddItem(composeConfig.ItemID, count, false);
-        if (composed != null)
-            await Player.MissionManager!.TriggerCountEvent(MissionFinishTypeEnum.AnyItemComposeCount);
-        return composed;
+        if (composed != null && Player.MissionManager != null)
+            await Player.MissionManager.TriggerCountEvent(MissionFinishTypeEnum.AnyItemComposeCount);
+        return (Retcode.RetSucc, composed);
+    }
+
+    private static int GetComposeMaxCount(ItemComposeConfigExcel composeConfig, int fallback)
+    {
+        return composeConfig.MaxCount > 0 ? composeConfig.MaxCount : fallback;
+    }
+
+    /// <summary>
+    ///     The full price of <paramref name="count" /> compose results, taken from the recipe. The client only chooses
+    ///     which of the recipe's SpecialMaterialCost items pays the special part; any other entry it sends is ignored.
+    ///     Null when the special part is not paid exactly or the recipe has no cost at all.
+    /// </summary>
+    private static List<(int itemId, long count)>? GetComposeCosts(ItemComposeConfigExcel composeConfig, int count,
+        IEnumerable<ItemCost> chosenItems)
+    {
+        List<(int itemId, long count)> costs =
+        [
+            .. composeConfig.MaterialCost.Where(cost => cost.ItemNum != 0)
+                .Select(cost => (cost.ItemID, (long)cost.ItemNum * count))
+        ];
+        if (composeConfig.CoinCost != 0) costs.Add(((int)VirtualItemEnum.Scoin, (long)composeConfig.CoinCost * count));
+
+        if (composeConfig.SpecialMaterialCostNumber > 0 && composeConfig.SpecialMaterialCost.Count > 0)
+        {
+            var required = (long)composeConfig.SpecialMaterialCostNumber * count;
+            if (composeConfig.SpecialMaterialCost.Count == 1)
+            {
+                costs.Add((composeConfig.SpecialMaterialCost[0], required));
+            }
+            else
+            {
+                var chosen = chosenItems
+                    .Where(cost => cost.PileItem is { ItemNum: > 0 } pile &&
+                                   composeConfig.SpecialMaterialCost.Contains((int)pile.ItemId))
+                    .Select(cost => ((int)cost.PileItem.ItemId, (long)cost.PileItem.ItemNum))
+                    .ToList();
+                if (chosen.Sum(cost => cost.Item2) != required) return null;
+                costs.AddRange(chosen);
+            }
+        }
+
+        // A recipe that costs nothing is malformed (or comes from a cache without the special-cost columns).
+        return costs.Count == 0 ? null : costs;
     }
 
     public async ValueTask<List<ItemData>> SellItem(ItemCostData costData, bool toMaterial)

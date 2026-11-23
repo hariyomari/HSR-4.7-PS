@@ -10,8 +10,6 @@ namespace March7thHoney.GameServer.Game.ChessRogue;
 
 public static class ChessRogueResources
 {
-    public const int NormalDraftGroupId = 100005;
-    public const int BossDraftGroupId = 100003;
     public const int EventDraftGroupId = 100004;
     public const int DiceSlotCount = 6;
     private const int DraftOfferCount = 3;

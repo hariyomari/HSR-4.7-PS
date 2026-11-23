@@ -11,7 +11,6 @@ using March7thHoney.Kcp;
 using March7thHoney.GameServer.Server.Packet.Send.PlayerSync;
 using March7thHoney.Proto;
 using March7thHoney.Util;
-using System.Collections.Concurrent;
 
 namespace March7thHoney.GameServer.Game.TrainCakeCatch;
 
@@ -30,16 +29,6 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         public required Position Rot { get; init; }
     }
 
-    private sealed class SocialPlayRoom
-    {
-        public required uint OwnerUid { get; init; }
-        public HashSet<int> Members { get; } = [];
-        public Dictionary<int, JOLAHHGIFHA> Motions { get; } = [];
-        public Dictionary<int, List<JOLAHHGIFHA>> MotionHistory { get; } = [];
-        public List<PEEEEGAPCOK> ArrivalHistory { get; } = [];
-        public SocialPlaySceneContext? SceneContext { get; set; }
-    }
-
     public sealed class SocialPlaySceneContext
     {
         public required int PlaneId { get; init; }
@@ -49,8 +38,6 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         public required Position Rot { get; init; }
     }
 
-    private static readonly object RoomLock = new();
-    private static readonly ConcurrentDictionary<uint, SocialPlayRoom> Rooms = new();
     private const int JoinedRoomGameplayType = 550;
     private const int OwnRoomGameplayType = 4650;
     private const int MaxBufferedMotionsPerPlayer = 20;
@@ -87,7 +74,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         EnsureDefaults(Data, Player.Uid);
     }
 
-    private void EnsureDefaults(TrainCakeCatchData target, int targetUid)
+    private void EnsureDefaults(TrainCakeCatchData target, int? dirtyUid)
     {
         var changed = false;
         var nowUnixSec = Extensions.GetUnixSec();
@@ -127,8 +114,27 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
         changed |= SyncCollectedCreatures(target);
 
-        if (changed)
-            DatabaseHelper.MarkDirty(targetUid);
+        if (changed && dirtyUid is { } uid)
+            DatabaseHelper.MarkDirty(uid);
+    }
+
+    /// <summary>
+    ///     Whether <paramref name="ownerUid" /> can own a social-play room: the caller, an online player
+    ///     or an existing account. Room owner uids come straight from client packets.
+    /// </summary>
+    public bool IsValidRoomOwner(uint ownerUid)
+    {
+        if (ownerUid == 0 || ownerUid == (uint)Player.Uid)
+            return true;
+        if (ownerUid > int.MaxValue)
+            return false;
+
+        var uid = (int)ownerUid;
+        if (Listener.GetActiveConnection(uid)?.Player != null)
+            return true;
+
+        return !DatabaseHelper.IsUidDeleted(uid)
+               && DatabaseHelper.Instance?.GetInstance<PlayerData>(uid) != null;
     }
 
     public uint GetGameplayType(uint roomOwnerUid, uint roomPlayerUid)
@@ -141,7 +147,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
     public long GetRoomRefreshTime(uint? roomOwnerUid = null)
     {
         var view = ResolveRoomView(roomOwnerUid);
-        EnsureDefaults(view.Data, (int)view.OwnerUid);
+        EnsureDefaults(view.Data, view.Persisted ? (int)view.OwnerUid : null);
         return view.Data.RefreshTime;
     }
 
@@ -152,10 +158,10 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         List<int> previousRoomMembers = [];
         uint? previousRoomOwnerUid = null;
         POBLGKIGINE snapshot;
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
             if (CurrentRoomOwnerUid == roomOwnerUid
-                && Rooms.TryGetValue(roomOwnerUid, out var currentRoom)
+                && TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var currentRoom)
                 && currentRoom.Members.Contains(Player.Uid))
             {
                 RecordMotionLocked(currentRoom, Player.Uid, motion);
@@ -166,17 +172,17 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             if (CurrentRoomOwnerUid is { } previousRoom)
             {
                 previousRoomOwnerUid = previousRoom;
-                if (Rooms.TryGetValue(previousRoom, out var previousRoomData))
+                if (TrainCakeCatchRoomRegistry.TryGet(previousRoom, out var previousRoomData))
                     previousRoomMembers = previousRoomData.Members.Where(uid => uid != Player.Uid).ToList();
 
-                LeaveSocialPlayRoomInternal(previousRoom, Player.Uid);
+                TrainCakeCatchRoomRegistry.RemoveMember(previousRoom, Player.Uid);
             }
             else
             {
                 BookmarkReturnScene();
             }
 
-            var room = Rooms.GetOrAdd(roomOwnerUid, ownerUid => new SocialPlayRoom { OwnerUid = ownerUid });
+            var room = TrainCakeCatchRoomRegistry.GetOrCreate(roomOwnerUid);
             existingMembers = room.Members.Where(uid => uid != Player.Uid).ToList();
             room.Members.Add(Player.Uid);
             RecordMotionLocked(room, Player.Uid, motion);
@@ -197,7 +203,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     public void PrepareSocialPlayRoom(uint roomOwnerUid)
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
             if (CurrentRoomOwnerUid == null)
                 BookmarkReturnScene();
@@ -210,17 +216,17 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
     {
         List<int> remainingMembers = [];
         uint? leavingRoomOwnerUid = null;
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
             if (CurrentRoomOwnerUid is not { } roomOwnerUid)
                 return;
 
             PendingRoomOwnerUid = null;
             leavingRoomOwnerUid = roomOwnerUid;
-            if (Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 remainingMembers = room.Members.Where(uid => uid != Player.Uid).ToList();
 
-            LeaveSocialPlayRoomInternal(roomOwnerUid, Player.Uid);
+            TrainCakeCatchRoomRegistry.RemoveMember(roomOwnerUid, Player.Uid);
             CurrentRoomOwnerUid = null;
         }
 
@@ -237,11 +243,11 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         POBLGKIGINE snapshot;
         var shouldNotifyJoin = false;
 
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
             if (CurrentRoomOwnerUid == roomOwnerUid)
             {
-                var currentRoom = Rooms.GetOrAdd(roomOwnerUid, ownerUid => new SocialPlayRoom { OwnerUid = ownerUid });
+                var currentRoom = TrainCakeCatchRoomRegistry.GetOrCreate(roomOwnerUid);
                 existingMembers = currentRoom.Members.Where(uid => uid != Player.Uid).ToList();
                 var wasMember = currentRoom.Members.Contains(Player.Uid);
                 currentRoom.Members.Add(Player.Uid);
@@ -258,14 +264,14 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
                 {
                     previousRoomOwnerUid = CurrentRoomOwnerUid;
                     if (previousRoomOwnerUid.HasValue
-                        && Rooms.TryGetValue(previousRoomOwnerUid.Value, out var previousRoom))
+                        && TrainCakeCatchRoomRegistry.TryGet(previousRoomOwnerUid.Value, out var previousRoom))
                     {
                         previousRoomMembers = previousRoom.Members.Where(uid => uid != Player.Uid).ToList();
-                        LeaveSocialPlayRoomInternal(previousRoomOwnerUid.Value, Player.Uid);
+                        TrainCakeCatchRoomRegistry.RemoveMember(previousRoomOwnerUid.Value, Player.Uid);
                     }
                 }
 
-                var room = Rooms.GetOrAdd(roomOwnerUid, ownerUid => new SocialPlayRoom { OwnerUid = ownerUid });
+                var room = TrainCakeCatchRoomRegistry.GetOrCreate(roomOwnerUid);
                 existingMembers = room.Members.Where(uid => uid != Player.Uid).ToList();
                 room.Members.Add(Player.Uid);
                 RecordMotionLocked(room, Player.Uid, motion);
@@ -287,7 +293,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     public uint? GetSceneTeleportRoomOwnerUid()
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
             return PendingRoomOwnerUid ?? CurrentRoomOwnerUid;
         }
@@ -318,9 +324,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     public SocialPlaySceneContext? GetRoomSceneContext(uint roomOwnerUid)
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return null;
 
             return room.SceneContext == null
@@ -346,9 +352,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             || Player.Data.EntryId == 0)
             return;
 
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return;
 
             if (room.OwnerUid != (uint)Player.Uid && room.SceneContext != null)
@@ -367,9 +373,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     public SocialPlayGameplayOperationScNotify? BuildArrivalHistoryNotify(uint roomOwnerUid)
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room) || room.ArrivalHistory.Count == 0)
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room) || room.ArrivalHistory.Count == 0)
                 return null;
 
             var popup = new IKBDJLNEPBH();
@@ -391,9 +397,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         HashSet<int> recipientUids = [];
         int? implicitOwnerUid = null;
         JOLAHHGIFHA? currentMotion = null;
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return;
 
             room.Motions.TryGetValue(Player.Uid, out currentMotion);
@@ -423,8 +429,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             if (target?.Connection?.IsOnline != true)
                 continue;
 
-            var packet = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-            packet.SetData(playerStateNotify.Clone());
+            var packet = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, playerStateNotify.Clone());
             await target.SendPacket(packet);
         }
     }
@@ -432,7 +437,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
     public POBLGKIGINE BuildSocialPlayRoomData(uint roomOwnerUid, uint roomPlayerUid)
     {
         var view = ResolveRoomView(roomOwnerUid);
-        EnsureDefaults(view.Data, (int)view.OwnerUid);
+        EnsureDefaults(view.Data, view.Persisted ? (int)view.OwnerUid : null);
         var gameplayType = GetGameplayType(roomOwnerUid, roomPlayerUid);
         var snapshot = new POBLGKIGINE();
         snapshot.RoomOwnerUid = roomOwnerUid;
@@ -485,9 +490,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         int? implicitOwnerUid = null;
         JOLAHHGIFHA motion;
 
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return;
 
             motion = req.NJDCPMENIFG.Clone();
@@ -498,8 +503,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
                 implicitOwnerUid = (int)roomOwnerUid;
         }
 
-        var ackPacket = new BasePacket(CmdIds.JKILAALMFIB);
-        ackPacket.SetData(new JKILAALMFIB());
+        var ackPacket = BasePacket.Create(CmdIds.JKILAALMFIB, new JKILAALMFIB());
         await Player.SendPacket(ackPacket);
 
         var notify = new SocialPlayRoomPlayerMoveScNotify
@@ -523,8 +527,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             if (target?.Connection?.IsOnline != true)
                 continue;
 
-            var packet = new BasePacket(CmdIds.SocialPlayRoomPlayerMoveScNotify);
-            packet.SetData(notify.Clone());
+            var packet = BasePacket.Create(CmdIds.SocialPlayRoomPlayerMoveScNotify, notify.Clone());
             await target.SendPacket(packet);
         }
     }
@@ -533,9 +536,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
     {
         var notifies = new List<SocialPlayRoomPlayerMoveScNotify>();
 
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
             {
                 foreach (var entry in room.Motions.Where(x => x.Key != Player.Uid).OrderBy(x => x.Key))
                 {
@@ -559,9 +562,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     public POBLGKIGINE BuildRoomSnapshotForPlayer(uint roomOwnerUid, uint roomPlayerUid)
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            return Rooms.TryGetValue(roomOwnerUid, out var room)
+            return TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room)
                 ? BuildSocialPlayRoomDataLocked(room, roomOwnerUid, roomPlayerUid)
                 : BuildSocialPlayRoomData(roomOwnerUid, roomPlayerUid);
         }
@@ -573,9 +576,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             return;
 
         List<int> recipients;
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return;
 
             recipients = room.Members.Where(uid => uid != Player.Uid).ToList();
@@ -587,8 +590,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             if (target?.Connection?.IsOnline != true)
                 continue;
 
-            var packet = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-            packet.SetData(new SocialPlayGameplayOperationScNotify
+            var packet = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, new SocialPlayGameplayOperationScNotify
             {
                 RoomOwnerUid = roomOwnerUid,
                 OpUid = (uint)uid,
@@ -799,7 +801,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         return proto;
     }
 
-    private void AppendFullSnapshotPlayer(POBLGKIGINE snapshot, SocialPlayRoom room, HashSet<int> addedUids, int memberUid,
+    private void AppendFullSnapshotPlayer(POBLGKIGINE snapshot, TrainCakeCatchRoom room, HashSet<int> addedUids, int memberUid,
         bool isSelf)
     {
         if (!addedUids.Add(memberUid))
@@ -845,14 +847,14 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         };
     }
 
-    private static void AppendArrivalHistoryLocked(SocialPlayRoom room, int uid, string name)
+    private static void AppendArrivalHistoryLocked(TrainCakeCatchRoom room, int uid, string name)
     {
         room.ArrivalHistory.Add(CreateArrivalEntry((uint)uid, name));
         if (room.ArrivalHistory.Count > 20)
             room.ArrivalHistory.RemoveRange(0, room.ArrivalHistory.Count - 20);
     }
 
-    private static void RecordMotionLocked(SocialPlayRoom room, int uid, JOLAHHGIFHA motion)
+    private static void RecordMotionLocked(TrainCakeCatchRoom room, int uid, JOLAHHGIFHA motion)
     {
         room.Motions[uid] = motion.Clone();
 
@@ -869,9 +871,9 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
 
     private static JOLAHHGIFHA? GetCurrentMotion(uint roomOwnerUid, int uid)
     {
-        lock (RoomLock)
+        lock (TrainCakeCatchRoomRegistry.Lock)
         {
-            if (!Rooms.TryGetValue(roomOwnerUid, out var room))
+            if (!TrainCakeCatchRoomRegistry.TryGet(roomOwnerUid, out var room))
                 return null;
 
             return room.Motions.TryGetValue(uid, out var motion)
@@ -880,7 +882,7 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         }
     }
 
-    private POBLGKIGINE BuildSocialPlayRoomDataLocked(SocialPlayRoom room, uint roomOwnerUid, uint roomPlayerUid)
+    private POBLGKIGINE BuildSocialPlayRoomDataLocked(TrainCakeCatchRoom room, uint roomOwnerUid, uint roomPlayerUid)
     {
         var snapshot = BuildSocialPlayRoomData(roomOwnerUid, roomPlayerUid);
         snapshot.PlayerInfo.Clear();
@@ -1003,24 +1005,27 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
         return unlockedPerformanceIds.OrderBy(x => x).ToList();
     }
 
-    private (uint OwnerUid, TrainCakeCatchData Data) ResolveRoomView(uint? requestedOwnerUid)
+    private (uint OwnerUid, TrainCakeCatchData Data, bool Persisted) ResolveRoomView(uint? requestedOwnerUid)
     {
         var ownerUid = requestedOwnerUid.GetValueOrDefault((uint)Player.Uid);
         if (ownerUid == 0)
             ownerUid = (uint)Player.Uid;
 
         if (ownerUid == (uint)Player.Uid)
-            return (ownerUid, Data);
+            return (ownerUid, Data, true);
 
         var activeOwner = Listener.GetActiveConnection((int)ownerUid)?.Player?.TrainCakeCatchManager;
         if (activeOwner != null)
-            return (ownerUid, activeOwner.Data);
+            return (ownerUid, activeOwner.Data, true);
 
-        var data = DatabaseHelper.Instance!.GetInstanceOrCreateNew<TrainCakeCatchData>((int)ownerUid);
-        return (ownerUid, data);
+        // Another player's record is only read here; an owner without one gets an unsaved default view.
+        var data = DatabaseHelper.Instance!.GetInstance<TrainCakeCatchData>((int)ownerUid);
+        return data != null
+            ? (ownerUid, data, true)
+            : (ownerUid, new TrainCakeCatchData { Uid = (int)ownerUid }, false);
     }
 
-    private async System.Threading.Tasks.Task NotifyRoomJoinAsync(uint roomOwnerUid, List<int> existingMembers)
+    private async Task NotifyRoomJoinAsync(uint roomOwnerUid, List<int> existingMembers)
     {
         var recipientUids = new HashSet<int>(existingMembers.Where(uid => uid != Player.Uid));
         if (roomOwnerUid != (uint)Player.Uid)
@@ -1049,19 +1054,17 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
                 var arrivalHistoryNotify = BuildArrivalHistoryNotify(roomOwnerUid);
                 if (arrivalHistoryNotify != null)
                 {
-                    var arrivalPacket = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-                    arrivalPacket.SetData(arrivalHistoryNotify);
+                    var arrivalPacket = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, arrivalHistoryNotify);
                     await target.SendPacket(arrivalPacket);
                 }
             }
 
-            var packet = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-            packet.SetData(notify.Clone());
+            var packet = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, notify.Clone());
             await target.SendPacket(packet);
         }
     }
 
-    private async System.Threading.Tasks.Task NotifyRoomLeaveAsync(uint roomOwnerUid, List<int> remainingMembers,
+    private async Task NotifyRoomLeaveAsync(uint roomOwnerUid, List<int> remainingMembers,
         uint? nextRoomOwnerUid = null)
     {
         if (remainingMembers.Count == 0)
@@ -1083,14 +1086,12 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             if (target?.Connection?.IsOnline != true)
                 continue;
 
-            var packet = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-            packet.SetData(notify.Clone());
+            var packet = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, notify.Clone());
             await target.SendPacket(packet);
 
             // The leave popup/effect alone does not consistently despawn the actor on clients.
             // Follow it with a refreshed room roster so the remaining members reconcile state.
-            var snapshotPacket = new BasePacket(CmdIds.SocialPlayGameplayOperationScNotify);
-            snapshotPacket.SetData(new SocialPlayGameplayOperationScNotify
+            var snapshotPacket = BasePacket.Create(CmdIds.SocialPlayGameplayOperationScNotify, new SocialPlayGameplayOperationScNotify
             {
                 RoomOwnerUid = roomOwnerUid,
                 OpUid = (uint)uid,
@@ -1229,17 +1230,5 @@ public class TrainCakeCatchManager(PlayerInstance player) : BasePlayerManager<Tr
             Pos = Player.Data.Pos,
             Rot = Player.Data.Rot
         };
-    }
-
-    private static void LeaveSocialPlayRoomInternal(uint roomOwnerUid, int uid)
-    {
-        if (!Rooms.TryGetValue(roomOwnerUid, out var room))
-            return;
-
-        room.Members.Remove(uid);
-        room.Motions.Remove(uid);
-        room.MotionHistory.Remove(uid);
-        if (room.Members.Count == 0)
-            Rooms.TryRemove(roomOwnerUid, out _);
     }
 }

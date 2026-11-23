@@ -1,9 +1,9 @@
-using March7thHoney.Data;
 using March7thHoney.Database;
 using March7thHoney.Database.Account;
 using March7thHoney.Database.Player;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet.Send.Player;
+using March7thHoney.Internationalization;
 using March7thHoney.Kcp;
 using March7thHoney.Proto;
 using March7thHoney.Util;
@@ -18,11 +18,11 @@ public class HandlerPlayerGetTokenCsReq : Handler
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
         var req = PlayerGetTokenCsReq.Parser.ParseFrom(data);
-        _logger.Info(
+        _logger.Debug(
             $"PlayerGetToken requested. remote={connection.RemoteEndPoint} account_uid={req.AccountUid} token_len={req.Token?.Length ?? 0}");
         if (!int.TryParse(req.AccountUid, out var requestedUid) || string.IsNullOrWhiteSpace(req.Token))
         {
-            _logger.Warn(
+            _logger.Debug(
                 $"PlayerGetToken rejected invalid request. remote={connection.RemoteEndPoint} account_uid={req.AccountUid} token_len={req.Token?.Length ?? 0}");
             await connection.SendPacket(new PacketPlayerGetTokenScRsp(0, Retcode.RetNotInWhiteList));
             return;
@@ -45,7 +45,7 @@ public class HandlerPlayerGetTokenCsReq : Handler
             var account = DatabaseHelper.Instance?.GetInstance<AccountData>(requestedUid);
             if (account == null)
             {
-                _logger.Warn($"PlayerGetToken rejected missing account. remote={connection.RemoteEndPoint} uid={requestedUid}");
+                _logger.Debug($"PlayerGetToken rejected missing account. remote={connection.RemoteEndPoint} uid={requestedUid}");
                 await connection.SendPacket(new PacketPlayerGetTokenScRsp(0, Retcode.RetNotInWhiteList));
                 return;
             }
@@ -54,7 +54,7 @@ public class HandlerPlayerGetTokenCsReq : Handler
             var isComboToken = account.ValidateComboToken(req.Token);
             if (!isDispatchToken && !isComboToken)
             {
-                _logger.Warn(
+                _logger.Debug(
                     $"PlayerGetToken rejected invalid token. remote={connection.RemoteEndPoint} uid={requestedUid} token_len={req.Token?.Length ?? 0}");
                 await connection.SendPacket(new PacketPlayerGetTokenScRsp(0, Retcode.RetNotInWhiteList));
                 return;
@@ -86,7 +86,7 @@ public class HandlerPlayerGetTokenCsReq : Handler
             uid = account.Uid;
             account.AddKnownIdentityKeys(identityKeys);
             account.SyncPermissionsWithRole();
-            _logger.Info(
+            _logger.Debug(
                 $"PlayerGetToken accepted. remote={connection.RemoteEndPoint} uid={uid} token_type={(isDispatchToken ? "dispatch" : "combo")}");
         }
         else
@@ -108,7 +108,7 @@ public class HandlerPlayerGetTokenCsReq : Handler
             var res = await HttpNetwork.SendPostFormRequest(targetUrl, form, headers);
             if (res.Item1 != 200 || res.Item2 == null)
             {
-                _logger.Warn(
+                _logger.Debug(
                     $"PlayerGetToken dispatch exchange rejected. remote={connection.RemoteEndPoint} status={res.Item1} body_len={res.Item2?.Length ?? 0}");
                 await connection.SendPacket(new PacketPlayerGetTokenScRsp(0, Retcode.RetNotInWhiteList,
                     msg: res.Item1 == 403 ? res.Item2 ?? string.Empty : string.Empty));
@@ -117,7 +117,7 @@ public class HandlerPlayerGetTokenCsReq : Handler
 
             if (!int.TryParse(res.Item2, out uid))
             {
-                _logger.Warn(
+                _logger.Debug(
                     $"PlayerGetToken dispatch exchange returned invalid uid. remote={connection.RemoteEndPoint} body={res.Item2}");
                 await connection.SendPacket(new PacketPlayerGetTokenScRsp(0, Retcode.RetNotInWhiteList));
                 return;
@@ -136,13 +136,6 @@ public class HandlerPlayerGetTokenCsReq : Handler
             return;
         }
 
-        if (!ResourceManager.IsLoaded)
-        {
-            _logger.Warn($"PlayerGetToken accepted but resource manager is not loaded. remote={connection.RemoteEndPoint} uid={uid}");
-            // resource manager not loaded, return
-            return;
-        }
-
         var prev = Listener.GetActiveConnection(uid);
         if (prev != null)
         {
@@ -156,8 +149,8 @@ public class HandlerPlayerGetTokenCsReq : Handler
         var pd = DatabaseHelper.Instance?.GetInstance<PlayerData>(uid);
         connection.Player = pd == null ? new PlayerInstance(uid) : new PlayerInstance(pd);
 
-        connection.DebugFile = Path.Combine(ConfigManager.Config.Path.LogPath, "Debug/", $"{uid}/",
-            $"Debug-{DateTime.Now:yyyy-MM-dd HH-mm-ss}.log");
+        connection.SetPacketLogFile(Path.Combine(ConfigManager.Config.Path.LogPath, "Debug/", $"{uid}/",
+            $"Debug-{DateTime.Now:yyyy-MM-dd HH-mm-ss}.log"));
 
         await connection.Player.OnGetToken();
         if (DatabaseHelper.IsUidDeleted(uid) || AccountData.GetAccountByUid(uid)?.IsDeleting == true)
@@ -167,11 +160,13 @@ public class HandlerPlayerGetTokenCsReq : Handler
         }
         connection.Player.Connection = connection;
         await connection.SendPacket(new PacketPlayerGetTokenScRsp(connection));
+        _logger.Info(I18NManager.Translate("Server.Log.PlayerConnected", uid.ToString(),
+            connection.RemoteEndPoint.ToString()));
 
-        if (ConfigManager.Config.GameServer.UsePacketEncryption)
+        if (Crypto.PacketEncryptionEnabled)
         {
             connection.XorKey = Crypto.GenerateXorKey(connection.ClientSecretKeySeed);
-            _logger.Info($"{connection.RemoteEndPoint} key exchange successful");
+            _logger.Debug($"{connection.RemoteEndPoint} key exchange successful");
         }
     }
 }

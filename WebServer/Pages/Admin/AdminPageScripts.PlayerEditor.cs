@@ -288,9 +288,9 @@ public static partial class AdminPageScripts
             ${numberField("ed-stamina", t("player.stamina"), profile.stamina, `min="0"`)}
             ${numberField("ed-reserve", t("player.reserve"), profile.stamina_reserve, `min="0" step="0.1"`)}
             <label class="field"><span>${t("player.month_card")}</span><input id="ed-month-card" type="datetime-local" value="${profile.month_card_expire > 0 ? unixToDateTimeLocal(profile.month_card_expire) : ""}"></label>
-            <div class="wide kv-grid">
-              ${kv(t("story.report.gender"), profile.gender_set ? (profile.gender === "Man" ? t("story.gender.man") : t("story.gender.woman")) : t("story.report.gender_unset"))}
-            </div>
+            ${profile.gender_set
+              ? html`<label class="field"><span>${t("story.gender")}</span><select id="ed-gender">${option("woman", t("story.gender.woman"), profile.gender === "Man" ? "man" : "woman")}${option("man", t("story.gender.man"), profile.gender === "Man" ? "man" : "woman")}</select></label>`
+              : html`<div class="field">${kv(t("story.gender"), t("story.report.gender_unset"))}</div>`}
             <p class="wide muted small">${t("editor.profile_hint")}</p>
             <div class="actions wide"><button class="btn primary" type="submit">${t("editor.save")}</button></div>
           </form>`;
@@ -318,6 +318,7 @@ public static partial class AdminPageScripts
               stamina: Number(value("#ed-stamina")),
               stamina_reserve: Number(value("#ed-reserve")),
               month_card_expire: monthCard ? dateTimeLocalToUnix(monthCard) : 0,
+              gender: $("#ed-gender", form)?.value || "keep",
               version: editorState.sections.profile.version
             }
           }, t("editor.saved"));
@@ -357,6 +358,7 @@ public static partial class AdminPageScripts
                     <td>${avatar.traces_maxed ? chip(t("editor.max"), "good") : ""}</td>
                     <td><div class="row">
                       <button class="btn ghost small" type="button" data-ed-avatar-edit="${avatar.id}">${t("editor.edit")}</button>
+                      <button class="btn ghost small" type="button" data-ed-avatar-gear="${avatar.id}">${t("editor.gear")}</button>
                       ${avatar.id === 8001 ? "" : html`<button class="btn danger small" type="button" data-ed-avatar-remove="${avatar.id}">${t("common.remove")}</button>`}
                     </div></td>
                   </tr>`)}</tbody>
@@ -401,6 +403,49 @@ public static partial class AdminPageScripts
           const id = Number(event.currentTarget.dataset.edAvatarRemove);
           if (!await confirmDialog({ title: t("editor.avatar_remove_title", { name: avatarLabel(id) }), message: t("editor.avatar_remove_message"), danger: true, confirmLabel: t("common.remove") })) return;
           await editorChange(event.currentTarget, `${editorBase()}/avatars/${id}`, { method: "DELETE" }, t("editor.saved"));
+        });
+        on(host, "[data-ed-avatar-gear]", "click", event => openGearDialog(Number(event.currentTarget.dataset.edAvatarGear)));
+      }
+
+      // Light cone and relics of a character's current path. Only changed slots are sent.
+      async function openGearDialog(id) {
+        const avatar = editorState.sections.avatars.avatars.find(item => item.id === id);
+        let inventory = editorState.sections.inventory;
+        if (!inventory) {
+          inventory = await run(null, () => api(`${editorBase()}/inventory`));
+          if (!inventory) return;
+          editorState.sections.inventory = inventory;
+        }
+        const worn = Object.fromEntries(avatar.relics.map(relic => [relic.slot, relic.unique_id]));
+        const wearer = item => item.equip_avatar ? ` · ${avatarLabel(item.equip_avatar)}` : "";
+        const modal = accountModal(html`
+          <h3>${t("editor.gear_title", { name: avatarLabel(avatar.avatar_id || id) })}</h3>
+          <form id="ed-gear-form" class="form-grid">
+            <label class="field wide"><span>${t("editor.light_cone")}</span>
+              <select name="light_cone">${option(0, t("editor.empty_slot"), avatar.light_cone_unique_id)}${inventory.light_cones.map(item => option(item.unique_id, `${itemLabel(item.item_id)} · Lv ${item.level} · S${item.rank}${wearer(item)}`, avatar.light_cone_unique_id))}</select>
+            </label>
+            ${[1, 2, 3, 4, 5, 6].map(slot => html`
+              <label class="field"><span>${t(`editor.slot.${slot}`)}</span>
+                <select name="slot${slot}">${option(0, t("editor.empty_slot"), worn[slot] || 0)}${inventory.relics.filter(item => item.slot === slot).map(item => option(item.unique_id, `${itemLabel(item.item_id)} · +${item.level}${wearer(item)}`, worn[slot] || 0))}</select>
+              </label>`)}
+            <div class="modal-actions wide">
+              <button class="btn ghost" type="button" data-gear-cancel>${t("common.cancel")}</button>
+              <button class="btn primary" type="submit">${t("editor.save")}</button>
+            </div>
+          </form>`);
+        const form = $("#ed-gear-form", modal.element);
+        $("[data-gear-cancel]", form).addEventListener("click", () => modal.close());
+        form.addEventListener("submit", async event => {
+          event.preventDefault();
+          const values = Object.fromEntries(new FormData(form).entries());
+          const body = { relics: {} };
+          if (Number(values.light_cone) !== avatar.light_cone_unique_id) body.light_cone_unique_id = Number(values.light_cone);
+          for (const slot of [1, 2, 3, 4, 5, 6]) {
+            const value = Number(values[`slot${slot}`]);
+            if (value !== (worn[slot] || 0)) body.relics[slot] = value;
+          }
+          const data = await editorChange($("button[type=submit]", form), `${editorBase()}/avatars/${id}/gear`, { method: "PUT", body }, t("editor.saved"));
+          if (data) modal.close();
         });
       }
 

@@ -4,7 +4,7 @@ using March7thHoney.Enums.GridFight;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-/// 财富宝钻 (350701) population-cap compatibility.
+/// Wealth Diamond (财富宝钻, 350701) population-cap compatibility.
 /// Each crown grants +1 playable team slot and +1 backstage slot, but player team population
 /// is hard-capped at 13 by the 4.5 client. The battle snapshot intentionally reports the
 /// pre-crown deployment cap, matching the official capture where ActiveRoleCount may exceed it.
@@ -27,7 +27,7 @@ public sealed partial class GridFightSession
         }
     }
 
-    public const uint WealthDiamondEquipmentId = 350701;
+    public const uint WealthDiamondEquipmentId = 350701; // Wealth Diamond (财富宝钻)
     public const uint TeamPopulationLimit = 13;
 
     public uint WealthDiamondCount => (uint)Equipments.Count(equipment =>

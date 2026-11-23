@@ -8,7 +8,7 @@ public class HandlerTakeOffEquipmentCsReq : Handler<TakeOffEquipmentCsReq>
 {
     protected override async Task OnHandle(Connection connection, PlayerInstance player, TakeOffEquipmentCsReq req)
     {
-        await player.InventoryManager!.UnequipEquipment((int)req.AvatarId);
+        await player.AvatarManager!.UnequipEquipment((int)req.AvatarId);
 
         await connection.SendPacket(CmdIds.TakeOffEquipmentScRsp);
     }

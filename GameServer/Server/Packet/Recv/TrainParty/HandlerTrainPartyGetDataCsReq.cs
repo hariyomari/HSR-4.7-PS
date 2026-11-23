@@ -8,6 +8,9 @@ public class HandlerTrainPartyGetDataCsReq : Handler
 {
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
-        await connection.SendPacket(new PacketTrainPartyGetDataScRsp());
+        var player = connection.Player!;
+        await connection.SendPacket(new PacketTrainPartyGetDataScRsp(player));
+        // The party-car floors read the build through floor saved values; bring them in line with the build state.
+        await player.TrainPartyManager!.SyncFloorSavedValuesAsync();
     }
 }

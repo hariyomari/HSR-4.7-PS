@@ -26,7 +26,7 @@ public sealed class GridFightSpotLightChanges
 }
 
 /// <summary>
-///     主角光环 (SpotLight). Layout and flow: artifacts/gf-season2/re-g6-spotlight.md. The client marks spotlight nodes
+///     Spotlight (主角光环). The client marks spotlight nodes
 ///     only through route param 4; which nodes the official server flags, the candidate weighting and the reroll price are
 ///     not in the client and follow the spec's guesses (1-2 and 2-1, two candidates, 2 gold, 2 rerolls). Per-spotlight
 ///     lobby/battle effects live in server JSON that is not shipped; the bound role gets the crown in battle and
@@ -126,7 +126,9 @@ public sealed partial class GridFightSession
     private readonly List<GridFightSpotLightState> _spotLightsRebound = [];
     private bool _spotLightCountersDirty;
 
-    /// <summary>重选主角 (SpotLightReplaceCnt) and free spotlight rerolls (SpotLightFreeRefreshCnt) from rewards.</summary>
+    /// <summary>
+    ///     Replace charges (重选主角, SpotLightReplaceCnt) and free spotlight rerolls (SpotLightFreeRefreshCnt) from rewards.
+    /// </summary>
     private void AddSpotLightCharges(GridFightBonusTypeEnum type, uint count)
     {
         if (type == GridFightBonusTypeEnum.SpotLightReplaceCnt)
@@ -137,8 +139,9 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     A star-up merge replaces its three copies with a new unit; the 主角光环 bound to any of them moves to the merged
-    ///     unit instead of turning into 已失效. The new binding reaches the client as a spotlight update (SyncData 1651).
+    ///     A star-up merge replaces its three copies with a new unit; the spotlight bound to any of them moves to the merged
+    ///     unit instead of becoming lost ("已失效"). The new binding reaches the client as a spotlight update
+    ///     (SyncData 1651).
     /// </summary>
     private void RebindSpotLightsAfterMerge(IReadOnlyCollection<uint> removedRoleUniqueIds, GridFightRoleState mergedRole)
     {
@@ -217,14 +220,21 @@ public sealed partial class GridFightSession
             _spotLightCandidates.Add(id);
     }
 
-    /// <summary>Weighted toward spotlights whose SuitableAvatarList has a fielded role (guess); overclock keeps OC rows.</summary>
+    /// <summary>
+    ///     Weighted toward spotlights whose SuitableAvatarList has a fielded role (guess); overclock keeps OC rows.
+    ///     The list names avatars by a role id, so it is compared by AvatarID: Aha (星神★阿哈) is listed with one cost
+    ///     tier (151112 here; the 4.6.51 table named the 3-cost 151102 that OSBETAWin4.7.51 removed, and the 4.7.51
+    ///     GridFightSpotLight table itself is not in the export) and must match on every tier.
+    /// </summary>
     private uint RollSpotLight()
     {
         var owned = _spotLights.Select(entry => entry.SpotLightId).Concat(_spotLightCandidates).ToHashSet();
-        var board = Roles.Where(role => IsActivePosition(role.Position)).Select(role => role.RoleId).ToHashSet();
+        static uint AvatarOf(uint roleId) => GameData.GridFightRoleBasicInfoData.GetValueOrDefault(roleId)?.AvatarID ?? 0;
+        var board = Roles.Where(role => IsActivePosition(role.Position)).Select(role => AvatarOf(role.RoleId))
+            .Where(avatarId => avatarId != 0).ToHashSet();
         var pool = GridFightSeasonTwoTables.SpotLights
             .Where(row => !owned.Contains(row.Id) && (!IsOverlock || row.IsOcEffective))
-            .Select(row => (row.Id, Weight: row.SuitableAvatars.Any(board.Contains) ? 3 : 1))
+            .Select(row => (row.Id, Weight: row.SuitableAvatars.Any(id => board.Contains(AvatarOf(id))) ? 3 : 1))
             .ToList();
         if (pool.Count == 0) return 0;
         var roll = Random.Shared.Next(pool.Sum(entry => entry.Weight));
@@ -287,9 +297,11 @@ public sealed partial class GridFightSession
     }
 
     /// <summary>
-    ///     Lobby effects that happen when a spotlight is bound. 意志传承 (110002): "该角色变为更高1费的同星级角色，主角光环改为
-    ///     这名新角色拥有" — the unit keeps its slot, star and equipment and takes a random role one cost higher (a 5-cost
-    ///     role has nothing higher and stays). The role id is changed in place like the Aha cost upgrade.
+    ///     Lobby effects that happen when a spotlight is bound. Will Inheritance (意志传承, 110002) turns the role into a
+    ///     same-star role one cost higher and passes the spotlight on to it
+    ///     ("该角色变为更高1费的同星级角色，主角光环改为这名新角色拥有"): the unit keeps its slot, star and equipment and takes a
+    ///     random role one cost higher (a 5-cost role has nothing higher and stays). The role id is changed in place like
+    ///     the Aha cost upgrade.
     /// </summary>
     private void ApplySpotLightSelectionEffect(uint spotLightId, GridFightRoleState role, GridFightSpotLightChanges changes)
     {
@@ -355,7 +367,7 @@ public sealed partial class GridFightSession
         return true;
     }
 
-    /// <summary>Consumable 350111 主角光环: a granted selection for the target role.</summary>
+    /// <summary>The Spotlight consumable (350111): a granted selection for the target role.</summary>
     public bool StartSpotLightGrant(uint roleUniqueId)
     {
         var role = Roles.FirstOrDefault(entry => entry.UniqueId == roleUniqueId);

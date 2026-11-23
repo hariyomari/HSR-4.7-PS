@@ -3,7 +3,7 @@ using March7thHoney.Database;
 using March7thHoney.Database.Activity;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Activity.Activities;
-using March7thHoney.GameServer.Game.MultiPlayer.DiceCombat;
+using March7thHoney.GameServer.Game.Activity.DiceCombat;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.Proto;
 using March7thHoney.Util;

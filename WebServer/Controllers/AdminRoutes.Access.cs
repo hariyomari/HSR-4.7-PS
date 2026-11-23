@@ -4,6 +4,7 @@ using March7thHoney.Util;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using static March7thHoney.WebServer.Http.WebResults;
 
 namespace March7thHoney.WebServer.Controllers;
 
@@ -12,28 +13,22 @@ public static partial class AdminRoutes
     private static readonly Regex RoleNamePattern = new("^[A-Za-z0-9_-]{1,32}$", RegexOptions.Compiled);
     private static readonly Regex PermissionPattern = new("^[A-Za-z0-9_.*:-]{1,64}$", RegexOptions.Compiled);
 
-    private static void MapAccessRoutes(IEndpointRouteBuilder app)
+    private static void MapAccessRoutes(IEndpointRouteBuilder api)
     {
-        app.MapGet("/admin/api/access", GetAccess);
-        app.MapPut("/admin/api/access/roles/{name}", UpsertRole);
-        app.MapDelete("/admin/api/access/roles/{name}", DeleteRole);
-        app.MapPut("/admin/api/access/default-role", SetDefaultRole);
-        app.MapPut("/admin/api/access/default-permissions", SetDefaultPermissions);
+        api.MapGet("/access", GetAccess);
+        api.MapPut("/access/roles/{name}", UpsertRole);
+        api.MapDelete("/access/roles/{name}", DeleteRole);
+        api.MapPut("/access/default-role", SetDefaultRole);
+        api.MapPut("/access/default-permissions", SetDefaultPermissions);
     }
 
-    private static IResult GetAccess(HttpContext ctx)
+    private static IResult GetAccess()
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         return Success(BuildAccessData());
     }
 
-    private static IResult UpsertRole(HttpContext ctx, string name, AdminRoleRequest? request)
+    private static IResult UpsertRole(string name, AdminRoleRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminRoleRequest();
         name = (name ?? string.Empty).Trim();
         if (!RoleNamePattern.IsMatch(name))
@@ -71,11 +66,8 @@ public static partial class AdminRoutes
         return Success(BuildAccessData());
     }
 
-    private static IResult DeleteRole(HttpContext ctx, string name)
+    private static IResult DeleteRole(string name)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         var roles = EnsureMutableRoles();
         var key = FindRoleKey(roles, (name ?? string.Empty).Trim());
         if (key == null)
@@ -111,11 +103,8 @@ public static partial class AdminRoutes
         return Success(BuildAccessData());
     }
 
-    private static IResult SetDefaultRole(HttpContext ctx, AdminDefaultRoleRequest? request)
+    private static IResult SetDefaultRole(AdminDefaultRoleRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminDefaultRoleRequest();
         var roles = EnsureMutableRoles();
         var key = FindRoleKey(roles, (request.role ?? string.Empty).Trim());
@@ -129,11 +118,8 @@ public static partial class AdminRoutes
         return Success(BuildAccessData());
     }
 
-    private static IResult SetDefaultPermissions(HttpContext ctx, AdminDefaultPermissionsRequest? request)
+    private static IResult SetDefaultPermissions(AdminDefaultPermissionsRequest? request)
     {
-        if (!IsAuthorized(ctx, out var unauthorized))
-            return unauthorized;
-
         request ??= new AdminDefaultPermissionsRequest();
         var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var token in (request.permissions ?? []).SelectMany(CommandPermissions.Parse))
@@ -146,6 +132,7 @@ public static partial class AdminRoutes
 
         ConfigManager.Config.ServerOption.DefaultPermissions = permissions;
         ConfigManager.SaveConfig();
+        ConfigManager.WarnIfDefaultPermissionsTooBroad();
         ResyncAccountPermissions();
 
         return Success(BuildAccessData());

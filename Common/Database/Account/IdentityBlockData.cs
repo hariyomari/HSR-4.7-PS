@@ -2,6 +2,7 @@ namespace March7thHoney.Database.Account;
 
 // Negative IDs belong to rules, never to players. Deleting a player cannot remove a rule.
 [DbTable("IdentityBlock")]
+[NotPlayerData]
 public class IdentityBlockData : BaseDatabaseDataHelper
 {
     public string IdentityKey { get; set; } = "";
@@ -22,6 +23,7 @@ public class IdentityBlockData : BaseDatabaseDataHelper
 
 // Keeps retired UIDs reserved and prevents delayed game writes from recreating deleted data.
 [DbTable("DeletedAccount")]
+[NotPlayerData]
 public class DeletedAccountData : BaseDatabaseDataHelper
 {
     public long DeletedAt { get; set; }

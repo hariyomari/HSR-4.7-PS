@@ -4,11 +4,11 @@ using March7thHoney.Enums.GridFight;
 namespace March7thHoney.GameServer.Game.GridFight;
 
 /// <summary>
-///     Lobby effects of individual 主角光环. Their official server JSON is not shipped; each entry follows the in-game
-///     description and its GridFightSpotLight EffectParamList.
-///     刷新视界 (100100, [1, 0.015]): "进入新节点时，该角色若参与上次战斗，获得1次免费刷新。刷新时，我方小队前/后台强度提高1.5%".
+///     Lobby effects of individual spotlights (主角光环). Their official server JSON is not shipped; each entry
+///     follows the in-game description and its GridFightSpotLight EffectParamList.
+///     "刷新视界" (100100, [1, 0.015]): "进入新节点时，该角色若参与上次战斗，获得1次免费刷新。刷新时，我方小队前/后台强度提高1.5%".
 ///     The strength bonus stacks per shop refresh while the spotlight is held and uses the front/back strength
-///     properties 1027/1030 in permille, like 上游供应 (150 = 15%).
+///     properties 1027/1030 in permille, like "上游供应" (150 = 15%).
 /// </summary>
 public sealed partial class GridFightSession
 {
@@ -16,8 +16,8 @@ public sealed partial class GridFightSession
     public const uint AdvancedRefreshVisionSpotLightId = 100106;
     public const uint NanoModificationSpotLightId = 100101;
     public const uint HardBattleTreasureSpotLightId = 120202;
-    // 战场学者 (100102, [2, 0.07]) / 战场学者·精英 (100103, [4, 0.07]): "进入新节点时，该角色若参与上次战斗，获得N经验。
-    // 商店等级每有1级，我方小队的前/后台强度提高7%".
+    // "战场学者" (100102, [2, 0.07]) and "战场学者·精英" (100103, [4, 0.07]): on entering a new node the character
+    // gains N EXP if it fought in the last battle, and each shop level raises the squad's front/back strength by 7%.
     private static readonly IReadOnlyDictionary<uint, uint> FieldScholarExp = new Dictionary<uint, uint>
     {
         [100102] = 2,

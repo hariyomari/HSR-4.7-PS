@@ -5,9 +5,9 @@ using March7thHoney.GameServer.Game.Player;
 
 namespace March7thHoney.GameServer.Game.Mission.FinishType.Handler;
 
-// 客户端解锁「漫游签证 → 异相仲裁」依赖一组前置 Quest，
-// 它们的 FinishWay 是 SpecificChallengeFloorGetStars（如混沌回忆12层3星等）。
-// 这里仅用于解锁入口，不写入/修改任何挑战历史星级数据。
+// The client unlocks the Challenge Peak entry (漫游签证 → 异相仲裁) through a set of prerequisite quests whose FinishWay
+// is SpecificChallengeFloorGetStars (e.g. 3 stars on floor 12 of Memory of Chaos).
+// This handler only unlocks that entry; it does not write or modify any challenge history star data.
 [MissionFinishType(MissionFinishTypeEnum.SpecificChallengeFloorGetStars)]
 public class MissionHandlerSpecificChallengeFloorGetStars : MissionFinishTypeHandler
 {

@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" width="1280" height="400" role="img" aria-label="March7thHoney: an open-source game server in C# on .NET 10">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#141033"/>
+      <stop offset="1" stop-color="#1d1238"/>
+    </linearGradient>
+    <radialGradient id="pink" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff7eb6" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff7eb6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6fd3ff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#6fd3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff8fb1"/>
+      <stop offset="1" stop-color="#7fd8ff"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#ffffff" fill-opacity="0.07"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1280" height="400" rx="24"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="400" fill="url(#bg)"/>
+    <rect width="1280" height="400" fill="url(#dots)"/>
+    <circle cx="1090" cy="40" r="360" fill="url(#pink)"/>
+    <circle cx="120" cy="420" r="340" fill="url(#cyan)"/>
+
+    <!-- Orbit rings behind the terminal card. -->
+    <g fill="none" stroke="#ffffff" stroke-opacity="0.08">
+      <ellipse cx="1000" cy="210" rx="330" ry="120" transform="rotate(-18 1000 210)"/>
+      <ellipse cx="1000" cy="210" rx="250" ry="84" transform="rotate(-18 1000 210)"/>
+    </g>
+
+    <!-- Stars. -->
+    <g fill="#ffffff">
+      <circle cx="96" cy="58" r="1.6" fill-opacity="0.8"/>
+      <circle cx="318" cy="36" r="1.2" fill-opacity="0.6"/>
+      <circle cx="560" cy="72" r="1.8" fill-opacity="0.7"/>
+      <circle cx="688" cy="344" r="1.4" fill-opacity="0.6"/>
+      <circle cx="742" cy="46" r="1.2" fill-opacity="0.7"/>
+      <circle cx="1218" cy="352" r="1.6" fill-opacity="0.7"/>
+      <circle cx="1236" cy="96" r="1.2" fill-opacity="0.6"/>
+      <circle cx="452" cy="362" r="1.2" fill-opacity="0.5"/>
+    </g>
+    <g fill="none" stroke="url(#accent)" stroke-width="2" stroke-linecap="round">
+      <path d="M690 62v20M680 72h20"/>
+      <path d="M1236 322v14M1229 329h14"/>
+    </g>
+
+    <!-- Title block. -->
+    <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+      <rect x="72" y="84" width="44" height="4" rx="2" fill="url(#accent)"/>
+      <text x="128" y="92" font-size="15" font-weight="600" letter-spacing="3.2" fill="#c9d4f5">OPEN-SOURCE GAME SERVER</text>
+      <text x="69" y="170" font-size="74" font-weight="800" letter-spacing="-1.8" fill="#ffffff">March7th<tspan fill="url(#accent)">Honey</tspan></text>
+      <text x="72" y="218" font-size="21" fill="#d5dcf5" fill-opacity="0.92">A playable game server in C# on .NET 10. One command to run.</text>
+
+      <g font-size="15" font-weight="600" fill="#eef1ff">
+        <rect x="72" y="266" width="92" height="36" rx="18" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/>
+        <text x="118" y="289" text-anchor="middle">.NET 10</text>
+        <rect x="176" y="266" width="112" height="36" rx="18" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/>
+        <text x="232" y="289" text-anchor="middle">NativeAOT</text>
+        <rect x="300" y="266" width="226" height="36" rx="18" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/>
+        <text x="413" y="289" text-anchor="middle">Windows · Linux · macOS</text>
+        <rect x="538" y="266" width="104" height="36" rx="18" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/>
+        <text x="590" y="289" text-anchor="middle">AGPL-3.0</text>
+      </g>
+    </g>
+
+    <!-- Terminal card. -->
+    <g transform="translate(756 106)">
+      <rect width="468" height="188" rx="16" fill="#0a0d1c" fill-opacity="0.72"/>
+      <rect width="468" height="188" rx="16" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.16"/>
+      <circle cx="26" cy="24" r="6" fill="#ff6b81"/>
+      <circle cx="46" cy="24" r="6" fill="#ffd166"/>
+      <circle cx="66" cy="24" r="6" fill="#5ee6a8"/>
+      <line x1="0" y1="46" x2="468" y2="46" stroke="#ffffff" stroke-opacity="0.10"/>
+      <g font-family="'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace" font-size="14.5">
+        <text x="24" y="82" fill="#ff8fb1">$ <tspan fill="#e8ecff">git clone Mar7thDev/March7thHoney</tspan></text>
+        <text x="24" y="112" fill="#ff8fb1">$ <tspan fill="#e8ecff">cd March7thHoney</tspan></text>
+        <text x="24" y="142" fill="#ff8fb1">$ <tspan fill="#e8ecff">dotnet run --project Program/Program.csproj</tspan></text>
+        <rect x="24" y="158" width="9" height="16" fill="#7fd8ff">
+          <animate attributeName="opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+    </g>
+  </g>
+</svg>
