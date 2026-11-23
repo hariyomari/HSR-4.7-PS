@@ -346,3 +346,104 @@
   StrongChallengeActivityBattleEndScNotify: 4.4/4.5 call #1 'score_id', 4.6 carried 'score'
   EBGAMBKHDBO: 4.6 field gone: IAJHCHOJHNN (repeated uint32, was #14)
 # wrote 5408 defs, 3132 translations, 2690 packet ids
+
+# beta -> retail 4.7.0 (OSPRODWin4.7.0)
+// Evidence: dumper/Raw/StarRail.proto (beta), dumper/Retail/StarRail.proto (retail).
+// Join type and property identities across dumps, and use the beta dump's tags to look up
+// the existing names in the beta master. For new identities, check f472d7a9's Proto/4.8
+// dumper/Raw/StarRail.proto, Raw/translations.txt and Raw/StarRail.proto for a name for the
+// same identity. Keep the obfuscated spelling when those sources do not supply a readable
+// name. All tags, labels and oneof membership below come from retail, not upstream 4.8.
+// Retail infers scalar types from IL2CPP metadata; C# int and long do not distinguish
+// int32/sint32 or int64/sint64. Keep the beta master's encodings for those differences.
+
+# 24 changed messages
+  GridFightHandlePendingActionCsReq (AFPDIFAPAEA): oneof adds OCABBNOOBJL CPDDOGMLFLA = 376,
+    JKNGGJGFFPN BMFKPELKAJF = 1717 and PIGDLDBFEMI FJGGFOJBAKF = 1898.
+  BCAJNMLLIED: adds repeated DOLMCHMNEIL EIKKALADEHM = 5.
+  CCKJAEDDDCL: oneof adds GANFMBPEJPF ABPOOCOOKCF = 8. This property is not in upstream
+    4.8; keep the retail obfuscated name. The function-unlock arm stays at 10.
+  CFIIJJEGKHC: adds repeated uint32 OEOPMBHFBBP = 2; drops uint32 KICHNDEDGIO = 4;
+    LIHEPONEGOB = 7 changes from uint32 to double. Keeps uid (LJMNNBMALLL) at 15.
+  CGNAHGDKAFC: adds bool FACDMAKFOCH = 5.
+  GridFightPendingAction (CHCHAJIANIM): oneof adds INGKACKDMMK FJGGFOJBAKF = 1390 and
+    CEHMHNJPDGC BMFKPELKAJF = 1506.
+  TakeRechargeBenefitRewardCsReq (CKCPEGPJGLD): adds repeated DOLMCHMNEIL EIKKALADEHM = 5.
+  GridFightPermanentGameInfo (CKPOBLIFMGN): adds bool PMFHAPIFFPO = 3; drops uint32
+    ENECKKGPKHI = 11, the last finished tutorial stage. No meaning is inferred for the bool.
+  GNOBLNOCEHA: adds bool IJCOONGGKNF = 5.
+  HAIEHHIHIGC: drops uint32 JEGBEFMNKIB = 7; FMBFAPOCIDF = 14 changes from uint32 to double.
+  GridFightShopGoodsInfo (HDEIAANGMDB): oneof adds FAEAEFEECCA EPKLGNNBPGM = 291.
+  HFCFMFONGIE: adds repeated uint32 MDGKNEIKGIJ = 11.
+  HLBNJJNHCIE: adds uint32 KGHDNKONLNH = 12.
+  IFMNCFKBEGL: adds LFIKNHJBDBJ NEMJKLMIJOL = 14. Keeps retcode (JKCOAIGJMMM) at 9,
+    challenge_id (DGAJAEMIAAI) at 11 and battle_info (FKCJCHCAPCC) at 12.
+  BattleGridFightTraitEffectInfo (IHIDPEDODEN): oneof adds CPNNACGJFHC MBFPDONDIEM = 111.
+  GridFightAugmentActionInfo (IPFFLNPMCEG): adds bool AABLMNPFBCO = 4.
+  GridFightSyncData (KFNCAIHIHCM): oneof adds CEGNNCDOEPL FKIEANINPCJ = 825 and
+    bool IJCOONGGKNF = 1991. The GridFightGameItemInfo arm goes from GOOCHGKBIPN = 1384 to
+    JDGIAMABEME = 1978. Keep game_data_item_info per f472d7a9:Proto/4.8/overrides-manual.txt
+    (the same new property, tag 840 on 4.8); see overrides-manual.txt alongside this report.
+  LFIKNHJBDBJ: drops uint32 KICHNDEDGIO = 7; LIHEPONEGOB = 9 changes from uint32 to double.
+    Keeps challenge_id (DGAJAEMIAAI) at 3.
+  LPLCFFGANFC: uint32 FADDHEIHGOO moves 5 -> 9, uint32 LOPOLKEKKLB moves 9 -> 11,
+    and uint32 CCJMAOIJPLD is removed from 11. Match the surviving fields by property
+    identity, not by the two reused tags. Retcode (JKCOAIGJMMM) stays at 14.
+  MAKPILEOKNC: adds bool DKDFBABKLCM = 9.
+  GridFightTraitEffectInfo (MGBHKCMHDOK): oneof adds BODGPACJIDJ BMFKPELKAJF = 424
+    and LIAMDCIDHLO MBFPDONDIEM = 482.
+  GridFightGameItemInfo (NJKFOJJDGGG): adds bool PNJCLPNFIGA = 8 outside the oneof; the
+    oneof adds NCGOAFOBAFJ MGHJGHMNBAH = 422 and NCPLNIMCJGO IIKHFCNBAHD = 1240.
+  GridFightFinishInfo (OEDHMAHDECC): adds FPGNLIEPKCA FFCBOJAACMD = 619.
+  GridFightTraitUpdateCsReq (PHIFCNHKOAI): oneof adds OOBHMHFHLDA BMFKPELKAJF = 606.
+// Except for the override and the retail-only ABPOOCOOKCF above, upstream 4.8 leaves all the
+// new field identities above obfuscated. Existing field names are from the beta master.
+
+# 16 new types
+// Upstream 4.8 has the same identities for the 15 messages and gives neither the types nor
+// their properties readable names. DAHCIBCIIAD is not in 4.8. All remain obfuscated.
+  BODGPACJIDJ: uint32 AFEDCLCMIPE = 7.
+  CEGNNCDOEPL: repeated uint32 HJIOELDCANJ = 7.
+  CEHMHNJPDGC: repeated uint32 PNHBEHLICFL = 2, uint32 MOEACNEIGJK = 12,
+    uint32 COPNJMBGNDO = 13.
+  CPNNACGJFHC: uint32 JHJJPIAPPHO = 1.
+  DAHCIBCIIAD: enum members MNEIHEIGLPO = 0, BPILLPJGGGB = 1, ANHFOPPEFAL = 2,
+    LEEOOMLKANM = 3, HJOMKLAGMCM = 4, with the dump's DAHCIBCIIAD_ prefix.
+  DOLMCHMNEIL: uint32 GMDBHJKEAEI = 7, uint32 EEPDDGPEPKO = 15.
+  FAEAEFEECCA: empty message.
+  FPGNLIEPKCA: uint32 FMNPBOJGLFI = 2, map<string, uint32> POCKGKDFLKK = 8.
+  INGKACKDMMK: uint32 MOEACNEIGJK = 1, uint32 COPNJMBGNDO = 12.
+  JKNGGJGFFPN: uint32 KGHDNKONLNH = 13.
+  LIAMDCIDHLO: uint32 JHJJPIAPPHO = 9.
+  NCGOAFOBAFJ: uint32 GOLPAJOAGFE = 6.
+  NCPLNIMCJGO: bool HCOFMFKFMDK = 3, uint32 JFNDJEPDJDC = 15.
+  OCABBNOOBJL: empty message.
+  OOBHMHFHLDA: uint32 KGHDNKONLNH = 1.
+  PIGDLDBFEMI: uint32 PECPBEOHOJC = 4.
+
+# 3 removed types and 5 changed enums
+  CACGKIJHEMG: beta-only enum removed.
+  GridFightLastTutorialFinishScNotify (HHLIEDHOGGH): beta-only message removed from the
+    master, packet IDs and translations.
+  KMHOLGAAGGI: beta-only message removed.
+  CmdGridFightType (IGDBCJJBMPD): drops EHKIBGFFMEL = 8751 (GridFightLastTutorialFinishScNotify).
+    This is the only change across all 150 command enums; both CmdIds.cs copies drop only 8751.
+  GridFightLockType (GGNKDLAHAGH): adds GridFightLockType_KBGPCLEPFPN = 9.
+  GridFightLockReason (KMJNPEMPNMC): adds GridFightLockReason_IPHCCJFGFEK = 4.
+  GridFightSettleReason (PEIJNEFOCHI): adds GridFightSettleReason_CFPDDLEOLKJ = 5.
+  Retcode (JCEMKEPNKEH): adds Retcode_HOIMFGFNCBB = 7804, Retcode_NCHPIDOFJFE = 7805,
+    Retcode_HGIADKEJMAA = 7806, Retcode_NMEOFFNGMNJ = 7807 and Retcode_ACCNNBBEOFF = 7808.
+// New members of existing enums keep their obfuscated suffix, with the same translated
+// enum prefixes as f472d7a9's Proto/4.8/Raw/StarRail.proto.
+
+# Regeneration notes
+  GridFightGameBasicInfo (NIHNGPKHEPC) has no retail wire changes. Preserve the names
+    already in the grouped 4.7 file since c8b13759, by moving them into the master as in
+    f472d7a9: PPKKHHNEOHB = max_lineup_hp (1), NDAINFLOLPJ = max_player_level (3),
+    GDAKCOICIDA = keep_win_count (5), EHNJDIDABHD = player_level (7),
+    and AFFCFLFIFPH = max_active_role_count (11).
+  GANFMBPEJPF moves unchanged from Orphans.proto to CmdRogueCommonType.proto because
+    CCKJAEDDDCL now references it. The move and removals drop two unused Orphans imports.
+  LoginSceneRegression/Program.cs has no protocol assertion invalidated by these changes.
+  Result: 5421 definitions, 3131 translated types, 2689 packet IDs. ActiveProtocolVersion
+    and GAME_VERSION are unchanged.

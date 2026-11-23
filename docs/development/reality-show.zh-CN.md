@@ -2,7 +2,7 @@
 
 [English](reality-show.md) | 简体中文
 
-> **本分支不编译此功能。** 由于其命令与消息在当前使用的 4.7 协议中缺失或不一致，RealityShow 已从构建中排除（[`GameServer/GameServer.csproj`](../../GameServer/GameServer.csproj) 中的 `<Compile Remove>`）。其 `Config/Custom/RealityShow.json` 仍随服务器发布并会被加载。
+> **已在正式服 4.7.0 协议上重新启用。** 字段布局来自正式客户端的协议转储，尚未经过客户端实机验证。下文的命令 ID 和字段编号记录的是上游 4.8 协议；正式服 4.7.0 的定义以 `KcpSharp/CmdIds.cs` 和 `Proto/4.7` 为准。
 
 本文说明 4.8 新增的 RealityShow 挑战活动在服务端的实现：配置、未命名的协议、结算所依据的战斗统计，以及活动任务。修改该活动或重新导出其挑战表之前请先阅读。
 
@@ -89,7 +89,7 @@ demiurge res decode --game <客户端根目录> --namemap <含 BakedConfig/Excel
 
 FinishWay 类型取客户端 `MissionFinishType` 的值：`RealityShowBuffNum` = 470011、`RealityShowResult` = 470012、`RealityShowAllResult` = 470013（4.7.51 没有 FinishWay 使用）。任务 6091001–6091028：`ParamInt1` 为挑战 ID，`ParamInt2` 为档位（BuffNum 为增益档位，Result 为评级 1 B / 2 A / 3 S / 4 SS），达到或超过即完成。
 
-在加入这三个枚举成员之前生成的 `Resource.bin` 里，这些 FinishWay 行的类型是 `Unknown`，任务不会推进，需要用当前代码重建资源缓存（流程见[从客户端导出重建资源缓存](../operations/resource-cache-from-client-export.zh-CN.md)）。回归在内存中设置类型，新旧缓存都能通过。
+在加入这三个枚举成员之前生成的 `Resource.bin` 里，这些 FinishWay 行的类型是 `Unknown`，任务不会推进，需要用当前代码重建资源缓存（流程见[从客户端导出重建资源缓存](../operations/resource-cache-from-client-export.zh-CN.md)）。回归检查从缓存加载的 FinishWay 类型，不再改写它们。
 
 ## 未覆盖
 

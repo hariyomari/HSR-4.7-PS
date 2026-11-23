@@ -1417,7 +1417,6 @@ HHGBMDBOKHI = TakeChallengeRewardCsReq
 HHJGMFEALEB = TutorialStatus
 HHKCBNKJELL = RogueTournGetCurRogueCocoonInfoCsReq
 HHKPBPHJOMO = GetDiceCombatSystemDataCsReq
-HHLIEDHOGGH = GridFightLastTutorialFinishScNotify
 HHLNMCEJIDN = MusicRhythmSaveSongConfigDataScRsp
 HHMGCCNGECJ = SocialPlayGetDataScRsp
 HHNAMDCALND = StartRogueScRsp

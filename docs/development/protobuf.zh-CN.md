@@ -8,7 +8,7 @@ Source: [`Proto/`](../../Proto/)
 
 protobuf 定义按游戏版本保存、按 `Cmd*Type` 分组。当前活动版本为 **4.7**：由 [`Proto/Proto.csproj`](../../Proto/Proto.csproj) 的 `ActiveProtocolVersion` 选定，构建时把 `Proto/4.7/` 的顶层 `*.proto` 自动生成为 `obj/<configuration>/<framework>/protobuf/4.7/` 中的 C#，再编译；生成的 C# 不纳入版本控制。
 
-本分支保持 4.7 协议，使服务器配合正式服 OSPRODWin4.7 客户端使用。上游 `main` 已改用单个 `Proto/StarRail.proto` 保存的 4.8 协议；它的目录布局、ProtoOrganizer 命令（`carry`、`cmdids`）和升级步骤都不适用于本分支。
+活动的 4.7 协议定义与正式服 OSPRODWin4.7.0 客户端一致。上游 `main` 已改用单个 `Proto/StarRail.proto` 保存的 4.8 协议；它的目录布局、ProtoOrganizer 命令（`carry`、`cmdids`）和升级步骤都不适用于本分支。
 
 ## 目录
 
@@ -22,6 +22,7 @@ Proto/
     CmdIds.cs                  该版本的 cmdid 快照
     Raw/                       扁平 master StarRail.proto、packetIds.txt 和 translations.txt
     dumper/Raw/                自有 Dumper 原始产物，不与 reference 混放
+    dumper/Retail/             正式服静态 dump（有对应产物时）
     reference/                 可选的外部 reference，只在对应版本真实存在时保存
     compat-types.txt           进门阶段暂从上一版本保留的 API 类型
     cmdid-aliases.txt          旧服务端命令名到当前 cmdid 名的兼容别名
@@ -32,7 +33,7 @@ Proto/
   Tool/ProtoOrganizer/         版本迁移、分组、cmdid 和 C# 生成工具
 ```
 
-只有活动版本的顶层 `*.proto` 参与编译。`Raw/`、`dumper/`、各文本清单和其他版本目录都是 ProtoOrganizer 的输入，不参与构建。`Proto/4.7/` 中的文件见下文“4.7 活动版本”一节。
+只有活动版本的顶层 `*.proto` 参与编译。ProtoOrganizer 从 `Raw/` 和文本清单重新生成 4.7 协议；`dumper/` 中的文件保留这些输入的原始依据。`Proto/4.7/` 中的文件见下文“4.7 活动版本”一节。
 
 旧版本使用其他布局，已经归档。4.4 是迁移到上述布局之前的兼容基线：grouped proto 和 `Raw/` 在版本根目录，自有 Dumper 原始产物在 `4.4/dumper/Raw/`；4.5 和 4.5v3 的分组结果放在 `dumper/` 下。4.5 没有创建虚假的 reference；在 4.5 reference 实际可用前，只使用 Dumper 结果、同混淆种子的 4.4 对齐信息和显式兼容清单。
 
@@ -98,20 +99,23 @@ NuGet 固定 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），与现有 `Google
 
 ## 4.7 活动版本
 
-4.7 的原始定义来自 [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp) 对客户端 `GameAssembly.dll` + `global-metadata.dat` 的静态 dump（`demiurge proto`），不再依赖运行时 dumper。
+4.7 测试服的定义来自 [DemiurgeCSharp](https://github.com/Mar7thDev/DemiurgeCSharp) 对客户端 `GameAssembly.dll` 和 `global-metadata.dat` 的静态 dump（`demiurge proto`）。当前活动定义采用正式服 OSPRODWin4.7.0 的静态协议 dump；两者均不依赖运行时 dumper。
 
 ```text
 Proto/4.7/
-  dumper/Raw/StarRail.proto    Demiurge 原始输出：混淆类型名（恢复出的真名带 // obf:）、4.7 字段号与 cmdId
+  dumper/Raw/StarRail.proto     测试服 Demiurge 原始输出：混淆类型名（恢复出的真名带 // obf:）、字段号与 cmdId
+  dumper/Retail/StarRail.proto  从正式服 IL2CPP 元数据提取的原始协议 dump，作为证据保留
   Raw/StarRail.proto           翻译后的扁平 master，分组文件由它生成
   Raw/packetIds.txt            cmdid -> 名称（// obf: 原混淆名）
   Raw/translations.txt         obf 类型 -> 名称
-  overrides-manual.txt         4.7 逐条审定的类型名，附证据
-  migration-report.txt         4.6 -> 4.7 迁移记录：新增、删除、证据分歧
+  overrides-manual.txt         逐条审定的类型名和字段名，附证据
+  migration-report.txt         4.6 -> 4.7 测试服及测试服 -> 4.7.0 正式服的变更和命名依据
   cmdid-aliases.txt            4.6 别名按 cmdid -> obf 跟随到 4.7 名称
 ```
 
-迁移的依据是混淆身份在版本间稳定：类型的混淆名、属性名和 `XxxFieldNumber` 常量名每个版本都相同，变化的只有字段号、cmdId 和 backing field 名。Demiurge 因此按属性名给字段命名，4.6 已审定的类型名、字段名和枚举成员名按混淆身份逐个搬到 4.7 的字段号上。字段身份按证据强弱逐级匹配：4.6 手工钉死的字段与原样保留的混淆名 → 4.4/4.5 Mar7thDumper 常量名与同版本可读定义按字段号的对应 → 4.6 master 同字段号 → 4.6 自动 overrides → 4.6 dumper raw（原名或 `nt.txt` 译名）。`nt.txt` 来自按存储槽位匹配，相邻同类型字段会互换（SceneInfo 的 `world_id` / `leader_entity_id`、`lighten_section_list` / `opened_chests_list` 即此类），只用来识别身份，不单独决定名称。
+从 4.6 迁移到 4.7 测试服时，已审定的类型名、字段名和枚举成员名按混淆身份对应到测试服的字段号。Demiurge 按属性名给字段命名；字段号、cmdId 和 backing field 名可能变化，但属性名通常不变。字段身份按证据强弱逐级匹配：4.6 手工钉死的字段与原样保留的混淆名 → 4.4/4.5 Mar7thDumper 常量名与同版本可读定义按字段号的对应 → 4.6 master 同字段号 → 4.6 自动 overrides → 4.6 dumper raw（原名或 `nt.txt` 译名）。`nt.txt` 来自按存储槽位匹配，相邻同类型字段会互换（SceneInfo 的 `world_id` / `leader_entity_id`、`lighten_section_list` / `opened_chests_list` 即此类），只用来识别身份，不单独决定名称。
+
+切换到正式服布局时，混淆身份不变的类型和属性沿用测试服 master 的名称。新增项只有在上游 4.8 存在相同混淆身份时才采用其名称，否则保留混淆名。正式服 dump 根据 C# 的 `int` 和 `long` 推断标量类型，无法区分 `int32` 与 `sint32`、`int64` 与 `sint64`；若仅有此差异，保留测试服 master 的编码。各类型的改动及依据见 `Proto/4.7/migration-report.txt`。
 
 维护 4.7 定义时修改 `Raw/StarRail.proto`，再用下列命令重建分组定义和命令号。`--cs-out Proto/Generated` 是可选的工具校验输出，已经忽略且不参与服务器编译；随后必须正常构建，让 MSBuild 从活动分组定义自动生成到 `obj/`：
 
@@ -134,13 +138,13 @@ dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
 `GameServer/GameServer.csproj` 用显式的 `<Compile Remove>` 把部分代码排除在构建之外，每一项旁边的注释写明原因：
 
 - DiceCombat 处理器 `HandlerDiceCombatFinishPveStageCsReq`：4.6 只剩两个同型 `uint32` 候选，旧映射本就是未验证猜测，不再续猜。
-- 从上游合入的 4.8 专属活动，目前为 ActivityBangboo、DiceyDungeon 与 RealityShow：其玩法逻辑、请求处理器、发送包和任务完成处理器。它们的命令和消息在 4.7 协议中不存在，或 4.7 的同名消息字段不同，映射不靠猜测。[邦布联动](activity-bangboo.zh-CN.md)、[骰子收容](dicey-dungeon.zh-CN.md)和[成名之路](reality-show.zh-CN.md)记录的是它们的 4.8 协议。排除期间不接入它们的玩家组件，战斗也不携带 RealityShow 上下文。
+- 从上游合入的两项 4.8 专属活动：[邦布联动](activity-bangboo.zh-CN.md)和[骰子收容](dicey-dungeon.zh-CN.md)，包括玩法逻辑、请求处理器、发送包和任务完成处理器。在正式服协议 dump 及其 IL2CPP 元数据中，尚未找到这两项活动可验证的命令号或消息映射。[成名之路](reality-show.zh-CN.md)使用正式服 4.7 协议参与构建，不再排除。
 
-`LoginSceneRegression` 同样跳过对应用例：活动回归文件在其项目文件中用 `<Compile Remove>` 排除，内联用例放在 `#if PROTOCOL_48_ACTIVITIES` 之内。重新启用前应针对活动版本解决其协议依据和兼容性问题，并同时恢复对应的回归用例；不直接删除排除项来恢复编译，也不能把 4.8 的命令号或字段号写进 4.7。
+`LoginSceneRegression` 也跳过邦布联动和骰子收容的用例：项目文件排除 `ActivityBangbooRegression.cs`，`#if PROTOCOL_48_ACTIVITIES` 排除对应调用和内联用例。成名之路的用例照常运行。重新启用其他文件前，应按活动版本确认协议依据并解决兼容性问题，同时恢复对应的回归用例。不得把 4.8 的命令号或字段号写进 4.7。
 
 ## 新版本约束
 
-- 自有 Dumper 产物始终放入该版本的 `dumper/Raw/`，不可混入 reference。
+- 原始 dump 保留在对应版本的 `dumper/` 下，不与 `reference/` 混放。不同客户端构建的产物分目录保存，例如 4.7 的 `dumper/Raw/` 与 `dumper/Retail/`。
 - `reference/` 只保存同一游戏版本的参考定义，未更新时保持不存在或保持旧版本目录，不得伪造新版本 reference。
 - 兼容类型和命令别名必须放在对应版本清单中，禁止把旧 cmdid 数值覆盖到新版本。
 - 不能仅凭同型字段认定映射。

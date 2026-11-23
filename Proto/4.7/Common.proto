@@ -306,6 +306,7 @@ message BattleGridFightTraitEffectInfo {
 		BDIIMNDEADO GIKNCJMJLFE = 108;
 		GHCEOIMHKJI MCCMPFENGCD = 109;
 		LFNNCOMFBMD KDBKIPPHMFI = 110;
+		CPNNACGJFHC MBFPDONDIEM = 111;
 	}
 }
 
@@ -1283,6 +1284,10 @@ message CMNLOKDOFEF {
 
 message CPMNHNHKLBK {
 	uint32 role_id = 1;
+}
+
+message CPNNACGJFHC {
+	uint32 JHJJPIAPPHO = 1;
 }
 
 message CustomSaveData {

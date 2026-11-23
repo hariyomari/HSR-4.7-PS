@@ -28,7 +28,7 @@
 | `Common/` | 共享配置、资源模型、数据库实体、枚举、国际化和工具 |
 | `SourceGen/` | 包处理器、命令、任务、数据库及 MemoryPack 注册代码生成，说明见 `docs/development/source-generators.md` |
 | `KcpSharp/` | KCP 传输及由 ProtoOrganizer 生成的活动协议命令号 `CmdIds.cs` |
-| `Proto/<version>/` | 各游戏版本的协议来源：按 `Cmd*Type` 分组的定义、`Raw/` master 与对照表、Dumper 产物和兼容清单；`Proto/Proto.csproj` 的 `ActiveProtocolVersion`（4.7）决定构建编译哪个版本 |
+| `Proto/<version>/` | 按 `Cmd*Type` 分组的协议定义、`Raw/` master 与对照表、Dumper 原始产物和兼容清单。`Proto/Proto.csproj` 的 `ActiveProtocolVersion` 选定 4.7；正式服协议依据在 `Proto/4.7/dumper/Retail/` |
 | `Proto/obj/<configuration>/<framework>/protobuf/4.7/` | 构建时自动生成的活动 C# 协议代码，不纳入版本控制 |
 | `Proto/Archives/` | 旧版协议的无损压缩归档，迁移时按文档解压；`Proto/4.5v3/translations.txt` 作为 `LoginSceneRegression` 的同种子输入留在归档之外 |
 | `Proto/Tool/ProtoOrganizer/` | 协议分组、版本迁移以及命令号和 C# 生成工具 |
@@ -86,12 +86,12 @@ NativeAOT 发布使用项目定义的 `-p:DoAot=true`，不要全局传入 `-p:P
 
 ## 协议与资源约束
 
-- 协议流程见 `docs/development/protobuf.md`。执行其中的版本示例前，核对当前活动协议、版本目录和兼容清单，不直接照抄旧版本号。本分支保持 4.7 协议，上游单个 `Proto/StarRail.proto` 的布局及其 4.8 协议不适用。
+- 修改协议时遵循 `docs/development/protobuf.md`。活动的 4.7 协议采用正式服 OSPRODWin4.7.0 的布局。上游单个 `Proto/StarRail.proto` 的布局和 4.8 协议不适用。
 - `Proto.csproj` 固定 `ActiveProtocolVersion=4.7`，使用 `Directory.Packages.props` 中固定的 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），把 `Proto/4.7/` 的顶层 `*.proto` 自动生成到 `obj/` 并编译。协议修复应落到活动版本的定义（修改 `Raw/StarRail.proto` 后用 ProtoOrganizer 重建分组文件）、翻译映射、兼容清单或生成工具，再构建，避免只改生成的 C#。
 - 旧版协议已归档到 `Proto/Archives/`，运行依赖旧路径的迁移命令前先按 `Proto/Archives/README.md` 解压；`Proto/4.5v3/translations.txt` 作为 `LoginSceneRegression` 的同种子输入，仍在归档之外由 Git 跟踪。
 - 切换活动协议时同步更新 `ActiveProtocolVersion`、对应分组定义与 `KcpSharp/CmdIds.cs`（连同 `Proto/<version>/CmdIds.cs` 快照），完成整个解决方案构建和协议生成回归。不能用旧版本命令号覆盖新版本，也不能仅依据同型字段猜测协议映射。
-- Dumper 原始产物保留在对应版本的 `dumper/Raw/`；`reference/` 只能存放确实存在的同版本参考定义。
-- `GameServer.csproj` 用 `<Compile Remove>` 显式排除部分代码：映射从未验证的协议处理器，以及上游 4.8 专属活动（目前为 ActivityBangboo、DiceyDungeon 与 RealityShow，其命令和消息在 4.7 协议中缺失或不同）；`LoginSceneRegression` 也跳过它们的用例。重新启用前应解决其协议依据和兼容性问题，不直接删除排除项来恢复编译。
+- `Proto/4.7/dumper/Raw/` 保留测试服 dump，`dumper/Retail/` 保留正式服 dump。若差异只来自 dump 无法区分 `int32` 与 `sint32` 或 `int64` 与 `sint64`，保留测试服 master 的编码。`reference/` 只保存经过验证的同版本参考定义。
+- `GameServer.csproj` 用 `<Compile Remove>` 排除映射未验证的 DiceCombat 处理器，以及 ActivityBangboo 和 DiceyDungeon 两项 4.8 专属活动。`LoginSceneRegression` 也跳过对应的活动用例。RealityShow 使用正式服 4.7 定义，不再排除。重新启用排除的代码前，先确认协议映射并解决兼容性问题。
 - 协议生成与资源缓存更新是独立流程；运行 ProtoOrganizer 不代表 `Config/Resource.bin` 已更新。
 - 排查资源或存档问题时优先使用副本和隔离环境，保留原始数据。缓存升级参考 `docs/operations/scene-cache-upgrade.md`，只有客户端时的重建流程参考 `docs/operations/resource-cache-from-client-export.md`；输出到新文件，验证并备份后再替换，保留程序与缓存配套回滚能力。
 - `Config.json`、玩家数据库、日志、令牌和本地资源不应混入开发提交。以 `.gitignore` 和 `git ls-files` 核对边界，不将整个 `Config/` 视为可丢弃目录。

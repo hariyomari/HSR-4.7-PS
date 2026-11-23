@@ -7,6 +7,7 @@ using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Inventory;
 using March7thHoney.Enums.Avatar;
 using March7thHoney.GameServer.Game.Activity.FinalityBattle;
+using March7thHoney.GameServer.Game.Activity.RealityShow;
 using March7thHoney.Enums.Scene;
 using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Calyx;
@@ -113,9 +114,10 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
     public GridFightSession? GridFightContext { get; set; }
     public CalyxOverrideContext? CalyxOverride { get; set; }
     public FinalityBattleContext? FinalityContext { get; set; }
+    public RealityShowBattleContext? RealityShowContext { get; set; }
 
     /// <summary>An activity battle fought with its own team: the result must not touch the player's lineups.</summary>
-    public bool HasActivityLineup => FinalityContext != null;
+    public bool HasActivityLineup => FinalityContext != null || RealityShowContext != null;
 
     public delegate ValueTask OnBattleEndDelegate(BattleInstance battle, PVEBattleResultCsReq req);
 
@@ -380,7 +382,8 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
                 Player.GridFightManager!.Catalog,
                 proto);
         }
-        else if ((CalyxOverride?.LineupOverride ?? FinalityContext?.LineupOverride) is { Count: > 0 } lineupOverride)
+        else if ((CalyxOverride?.LineupOverride ?? FinalityContext?.LineupOverride ??
+                  RealityShowContext?.LineupOverride) is { Count: > 0 } lineupOverride)
         {
             avatars = [.. lineupOverride];
             var collection = new PlayerDataCollection(Player.Data, Player.InventoryManager!.Data, Lineup);

@@ -5,6 +5,7 @@ option csharp_namespace = "March7thHoney.Proto";
 import "Common.proto";
 
 message BCAJNMLLIED {
+	repeated DOLMCHMNEIL EIKKALADEHM = 5;
 	uint32 id = 8;
 	uint32 panel_id = 10;
 	repeated uint32 OLHODIFNABL = 12;
@@ -22,6 +23,11 @@ enum CmdRechargeGiftType {
 	CmdRechargeGiftType_GetRechargeGiftInfoCsReq = 8375;
 	CmdRechargeGiftType_GetRechargeBenefitInfoCsReq = 8376;
 	CmdRechargeGiftType_TakeRechargeGiftRewardScRsp = 8380;
+}
+
+message DOLMCHMNEIL {
+	uint32 GMDBHJKEAEI = 7;
+	uint32 EEPDDGPEPKO = 15;
 }
 
 enum EGCFNCBLHJC {
@@ -64,6 +70,7 @@ message SyncRechargeBenefitInfoScNotify {
 
 message TakeRechargeBenefitRewardCsReq {
 	uint32 id = 1;
+	repeated DOLMCHMNEIL EIKKALADEHM = 5;
 }
 
 message TakeRechargeBenefitRewardScRsp {

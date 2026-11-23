@@ -1,7 +1,6 @@
 using Google.Protobuf;
 using March7thHoney.Data;
 using March7thHoney.Data.Custom;
-using March7thHoney.Data.Excel;
 using March7thHoney.Database;
 using March7thHoney.Database.Generated;
 using March7thHoney.Database.RealityShow;
@@ -17,7 +16,7 @@ using March7thHoney.Proto;
 using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
 
-// Interastral Peace Gala: Road to Fame (RealityShow, 4.8 command group 10785-10799): the data query, both stages of a
+// Interastral Peace Gala: Road to Fame (RealityShow, retail 4.7 command group 10784-10800): the data query, both stages of a
 // challenge through the real handlers and BattleManager.EndBattle, the reset, the friend ranking, the activity quests
 // and the saved records. The start request replays the one the 4.7.51 client sent and never got an answer to
 // (challenge 2, warm-up, own avatars 1407/1413/1415/1409 as "upgrade available").
@@ -73,29 +72,26 @@ internal static class RealityShowRegression
         var savedSchedule = GameData.ActivityConfig;
         if (schedule != null) GameData.ActivityConfig = schedule;
 
-        // The checked-in Resource.bin predates these enum members, so its FinishWay rows carry Unknown for them. Type
-        // the quest rows the flow advances in memory, as a cache rebuilt with this code has them, and restore after.
+        // Exercise the FinishWay types loaded from the cache, as defined by the retail QuestData and FinishWay tables.
         (int QuestId, MissionFinishTypeEnum Type)[] quests =
         [
             (6091005, MissionFinishTypeEnum.RealityShowBuffNum), (6091006, MissionFinishTypeEnum.RealityShowResult),
             (6091007, MissionFinishTypeEnum.RealityShowResult), (6091008, MissionFinishTypeEnum.RealityShowResult),
             (6091025, MissionFinishTypeEnum.RealityShowResult), (6091001, MissionFinishTypeEnum.RealityShowBuffNum)
         ];
-        var restoreTypes = new List<(FinishWayExcel Row, MissionFinishTypeEnum Type)>();
         var questsReady = true;
         foreach (var (questId, type) in quests)
         {
             var row = GameData.QuestDataData.GetValueOrDefault(questId) is { } quest
                 ? GameData.FinishWayData.GetValueOrDefault(quest.FinishWayID)
                 : null;
+            check($"Road to Fame quest {questId} has cached FinishWay type {type}", row?.FinishType == type);
             if (row == null)
             {
                 questsReady = false;
                 continue;
             }
 
-            restoreTypes.Add((row, row.FinishType));
-            row.FinishType = type;
             if (player.QuestManager!.GetQuestInfo(questId) == null) await player.QuestManager.AcceptQuest(questId, false);
             questsReady &= player.QuestManager.GetQuestInfo(questId)?.QuestStatus == QuestStatus.QuestDoing;
         }
@@ -265,7 +261,6 @@ internal static class RealityShowRegression
         }
         finally
         {
-            foreach (var (row, type) in restoreTypes) row.FinishType = type;
             GameData.RealityShowConfig = savedConfig;
             GameData.ActivityConfig = savedSchedule;
             player.BattleInstance = null;

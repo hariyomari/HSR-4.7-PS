@@ -10,11 +10,9 @@
   </ItemGroup>
   <ItemGroup>
     <!--
-      4.8-only activities from upstream (ActivityBangboo, RealityShow): GameServer.csproj excludes them while the 4.7
-      protocol is active, so their regressions are not built either. Their call sites in Program.cs and the inline
-      DiceyDungeon cases sit behind PROTOCOL_48_ACTIVITIES.
+      GameServer.csproj excludes the 4.8-only ActivityBangboo and DiceyDungeon while the 4.7 protocol is active.
+      The ActivityBangboo case and the inline DiceyDungeon cases in Program.cs sit behind PROTOCOL_48_ACTIVITIES.
     -->
     <Compile Remove="ActivityBangbooRegression.cs" />
-    <Compile Remove="RealityShowRegression.cs" />
   </ItemGroup>
 </Project>

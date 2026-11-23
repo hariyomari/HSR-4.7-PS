@@ -1571,14 +1571,14 @@ using (var clientPeer = new KcpConversation(endpoint, inbound, options))
     ServerUtils.InitializeHandlers();
     await MainFixRegression.Run(scratch, serverPeer, Check, SentFrames);
     await SharedConfigRegression.Run(Check);
-#if PROTOCOL_48_ACTIVITIES // 4.8-only activities, excluded in LoginSceneRegression.csproj
+#if PROTOCOL_48_ACTIVITIES // ActivityBangboo, excluded in LoginSceneRegression.csproj
     await ActivityBangbooRegression.Run(repository, scratch, serverPeer, Check, SentFrames);
-    await RealityShowRegression.Run(repository, scratch, serverPeer, Check, SentFrames);
 #endif
+    await RealityShowRegression.Run(repository, scratch, serverPeer, Check, SentFrames);
     // 4.7 activity data queries sent at login (obfuscated names, so the generic empty reply skips them): both
     // must be answered or the client keeps its loading spinner up.
-    var activityQueryReplies = (await SentFrames(() => new March7thHoney.GameServer.Server.Packet.Recv.Activity
-            .HandlerCKMHMAJPJEP().OnHandle(rogueConnection, [], [])))
+    var activityQueryReplies = (await SentFrames(() => new March7thHoney.GameServer.Server.Packet.Recv.RealityShow
+            .HandlerRealityShowGetDataCsReq().OnHandle(rogueConnection, [], [])))
         .Concat(await SentFrames(() => new March7thHoney.GameServer.Server.Packet.Recv.Activity
             .HandlerMGCJKEEOPEC().OnHandle(rogueConnection, [], [])))
         .ToList();

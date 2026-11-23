@@ -2,7 +2,7 @@
 
 English | [简体中文](reality-show.zh-CN.md)
 
-> **Not built on this branch.** RealityShow is excluded from the build (`<Compile Remove>` in [`GameServer/GameServer.csproj`](../../GameServer/GameServer.csproj)) because its commands and messages are missing from, or differ in, the active 4.7 protocol. Its `Config/Custom/RealityShow.json` is still shipped and loaded.
+> **Re-enabled on retail 4.7.0.** The field layout comes from the retail client dump and has not been verified on a live client. The command IDs and field tags below describe upstream 4.8; use `KcpSharp/CmdIds.cs` and `Proto/4.7` for retail.
 
 This document describes the server side of the RealityShow challenge event added in 4.8: its configuration, its unnamed protocol, the battle statistics it settles from, and its event missions. Read it before changing the event or re-exporting its challenge table.
 
@@ -89,7 +89,7 @@ The server settles on a won `PVEBattleResultCsReq`: the warm-up records the shie
 
 The FinishWay types take the values of the client's `MissionFinishType`: `RealityShowBuffNum` = 470011, `RealityShowResult` = 470012, `RealityShowAllResult` = 470013 (no FinishWay uses it in 4.7.51). Missions 6091001–6091028: `ParamInt1` is the challenge ID, `ParamInt2` the level (the buff level for BuffNum; the rating for Result: 1 B / 2 A / 3 S / 4 SS); reaching or exceeding it finishes the mission.
 
-In a `Resource.bin` generated before these three enum members were added, these FinishWay rows have type `Unknown` and the missions do not progress; the resource cache has to be rebuilt with the current code (see [Rebuilding the resource cache from a client export](../operations/resource-cache-from-client-export.md)). The regression sets the types in memory, so it passes with both old and new caches.
+In a `Resource.bin` generated before these three enum members were added, these FinishWay rows have type `Unknown` and the missions do not progress; the resource cache has to be rebuilt with the current code (see [Rebuilding the resource cache from a client export](../operations/resource-cache-from-client-export.md)). The regression checks the FinishWay types loaded from the cache without changing them.
 
 ## Not covered
 
