@@ -28,7 +28,7 @@
 | `Common/` | 共享配置、资源模型、数据库实体、枚举、国际化和工具 |
 | `SourceGen/` | 包处理器、命令、任务、数据库及 MemoryPack 注册代码生成，说明见 `docs/development/source-generators.md` |
 | `KcpSharp/` | KCP 传输及由 ProtoOrganizer 生成的活动协议命令号 `CmdIds.cs` |
-| `Proto/<version>/` | 按 `Cmd*Type` 分组的协议定义、`Raw/` master 与对照表、Dumper 原始产物和兼容清单。`Proto/Proto.csproj` 的 `ActiveProtocolVersion` 选定 4.7；正式服协议依据在 `Proto/4.7/dumper/Retail/` |
+| `Proto/<version>/` | 按 `Cmd*Type` 分组的协议定义、`Raw/` master 与对照表、Dumper 原始产物和兼容清单。`Proto/Proto.csproj` 的 `ActiveProtocolVersion` 选定 4.7，其布局遵循正式服 OSPRODWin4.7.0 |
 | `Proto/obj/<configuration>/<framework>/protobuf/4.7/` | 构建时自动生成的活动 C# 协议代码，不纳入版本控制 |
 | `Proto/Archives/` | 旧版协议的无损压缩归档，迁移时按文档解压；`Proto/4.5v3/translations.txt` 作为 `LoginSceneRegression` 的同种子输入留在归档之外 |
 | `Proto/Tool/ProtoOrganizer/` | 协议分组、版本迁移以及命令号和 C# 生成工具 |
@@ -90,7 +90,7 @@ NativeAOT 发布使用项目定义的 `-p:DoAot=true`，不要全局传入 `-p:P
 - `Proto.csproj` 固定 `ActiveProtocolVersion=4.7`，使用 `Directory.Packages.props` 中固定的 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），把 `Proto/4.7/` 的顶层 `*.proto` 自动生成到 `obj/` 并编译。协议修复应落到活动版本的定义（修改 `Raw/StarRail.proto` 后用 ProtoOrganizer 重建分组文件）、翻译映射、兼容清单或生成工具，再构建，避免只改生成的 C#。
 - 旧版协议已归档到 `Proto/Archives/`，运行依赖旧路径的迁移命令前先按 `Proto/Archives/README.md` 解压；`Proto/4.5v3/translations.txt` 作为 `LoginSceneRegression` 的同种子输入，仍在归档之外由 Git 跟踪。
 - 切换活动协议时同步更新 `ActiveProtocolVersion`、对应分组定义与 `KcpSharp/CmdIds.cs`（连同 `Proto/<version>/CmdIds.cs` 快照），完成整个解决方案构建和协议生成回归。不能用旧版本命令号覆盖新版本，也不能仅依据同型字段猜测协议映射。
-- `Proto/4.7/dumper/Raw/` 保留测试服 dump，`dumper/Retail/` 保留正式服 dump。若差异只来自 dump 无法区分 `int32` 与 `sint32` 或 `int64` 与 `sint64`，保留测试服 master 的编码。`reference/` 只保存经过验证的同版本参考定义。
+- `Proto/4.7/dumper/Raw/` 保留测试服 dump。正式服客户端 dump 不提交到仓库（`dumper/Retail/` 已被 Git 忽略），只在本地保存。若差异只来自 dump 无法区分 `int32` 与 `sint32` 或 `int64` 与 `sint64`，保留测试服 master 的编码。`reference/` 只保存经过验证的同版本参考定义。
 - `GameServer.csproj` 用 `<Compile Remove>` 排除映射未验证的 DiceCombat 处理器，以及 ActivityBangboo 和 DiceyDungeon 两项 4.8 专属活动。`LoginSceneRegression` 也跳过对应的活动用例。RealityShow 使用正式服 4.7 定义，不再排除。重新启用排除的代码前，先确认协议映射并解决兼容性问题。
 - 协议生成与资源缓存更新是独立流程；运行 ProtoOrganizer 不代表 `Config/Resource.bin` 已更新。
 - 排查资源或存档问题时优先使用副本和隔离环境，保留原始数据。缓存升级参考 `docs/operations/scene-cache-upgrade.md`，只有客户端时的重建流程参考 `docs/operations/resource-cache-from-client-export.md`；输出到新文件，验证并备份后再替换，保留程序与缓存配套回滚能力。

@@ -22,7 +22,7 @@ Proto/
     CmdIds.cs                  command ID snapshot of the version
     Raw/                       flat master StarRail.proto, packetIds.txt and translations.txt
     dumper/Raw/                own raw dumper output, never mixed with reference material
-    dumper/Retail/             retail static dump, where one is available
+    dumper/Retail/             retail static dump, kept locally only (git-ignored, never committed)
     reference/                 optional external reference, kept only when one really exists for that version
     compat-types.txt           API types kept from the previous version during bring-up
     cmdid-aliases.txt          compatibility aliases from old server command names to current command ID names
@@ -104,7 +104,7 @@ The 4.7 beta definitions came from a static dump (`demiurge proto`) of the clien
 ```text
 Proto/4.7/
   dumper/Raw/StarRail.proto     beta Demiurge output: obfuscated type names (recovered real names carry // obf:), field numbers and cmdIds
-  dumper/Retail/StarRail.proto  original retail schema dump from IL2CPP metadata; kept as evidence
+  dumper/Retail/StarRail.proto  retail schema dump from IL2CPP metadata; local evidence only, git-ignored
   Raw/StarRail.proto           translated flat master the grouped files are generated from
   Raw/packetIds.txt            cmdid -> name (// obf: original obfuscated name)
   Raw/translations.txt         obfuscated type -> name
@@ -144,7 +144,7 @@ The Light Cone quick level-up identity is `EOBJKAMNNPI → AMNBMKEMMFL`. The 4.6
 
 ## Constraints for a new version
 
-- Keep raw dumps under the version's `dumper/` directory, separate from `reference/`. Keep dumps of different builds in separate subdirectories, as with `dumper/Raw/` and `dumper/Retail/` in 4.7.
+- Keep raw dumps under the version's `dumper/` directory, separate from `reference/`. Keep dumps of different builds in separate subdirectories, as with `dumper/Raw/` and `dumper/Retail/` in 4.7. Do not commit dumps of a retail client: `dumper/Retail/` is git-ignored, and only the translated master and grouped definitions derived from it are committed.
 - `reference/` holds only reference definitions of the same game version. While none is available, leave it absent or keep the old version's directory; never fake a reference for a new version.
 - Compatibility types and command aliases go into the lists of the version they belong to; never write an old version's cmdId numbers over a new version.
 - Never decide a mapping from fields having the same type alone.

@@ -1,4 +1,4 @@
-syntax = "proto3"; // OSPRODWin4.7.0 layout (dumper/Retail/StarRail.proto), with names carried from the 4.7 beta master
+syntax = "proto3"; // OSPRODWin4.7.0 layout (retail static dump, kept outside the repository), with names carried from the 4.7 beta master
 
 message AAAKPGJDCFJ {
 	uint32 OOCOFCBJOJD = 4;

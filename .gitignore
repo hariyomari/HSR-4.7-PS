@@ -396,6 +396,8 @@ Lua/
 /Research/
 /GameServer/OriginalProto
 Proto/**/dump.cs
+# Retail client dumps are kept outside the repository; see docs/development/protobuf.md.
+Proto/*/dumper/Retail/
 
 # Protocol C# is generated during builds; legacy schemas are optional archive extracts.
 /Proto/Generated/

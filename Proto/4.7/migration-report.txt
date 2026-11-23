@@ -348,7 +348,7 @@
 # wrote 5408 defs, 3132 translations, 2690 packet ids
 
 # beta -> retail 4.7.0 (OSPRODWin4.7.0)
-// Evidence: dumper/Raw/StarRail.proto (beta), dumper/Retail/StarRail.proto (retail).
+// Evidence: dumper/Raw/StarRail.proto (beta) and a static schema dump of the retail client, kept outside the repository.
 // Join type and property identities across dumps, and use the beta dump's tags to look up
 // the existing names in the beta master. For new identities, check f472d7a9's Proto/4.8
 // dumper/Raw/StarRail.proto, Raw/translations.txt and Raw/StarRail.proto for a name for the

@@ -22,7 +22,7 @@ Proto/
     CmdIds.cs                  该版本的 cmdid 快照
     Raw/                       扁平 master StarRail.proto、packetIds.txt 和 translations.txt
     dumper/Raw/                自有 Dumper 原始产物，不与 reference 混放
-    dumper/Retail/             正式服静态 dump（有对应产物时）
+    dumper/Retail/             正式服静态 dump，仅在本地保存（已被 Git 忽略，不提交）
     reference/                 可选的外部 reference，只在对应版本真实存在时保存
     compat-types.txt           进门阶段暂从上一版本保留的 API 类型
     cmdid-aliases.txt          旧服务端命令名到当前 cmdid 名的兼容别名
@@ -104,7 +104,7 @@ NuGet 固定 `Google.Protobuf.Tools 3.33.1`（protoc 33.1），与现有 `Google
 ```text
 Proto/4.7/
   dumper/Raw/StarRail.proto     测试服 Demiurge 原始输出：混淆类型名（恢复出的真名带 // obf:）、字段号与 cmdId
-  dumper/Retail/StarRail.proto  从正式服 IL2CPP 元数据提取的原始协议 dump，作为证据保留
+  dumper/Retail/StarRail.proto  从正式服 IL2CPP 元数据提取的协议 dump；仅作本地证据，已被 Git 忽略
   Raw/StarRail.proto           翻译后的扁平 master，分组文件由它生成
   Raw/packetIds.txt            cmdid -> 名称（// obf: 原混淆名）
   Raw/translations.txt         obf 类型 -> 名称
@@ -144,7 +144,7 @@ dotnet run --project Proto/Tool/ProtoOrganizer/ProtoOrganizer.csproj -- \
 
 ## 新版本约束
 
-- 原始 dump 保留在对应版本的 `dumper/` 下，不与 `reference/` 混放。不同客户端构建的产物分目录保存，例如 4.7 的 `dumper/Raw/` 与 `dumper/Retail/`。
+- 原始 dump 保留在对应版本的 `dumper/` 下，不与 `reference/` 混放。不同客户端构建的产物分目录保存，例如 4.7 的 `dumper/Raw/` 与 `dumper/Retail/`。正式服客户端的 dump 不提交：`dumper/Retail/` 已被 Git 忽略，只提交由它翻译出的 master 和分组定义。
 - `reference/` 只保存同一游戏版本的参考定义，未更新时保持不存在或保持旧版本目录，不得伪造新版本 reference。
 - 兼容类型和命令别名必须放在对应版本清单中，禁止把旧 cmdid 数值覆盖到新版本。
 - 不能仅凭同型字段认定映射。
