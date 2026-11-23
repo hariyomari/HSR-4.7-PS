@@ -15,20 +15,10 @@ public class PacketGetBasicInfoScRsp : BasePacket
             NextRecoverTime = player.Data.NextStaminaRecover / 1000,
             GameplayBirthday = (uint)player.Data.Birthday,
             PlayerSettingInfo = player.Data.PrivacySettings.ToSettingProto(),
-            Gender = (uint)player.Data.CurrentGender
+            Gender = (uint)player.Data.CurrentGender,
+            // Story mode reports the gender as unset until the prompt (AvatarManager.IsHeroGenderPending).
+            IsGenderSet = player.AvatarManager?.IsHeroGenderPending != true
         };
-
-        if (player.MissionEnabled)
-        {
-            if (player.AvatarManager!.GetHero()!.PathInfos.Count > 0) player.Data.IsGenderSet = true;
-            proto.Gender = (uint)player.Data.CurrentGender;
-            proto.IsGenderSet = player.Data.IsGenderSet;
-        }
-        else
-        {
-            proto.Gender = (uint)player.Data.CurrentGender;
-            proto.IsGenderSet = true;
-        }
 
         SetData(proto);
     }

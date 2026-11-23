@@ -23,6 +23,8 @@ public class PlayerData : BaseDatabaseDataHelper
     public int PhoneCase { get; set; } = 254000;
     public int CurrentBgm { get; set; } = 210007;
     public int CurrentPamSkin { get; set; } = 252000;
+    // Recorded when a gender is chosen but not read for client visibility: older builds set it on every story-mode
+    // login, so the pending gender prompt is derived from mission progress instead (AvatarManager.IsHeroGenderPending).
     public bool IsGenderSet { get; set; } = false;
     public Gender CurrentGender { get; set; } = Gender.Woman;
     public int Level { get; set; } = 1;

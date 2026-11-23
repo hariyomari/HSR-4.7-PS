@@ -4,6 +4,7 @@ using March7thHoney.Database;
 using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Friend;
 using March7thHoney.Database.Inventory;
+using March7thHoney.Enums.Avatar;
 using March7thHoney.Enums.Item;
 using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Quest;
@@ -252,10 +253,30 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         return true;
     }
 
+    /// <summary>The opening main mission, which holds the nickname and gender prompt.</summary>
+    public const int OpeningMainMissionId = 1000101;
+
+    /// <summary>The prologue sub-mission that waits for the nickname and gender choice.</summary>
+    public const int NameAndGenderSubMissionId = 100010134;
+
     public FormalAvatarInfo? GetHero()
     {
         return Data.FormalAvatars.Find(avatar => avatar.BaseAvatarId == 8001);
     }
+
+    /// <summary>
+    ///     Story mode before the gender prompt: the opening mission is running, its name and gender step is not
+    ///     finished, and no team holds the Trailblazer. The client keeps every Trailblazer path it is shown for the
+    ///     rest of the session, so until the choice the Trailblazer is left out of the avatar data and the choice
+    ///     announces it with the chosen path only. A Trailblazer already in a team (a replayed prologue) stays
+    ///     visible, since the client cannot build a team member it has no path data for.
+    /// </summary>
+    public bool IsHeroGenderPending =>
+        Player.MissionEnabled &&
+        Player.MissionManager!.GetMainMissionStatus(OpeningMainMissionId) == MissionPhaseEnum.Accept &&
+        Player.MissionManager.GetSubMissionStatus(NameAndGenderSubMissionId) != MissionPhaseEnum.Finish &&
+        !Player.LineupManager!.GetAllLineup().Any(lineup =>
+            lineup.BaseAvatars?.Any(avatar => avatar.BaseAvatarId == 8001) == true);
 
     /// <summary>
     ///     登录前校正开拓者当前命途（yuukisr_go a532fa0）：<c>cur_multi_path_avatar_type</c> 必须是一个开拓者命途变体，
@@ -269,8 +290,8 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         if (hero == null) return false;
 
         var gender = Player.Data.CurrentGender;
-        // 任务模式下性别尚未选择时客户端还没决定主角形象，不按默认性别去改。
-        var genderKnown = gender is Gender.Man or Gender.Woman && (Player.Data.IsGenderSet || !Player.MissionEnabled);
+        // 剧情性别选择之前客户端还没决定主角形象，不按默认性别去改。
+        var genderKnown = gender is Gender.Man or Gender.Woman && !IsHeroGenderPending;
         var cur = hero.AvatarId;
 
         if (!IsHeroPath(cur))
@@ -297,10 +318,38 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager<AvatarData
         return true;
     }
 
-    private static bool IsHeroPath(int avatarId)
+    public static bool IsHeroPath(int avatarId)
     {
         return GameData.MultiplePathAvatarConfigData.TryGetValue(avatarId, out var config) &&
                config.BaseAvatarID == 8001;
+    }
+
+    /// <summary>
+    ///     The gender chosen when the account names its Trailblazer: records it and puts the Trailblazer on that
+    ///     gender's Destruction path. Any choice other than female counts as male. When the Trailblazer was still
+    ///     hidden (<see cref="IsHeroGenderPending" />), the path is set without a path-change notify and one sync
+    ///     introduces the Trailblazer with only the chosen path.
+    /// </summary>
+    public async ValueTask SetHeroGenderAtCreation(Gender gender)
+    {
+        var heroHidden = IsHeroGenderPending;
+        Player.Data.CurrentGender = gender == Gender.Woman ? Gender.Woman : Gender.Man;
+        Player.Data.IsGenderSet = true;
+        if (!heroHidden)
+        {
+            await Player.ChangeAvatarPathType(8001, MultiPathAvatarTypeEnum.Warrior);
+            return;
+        }
+
+        var hero = GetHero();
+        if (hero == null) return;
+        var pathId = PlayerInstance.NormalizeHeroPathId(8001, Player.Data.CurrentGender);
+        Player.Data.CurBasicType = pathId;
+        hero.AvatarId = pathId;
+        hero.SetCurSp(0, Player.LineupManager!.GetCurLineup()!.IsExtraLineup());
+        hero.CheckPathSkillTree();
+        MarkDirty();
+        await Player.SendPacket(new PacketPlayerSyncScNotify(hero));
     }
 
     public async ValueTask ReforgeRelic(int uniqueId)

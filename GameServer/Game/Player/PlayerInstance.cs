@@ -614,6 +614,12 @@ public partial class PlayerInstance(PlayerData data)
             new List<BaseGameEntity> { fresh }, new List<BaseGameEntity> { existing }));
     }
 
+    /// <summary>
+    ///     Switches the Trailblazer to <paramref name="gender" />, keeping the current path. Before the story's gender
+    ///     prompt only the saved data changes, so the prompt can still introduce the Trailblazer cleanly. Afterwards
+    ///     the client keeps the previous gender's path next to the new one until the next login; no known packet
+    ///     makes it drop a path.
+    /// </summary>
     public async ValueTask SetHeroGender(Gender gender)
     {
         if (gender is not (Gender.Man or Gender.Woman)) return;
@@ -625,23 +631,28 @@ public partial class PlayerInstance(PlayerData data)
         var newId = pathBase + (gender == Gender.Woman ? 1 : 0);
         if (!GameData.MultiplePathAvatarConfigData.ContainsKey(newId)) newId = gender == Gender.Woman ? 8002 : 8001;
 
+        var heroHidden = AvatarManager!.IsHeroGenderPending;
         Data.CurrentGender = gender;
         Data.IsGenderSet = true;
         Data.CurBasicType = newId;
-        await SendPacket(new PacketGetBasicInfoScRsp(this));
 
-        var hero = AvatarManager!.GetHero();
+        var hero = AvatarManager.GetHero();
         if (hero != null)
         {
             hero.AvatarId = newId;
             hero.CheckPathSkillTree();
             hero.SetCurSp(0, LineupManager!.GetCurLineup()?.IsExtraLineup() ?? false);
-
-            await SendPacket(new PacketAvatarPathChangedNotify(8001, (MultiPathAvatarType)newId));
-            await SendPacket(new PacketPlayerSyncScNotify(hero));
         }
 
         DatabaseHelper.MarkDirty(Uid);
+        if (heroHidden) return;
+
+        await SendPacket(new PacketGetBasicInfoScRsp(this));
+        if (hero != null)
+        {
+            await SendPacket(new PacketAvatarPathChangedNotify(8001, (MultiPathAvatarType)newId));
+            await SendPacket(new PacketPlayerSyncScNotify(hero));
+        }
 
         // Reload in place so the client rebuilds the Trailblazer with the new model.
         if (SceneInstance != null && Data.Pos != null && Data.Rot != null)

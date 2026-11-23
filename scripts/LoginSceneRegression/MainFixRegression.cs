@@ -4,17 +4,21 @@ using March7thHoney.Database;
 using March7thHoney.Database.Generated;
 using March7thHoney.Database.Lineup;
 using March7thHoney.Database.Scene;
+using March7thHoney.Enums.Mission;
 using March7thHoney.Enums.Scene;
+using March7thHoney.GameServer.Game.Avatar;
 using March7thHoney.GameServer.Game.Player;
 using March7thHoney.GameServer.Server.Packet;
 using March7thHoney.GameServer.Server.Packet.Recv.Lineup;
 using March7thHoney.GameServer.Server.Packet.Recv.PetMarble;
+using March7thHoney.GameServer.Server.Packet.Recv.Player;
 using March7thHoney.GameServer.Server.Packet.Recv.Raid;
 using March7thHoney.GameServer.Server.Packet.Recv.RelicPreset;
 using March7thHoney.GameServer.Server.Packet.Recv.Rogue;
 using March7thHoney.GameServer.Server.Packet.Recv.TrainCakeCatch;
 using March7thHoney.GameServer.Server.Packet.Send.Avatar;
 using March7thHoney.GameServer.Server.Packet.Send.Lineup;
+using March7thHoney.GameServer.Server.Packet.Send.Player;
 using March7thHoney.Kcp;
 using March7thHoney.Kcp.KcpSharp;
 using March7thHoney.Proto;
@@ -128,7 +132,6 @@ internal static class MainFixRegression
 
         var hero = player.AvatarManager!.GetHero()!;
         player.Data.CurrentGender = Gender.Woman;
-        player.Data.IsGenderSet = true;
         hero.AvatarId = 8001;
         check("hero login normalization corrects mismatched gender and is idempotent",
             player.AvatarManager.NormalizeHeroCurPath() && hero.AvatarId == 8002 && player.Data.CurBasicType == 8002 &&
@@ -145,15 +148,64 @@ internal static class MainFixRegression
         hero.PathInfos.Remove(8002);
         check("missing current hero path is recreated before client serialization",
             player.AvatarManager.NormalizeHeroCurPath() && hero.PathInfos.ContainsKey(8002));
+        // Story prologue before the gender prompt: the opening mission runs and no team holds the Trailblazer.
         player.MissionManager!.Data.EnableMissionOverride = true;
-        player.Data.IsGenderSet = false;
+        player.MissionManager.Data.SetMainMissionStatus(AvatarManager.OpeningMainMissionId, MissionPhaseEnum.Accept);
+        var savedTeams = player.LineupManager!.GetAllLineup().ToDictionary(lineup => lineup, lineup => lineup.BaseAvatars?.ToList());
+        foreach (var lineup in savedTeams.Keys) lineup.BaseAvatars?.RemoveAll(avatar => avatar.BaseAvatarId == 8001);
         hero.AvatarId = 8001;
         player.Data.CurBasicType = 8001;
         check("unselected story gender is not forced to the saved default gender",
-            !player.AvatarManager.NormalizeHeroCurPath() && hero.AvatarId == 8001);
+            player.AvatarManager.IsHeroGenderPending && !player.AvatarManager.NormalizeHeroCurPath() && hero.AvatarId == 8001);
+        var pendingAvatars = GetAvatarDataScRsp.Parser.ParseFrom(new PacketGetAvatarDataScRsp(player).Data);
+        check("story login hides the Trailblazer and reports the gender unset until the prompt",
+            !GetBasicInfoScRsp.Parser.ParseFrom(new PacketGetBasicInfoScRsp(player).Data).IsGenderSet &&
+            pendingAvatars.AvatarList.All(avatar => avatar.BaseAvatarId != 8001) &&
+            pendingAvatars.BasicTypeIdList.All(id => !AvatarManager.IsHeroPath((int)id)) &&
+            pendingAvatars.AvatarPathDataInfoList.All(path => !AvatarManager.IsHeroPath((int)path.AvatarId)) &&
+            GetLineupAvatarDataScRsp.Parser.ParseFrom(new PacketGetLineupAvatarDataScRsp(player).Data).AvatarDataList
+                .All(avatar => !AvatarManager.IsHeroPath((int)avatar.Id)));
+        player.LineupManager.GetCurLineup()!.BaseAvatars!.Add(new LineupAvatarInfo { BaseAvatarId = 8001 });
+        check("a Trailblazer already in a team stays visible when the prologue is replayed",
+            !player.AvatarManager.IsHeroGenderPending);
+        player.LineupManager.GetCurLineup()!.BaseAvatars!.RemoveAll(avatar => avatar.BaseAvatarId == 8001);
+        player.MissionManager.Data.SetMainMissionStatus(AvatarManager.OpeningMainMissionId, MissionPhaseEnum.None);
+        check("story mode outside the prologue (enabled on an existing save) keeps the Trailblazer visible",
+            !player.AvatarManager.IsHeroGenderPending &&
+            GetBasicInfoScRsp.Parser.ParseFrom(new PacketGetBasicInfoScRsp(player).Data).IsGenderSet);
+        foreach (var (lineup, avatars) in savedTeams) lineup.BaseAvatars = avatars;
         player.MissionManager.Data.EnableMissionOverride = false;
-        player.Data.IsGenderSet = true;
         player.AvatarManager.NormalizeHeroCurPath();
+
+        // The gender choice introduces the hidden Trailblazer once, with only the chosen path: the client keeps any
+        // path it is shown for the session. /hero gender before the prompt must not show it early either.
+        foreach (var (uid, gender, chosenPath) in new[] { (60073, Gender.Woman, 8002u), (60074, Gender.Man, 8001u) })
+        {
+            var story = new PlayerInstance(uid);
+            await story.InitializeAsync();
+            var storyConnection = new ProbeConnection(peer) { Player = story };
+            story.Connection = storyConnection;
+            story.MissionManager!.Data.EnableMissionOverride = true;
+            story.MissionManager.Data.SetMainMissionStatus(AvatarManager.OpeningMainMissionId, MissionPhaseEnum.Accept);
+            foreach (var lineup in story.LineupManager!.GetAllLineup())
+                lineup.BaseAvatars?.RemoveAll(avatar => avatar.BaseAvatarId == 8001);
+            story.AvatarManager!.GetHero()!.AvatarId = 8001;
+            story.Data.CurBasicType = 8001;
+            var early = await capture(() =>
+                story.SetHeroGender(gender == Gender.Woman ? Gender.Man : Gender.Woman).AsTask());
+            var choice = await capture(() => new HandlerSetPlayerInfoCsReq().OnHandle(storyConnection, [],
+                new SetPlayerInfoCsReq { IsModify = true, Nickname = "story", Gender = gender }.ToByteArray()));
+            var heroSyncs = choice.Where(frame => frame.Id == CmdIds.PlayerSyncScNotify)
+                .Select(frame => PlayerSyncScNotify.Parser.ParseFrom(frame.Body).AvatarSync)
+                .Where(sync => sync?.AvatarList.Any(avatar => avatar.BaseAvatarId == 8001) == true).ToList();
+            var heroPaths = heroSyncs.SelectMany(sync => sync.AvatarPathDataInfoList)
+                .Select(path => path.AvatarId).Where(id => AvatarManager.IsHeroPath((int)id));
+            var afterChoice = GetAvatarDataScRsp.Parser.ParseFrom(new PacketGetAvatarDataScRsp(story).Data);
+            check($"story gender choice ({gender}) introduces the Trailblazer once with only the chosen path",
+                early.Count == 0 && choice.All(frame => frame.Id != CmdIds.AvatarPathChangedNotify) &&
+                heroSyncs.Count == 1 && heroPaths.SequenceEqual([chosenPath]) && !story.AvatarManager.IsHeroGenderPending &&
+                afterChoice.AvatarList.Single(avatar => avatar.BaseAvatarId == 8001).CurMultiPathAvatarType == chosenPath);
+        }
 
         var relicExcel = GameData.RelicConfigData.Values.First(relic => GameData.ItemConfigData.ContainsKey(relic.ID) &&
             GameData.RelicMainAffixData.ContainsKey(relic.MainAffixGroup) && GameData.RelicSubAffixData.ContainsKey(relic.SubAffixGroup));
