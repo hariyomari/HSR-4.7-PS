@@ -166,8 +166,8 @@ dotnet run --project scripts/LoginSceneRegression/LoginSceneRegression.csproj -c
   - 领奖回包的首项为物品 `1`（星琼）。重复领取、未通关和非试用关卡都被拒绝，不再发放。
   - 试用中重新登录会放弃试用、移除试用队伍并回到返回点。
 - 邦布联动活动 Planarcadia Reverie（ActivityBangboo，`scripts/LoginSceneRegression/ActivityBangbooRegression.cs`，说明见 [ActivityBangboo](../development/activity-bangboo.zh-CN.md)）：在 4.7 协议上排除。该活动使用 4.7 协议没有的 4.8 命令组 `MFNJLCNMBON`，因此其代码不参与构建，本分支不运行此用例。上游的覆盖范围是经真实处理器与内存 KCP 走完的流程：配置与排期（`5014701/5014702` → 面板 `50147`）；七个请求处理器与八个 FinishType（480500–480507）的注册；新账号数据；拒绝锁定关卡、未知关卡和未解锁的邦布；拒绝 GameTransNo 或关卡不符以及重复结算；离开不通关；首次通关发放 RewardData，并在回包之后发送新关卡 / 新邦布通知，重玩无奖励；故事链通关到 304 开放无尽模式并通知；无尽第 1 波存档、第 2 波带同一存档开始、离开保留、失败结束、三波通关更新最佳成绩并完成第 3 波任务、`FFPHBNAGJNP` 结束一局；帖子阅读 / 点赞、演出组与未知 ID；结算统计推进部署、击杀、能量与同场邦布任务；存档表 `PlayerActivityBangboo` 写入 SQLite 后读回。
-- 星际和平盛典：成名之路（RealityShow，`scripts/LoginSceneRegression/RealityShowRegression.cs`，说明见 [RealityShow](../development/reality-show.zh-CN.md)）：在 4.7 协议上排除。4.7 中同名消息的字段不同，且不猜测映射，因此其代码不参与构建，本分支不运行此用例。上游的覆盖范围是经真实处理器与 `BattleManager.EndBattle` 走完命令组 10785–10799：配置（五个挑战、门槛、评级、决赛 BOSS 与增益都在缓存中）与排期（`5014301`–`5014305` → 面板 `50143`）；四个请求处理器与两个 FinishType（470011/470012）的注册；新账号数据；拒绝先于预热的决赛、空阵容、超员、未知挑战、其他挑战的试用角色、支援角色、重复与未拥有的角色，以及排期外的请求；重放客户端实际发送的预热请求开战（StageID 4320036、四名自有角色），战斗中再次开战被拒绝；预热结算 16 盾 → 2 档，在战斗结果之前通知，不改玩家阵容并完成增益任务；决赛（4320136）携带前两档增益，以 650 条结算，完成 B/A/S 而非 SS 任务；更差的成绩保留最佳，同条数下行动值更少则替换，失败不结算；GetData 返回记录与阵容；重置预热保留决赛最佳；好友排行回包；存档表 `PlayerRealityShow` 写入 SQLite 后读回。
-- 两个活动都存在仓库的 `Resource.bin` 早于新 FinishType 的问题，上游回归在内存中为相关 FinishWay 行设置类型，并在结束时恢复。
+- 星际和平盛典：成名之路（RealityShow，`scripts/LoginSceneRegression/RealityShowRegression.cs`，说明见 [RealityShow](../development/reality-show.zh-CN.md)）：已在正式服 4.7.0 协议上重新启用，字段布局来自正式客户端的协议转储，尚未经过客户端实机验证。覆盖范围是经真实处理器与 `BattleManager.EndBattle` 走完命令组 10784–10800：配置（五个挑战、门槛、评级、决赛 BOSS 与增益都在缓存中）与排期（`5014301`–`5014305` → 面板 `50143`）；四个请求处理器与两个 FinishType（470011/470012）的注册；新账号数据；拒绝先于预热的决赛、空阵容、超员、未知挑战、其他挑战的试用角色、支援角色、重复与未拥有的角色，以及排期外的请求；重放客户端实际发送的预热请求开战（StageID 4320036、四名自有角色），战斗中再次开战被拒绝；预热结算 16 盾 → 2 档，在战斗结果之前通知，不改玩家阵容并完成增益任务；决赛（4320136）携带前两档增益，以 650 条结算，完成 B/A/S 而非 SS 任务；更差的成绩保留最佳，同条数下行动值更少则替换，失败不结算；GetData 返回记录与阵容；重置预热保留决赛最佳；好友排行回包；存档表 `PlayerRealityShow` 写入 SQLite 后读回。
+- RealityShow 用例检查从 `Resource.bin` 加载的 FinishWay 类型，不改写这些类型。上游的 ActivityBangboo 用例仍被排除；该用例为了兼容旧缓存，会在内存中设置相关类型，并在结束时恢复。
 
 ### 跃迁
 
@@ -234,7 +234,7 @@ dotnet run --project scripts/LoginSceneRegression/LoginSceneRegression.csproj -c
 
 代码在 `scripts/LoginSceneRegression/NewPlayerBatchRegression.cs`。
 
-- 新玩家的各行数据在同一个事务中创建（`DatabaseHelper.CreateBatch`）。用 SQLite 触发器让最后一行（`PlayerPetData`）的插入失败：初始化报告错误，之前写入的角色行被回滚，内存中只保留玩家记录；之后从该记录再次登录会写入全部数据行。
+- 新玩家的各行数据在同一个事务中创建（`DatabaseHelper.CreateBatch`）。用 SQLite 触发器让最后一行（`PlayerRealityShowData`）的插入失败：初始化报告错误，之前写入的角色行被回滚，内存中只保留玩家记录；之后从该记录再次登录会写入全部数据行。
 - 在新玩家数据行排队之后、写入之前重置玩家（`DeleteUidGameplayData`），写入会失败且不留下任何行；之后可以重新创建。
 
 ### 账号克隆、剧情进度与存档编辑
@@ -276,5 +276,5 @@ dotnet run --project scripts/LoginSceneRegression/LoginSceneRegression.csproj -c
 - 克里珀堡、收容舱段和试用主角相关的修复，更新服务端后重新登录重试即可，不需要清空存档。
 - 全服聊天的 Discord Webhook 在回归中不发出真实请求。
 - 差分宇宙的房间以清除场景内怪物的方式结算，不经过真实战斗。
-- 挑战和头像框的检查都只在服务端进行，不能替代客户端实机验证。上游的 ActivityBangboo 与 RealityShow 检查同样如此，它们在 4.7 协议上排除。
+- 挑战、头像框和 RealityShow 的检查都只在服务端进行，不能替代客户端实机验证。上游的 ActivityBangboo 检查也是如此，且仍在 4.7 协议上排除。
 - 剧情进度只在服务端验证：容器房间交互、传送点地图与任务追踪仍需客户端实机确认。

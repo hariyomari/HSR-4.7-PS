@@ -1,8 +1,8 @@
 using March7thHoney.Database;
 using March7thHoney.Database.Avatar;
 using March7thHoney.Database.Generated;
-using March7thHoney.Database.Pet;
 using March7thHoney.Database.Player;
+using March7thHoney.Database.RealityShow;
 using March7thHoney.GameServer.Game.Player;
 using Microsoft.Data.Sqlite;
 
@@ -15,9 +15,8 @@ internal static class NewPlayerBatchRegression
         const int uid = 60071;
         var connectionString = $"Data Source={databaseFile}";
         var avatarTable = EntityStores.Map[typeof(AvatarData)].Table;
-        // The last row the wiring creates: PetManager is the last component PlayerInstance.WireManagers adds while the
-        // 4.8-only activities are excluded. Every other new row is written before the insert fails.
-        var failingTable = EntityStores.Map[typeof(PlayerPetData)].Table;
+        // The last row WireManagers queues, so every other new row is inserted before the trigger aborts the batch.
+        var failingTable = EntityStores.Map[typeof(PlayerRealityShowData)].Table;
 
         Execute(connectionString,
             $"create trigger fail_new_player before insert on \"{failingTable}\" when new.\"Uid\" = {uid} " +
