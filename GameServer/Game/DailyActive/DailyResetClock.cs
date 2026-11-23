@@ -11,7 +11,7 @@ namespace March7thHoney.GameServer.Game.DailyActive;
 public static class DailyResetClock
 {
     /// <summary>Same value PacketPlayerLoginScRsp sends as cur_timezone.</summary>
-    public static int UtcOffsetHours => (int)TimeZoneInfo.Local.BaseUtcOffset.TotalHours;
+    public static int UtcOffsetHours => ServerTimeProvider.UtcOffsetHours;
 
     public static int ResetHour => ConfigManager.Config.ServerOption.ValidDailyResetHour();
 
